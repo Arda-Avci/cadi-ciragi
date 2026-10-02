@@ -121,6 +121,8 @@ function islandPath(count) {
         throw new Error('ada yolu bulunamadı');
     return path;
 }
+const HARD_FROM = 3; // dizin: 4. ada
+const HARD_MUL = 2;
 function buildZones() {
     const path = islandPath(ISLAND_COUNT);
     const rnd = lcg(7742);
@@ -130,7 +132,9 @@ function buildZones() {
     for (let i = 0; i < ISLAND_COUNT; i++) {
         const b = BIOMES[i % BIOMES.length];
         const v = VARIANTS[Math.floor(i / BIOMES.length)];
-        const step = i === 0 ? 1 : 1.2 + 0.6 * rnd(); // önceki adaya göre 1.2–1.8 kat
+        const base = i === 0 ? 1 : 1.2 + 0.6 * rnd(); // önceki adaya göre 1.2–1.8 kat
+        // 4. adadan itibaren bütün adalar 2 kat daha zor (güç ×2; sonraki adımlar yine 1.2–1.8 kat)
+        const step = i === HARD_FROM ? base * HARD_MUL : base;
         power *= step;
         const { q, r } = path[i];
         const jx = (rnd() - 0.5) * 500;
