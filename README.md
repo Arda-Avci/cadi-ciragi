@@ -52,3 +52,4 @@ python -m http.server 8766 --bind 0.0.0.0       # ağdaki telefon için
 - **Boss bir kez yenilir**, bir daha çıkmaz; kapı açılınca ekranda animasyon oynar.
 - **Süpürge uçuşu:** boss ya da zor düşmana verilen her %10 zararda 5 sn uçarsın; havadayken zarar görmezsin.
 - Can azaldıkça güç düşer; düşman sağlık çubuğu %50 altında sarı, %20 altında kırmızı. Kamplar halkayla işaretli, yürürken toz izi bırakılır. Yeni miğfer/kalkan daha iyiyse anında kuşanılır.
+- **Usta Cadı** yalnızca o seviyenin boss'u yenilince ortaya çıkar; her seviye için günde 2 eğitim hakkı vardır (gece yarısı yenilenir).

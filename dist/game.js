@@ -1206,19 +1206,35 @@ export class Game {
     /** yakındaki usta cadının numarası, yoksa -1 */
     nearMaster() {
         for (let i = 0; i < ZONES.length - 1; i++) {
+            if (!this.masterOpen(i))
+                continue;
             const m = this.masterPos(i);
             if (Math.hypot(m.x - this.px, m.y - this.py) < 130)
                 return i;
         }
         return -1;
     }
-    trainLeft(master, kind) {
-        return Math.max(0, Math.ceil(((this.save.train[master + ':' + kind] ?? 0) - this.now()) / 1000));
+    /** usta cadı yalnızca o seviyenin boss'u yenilince ortaya çıkar */
+    masterOpen(i) { return !!this.save.bossDown[i]; }
+    dayNo() { return Math.floor((this.now() - new Date().getTimezoneOffset() * -60000) / 86400000); }
+    /** bugün bu usta için kalan eğitim hakkı (her seviye için günde 2) */
+    trainPlaysLeft(master) {
+        const used = this.save.train['d' + master] === this.dayNo() ? (this.save.train['n' + master] ?? 0) : 0;
+        return Math.max(0, Game.TRAIN_PER_DAY - used);
+    }
+    /** hakkı harcar; hak yoksa false */
+    startTraining(master) {
+        if (!this.masterOpen(master) || this.trainPlaysLeft(master) <= 0)
+            return false;
+        const n = Game.TRAIN_PER_DAY - this.trainPlaysLeft(master) + 1;
+        this.save.train['d' + master] = this.dayNo();
+        this.save.train['n' + master] = n;
+        this.persist();
+        return true;
     }
     /** mini oyun bitti: puana göre kalıcı güç kazanılır (0..1) */
     finishTraining(master, kind, score) {
         const k = Math.max(0, Math.min(1, score)) * (1 + master * 0.8);
-        this.save.train[master + ':' + kind] = this.now() + 150 * 1000;
         if (kind === 'timing') {
             const eq = this.equippedWeapons();
             const d0 = eq.length ? this.weaponDmg(eq[0]) : 0;
@@ -1249,6 +1265,8 @@ export class Game {
             return true;
         }
         for (let i = 0; i < ZONES.length - 1; i++) {
+            if (!this.masterOpen(i))
+                continue;
             const m = this.masterPos(i);
             const sx = this.w / 2 + (m.x - this.px);
             const sy = this.h / 2 + (m.y - this.py);
@@ -1551,6 +1569,8 @@ export class Game {
         }
     }
     drawMaster(i, camX, camY) {
+        if (!this.masterOpen(i))
+            return;
         const m = this.masterPos(i);
         if (!this.inView(m.x, m.y, 120, camX, camY))
             return;
@@ -2057,6 +2077,8 @@ export class Game {
             c.fillStyle = this.gateLocked(i) ? '#ff8a5a' : '#7bff9a';
             c.fillRect(X(g.x) - 2, Y(g.y) - 4, 4, 8);
             const m = this.masterPos(i);
+            if (!this.masterOpen(i))
+                continue;
             c.fillStyle = '#9ff0ff';
             c.beginPath();
             c.arc(X(m.x), Y(m.y), 3, 0, Math.PI * 2);
@@ -2137,6 +2159,8 @@ export class Game {
                 c.fillRect(X(g.x) - 3, Y(g.y) - 6, 6, 12);
             }
             const m = this.masterPos(i);
+            if (!this.masterOpen(i))
+                continue;
             c.fillStyle = '#9ff0ff';
             c.beginPath();
             c.arc(X(m.x), Y(m.y), 5, 0, Math.PI * 2);
@@ -2166,3 +2190,4 @@ export class Game {
         c.fillText('Ok: bakış yönün · Kapatmak için dokun', this.w / 2, my + mh + 50);
     }
 }
+Game.TRAIN_PER_DAY = 2;

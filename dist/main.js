@@ -185,7 +185,8 @@ function renderPanel() {
         setPanelTitle(trainMaster === 0 ? 'Usta Cadı Elmira' : 'Usta Cadı Zehra', 'ui_skill');
         const t = document.createElement('div');
         t.className = 'row';
-        t.innerHTML = '<small>Mini oyunlarla eğitilip kalıcı güç kazan. Her oyun kısa bir bekleme süresine sahiptir.</small>';
+        const plays = game.trainPlaysLeft(trainMaster);
+        t.innerHTML = `<small>Mini oyunlarla eğitilip kalıcı güç kazan. Bu seviye için günde 2 eğitim hakkın var. Bugün kalan: <b>${plays}/2</b></small>`;
         panel.append(t);
         const games = [
             { kind: 'timing', name: 'Büyü Zamanlaması', desc: 'Göstergeyi yeşil bölgede durdur → kalıcı HASAR', icon: 'ui_spells' },
@@ -193,8 +194,11 @@ function renderPanel() {
             { kind: 'stars', name: 'Yıldız Yakalama', desc: 'Düşen yıldızlara dokun → kalıcı YENİLENME', icon: 'ui_dust' },
         ];
         for (const g of games) {
-            const left = game.trainLeft(trainMaster, g.kind);
-            panel.append(row(ico(g.icon, 36), g.name, left > 0 ? `Bekleme: ${left} sn` : g.desc, btn(left > 0 ? left + ' sn' : 'Oyna', '', left === 0, () => runMini(g.kind))));
+            panel.append(row(ico(g.icon, 36), g.name, plays > 0 ? g.desc : 'Bugünlük hakkın bitti, yarın gel', btn(plays > 0 ? 'Oyna' : 'Yarın', '', plays > 0, () => {
+                if (game.startTraining(trainMaster))
+                    runMini(g.kind);
+                renderPanel();
+            })));
         }
     }
 }
