@@ -4,6 +4,7 @@ import {
   enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies,
 } from './data.js';
 import { VERSION } from './version.js';
+import { PACKS } from './billing.js';
 import { audio } from './audio.js';
 import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
 import { N, T } from './i18n.js';
@@ -48,6 +49,10 @@ export interface SaveData {
   perm: Record<string, number>; // haritadan kazanılan kalıcı statlar
   hero: HeroInfo;
   playSec: number;
+  /** satın alınan güç paketleri: ürün kimliği → adet */
+  shop: Record<string, number>;
+  /** ödüllü reklamlar: gün numarası, o günkü adet, ödül türü başına son izleme zamanı (ms) */
+  ads: { day: number; n: number; last: Record<string, number> };
   first: Record<string, number>; // ilk kez temizlenen kamp/ağaçlar (kalıcı kazanç yalnızca ilkinde)
   gw: Record<string, number>; // ada başına dağıtılmış kazanç ağırlığı
 }
@@ -267,7 +272,7 @@ export class Game {
   private fresh(): SaveData {
     return {
       essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
-      bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
+      bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
       chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {},
     };
   }
@@ -279,6 +284,8 @@ export class Game {
         const s = { ...this.fresh(), ...(JSON.parse(raw) as Partial<SaveData>) };
         while (s.bossDown.length < ZONES.length) s.bossDown.push(false);
         if (!Array.isArray(s.extra)) s.extra = [];
+        if (!s.shop) s.shop = {};
+        if (!s.ads) s.ads = { day: 0, n: 0, last: {} };
         return s;
       }
     } catch (e) {
@@ -718,13 +725,60 @@ export class Game {
     for (const s of this.worn('shield')) v += s.dtype === t ? itemValue('shield', s.rarity, s.level) : itemValue('shield', s.rarity, s.level) * 0.5;
     return v;
   }
+  // ---- ödüllü reklam ödülleri ----
+  static readonly AD_DAILY = 10;
+  static readonly AD_COOLDOWN = 180; // sn, ödül türü başına
+  /** bugün kalan reklam hakkı */
+  adDailyLeft(): number { return Math.max(0, Game.AD_DAILY - (this.save.ads.day === this.dayNo() ? this.save.ads.n : 0)); }
+  /** ödül için kalan bekleme (sn); 0 = hazır */
+  adWait(kind: string): number { return Math.max(0, Math.ceil(((this.save.ads.last[kind] ?? 0) + Game.AD_COOLDOWN * 1000 - this.now()) / 1000)); }
+  /** reklam izlenince ödülü verir */
+  claimAd(kind: 'helmet' | 'shield' | 'geode' | 'souls'): boolean {
+    if (this.adDailyLeft() <= 0 || this.adWait(kind) > 0) return false;
+    if (this.save.ads.day !== this.dayNo()) { this.save.ads.day = this.dayNo(); this.save.ads.n = 0; }
+    this.save.ads.n++;
+    this.save.ads.last[kind] = this.now();
+    if (kind === 'helmet' || kind === 'shield') this.gainItem(kind, 2);
+    else if (kind === 'geode') { this.save.geodes += 2; this.gain('+2 Jeod', '#7dffb0', 'icon_geode'); }
+    else {
+      const v = Math.round(400 * Math.pow(ZONES[this.region].scale, 0.7) * this.yieldMul());
+      this.save.essence += v;
+      this.gain('+' + this.fmt(v) + ' Ruh', '#8fdcff', 'ui_soul');
+    }
+    audio.play('chest');
+    this.persist();
+    this.onChange();
+    return true;
+  }
+
+  /** satın alınan güç paketlerinin toplam çarpanı (can ve hasar ×çarpan → güç ×çarpan) */
+  shopMul(): number {
+    let m = 1;
+    for (const p of PACKS) m *= Math.pow(p.mul, this.save.shop[p.id] ?? 0);
+    return m;
+  }
+  /** mağazadan gelen paket: kalıcı güç çarpanı eklenir */
+  grantPack(id: string, receipt: string): boolean {
+    const p = PACKS.find((x) => x.id === id);
+    if (!p) return false;
+    this.save.shop[id] = (this.save.shop[id] ?? 0) + 1;
+    this.hp = this.maxHp();
+    audio.play('chest');
+    vibrate(80);
+    this.gain(p.name + ' etkinleştirildi (×' + p.mul + ' güç)', '#ffe36b', 'ui_power');
+    console.info('güç paketi', id, receipt);
+    this.persist();
+    this.onChange();
+    return true;
+  }
+
   maxHp(): number {
-    return (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
+    return this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
       * (1 + (this.cb('hp') + this.helmetHp() + this.perm('elite.hpPct') + this.perm('train.hp')) / 100);
   }
   regen(): number { return 0.6 * this.lv('regen') + this.cb('regen') + this.helmetRegen() + this.perm('tree.regen') + this.perm('train.regen'); }
   armor(): number { return Math.max(0.2, 1 - 0.04 * this.lv('armor')); }
-  dmgMul(): number { return (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg')) / 100); }
+  dmgMul(): number { return this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg')) / 100); }
   castSpeed(): number { return 1 + 0.08 * this.lv('spin'); }
   reachMul(): number { return 1 + 0.06 * this.lv('reach'); }
   magnet(): number { return 70 + 25 * this.lv('magnet') + this.cb('magnet'); }
@@ -1563,7 +1617,7 @@ export class Game {
     const rem = Math.max(w, total - done);
     this.save.gw[reg] = done + w;
     const cap = this.bossPower(reg) * Game.MARGIN;
-    const P = Math.max(1, this.fullPower());
+    const P = Math.max(1, this.fullPower() / this.shopMul()); // satın alınan güç, ücretsiz ilerleme kazancını etkilemez
     if (P >= cap) return 0;
     return Math.pow(cap / P, Math.min(1, w / rem)) - 1;
   }

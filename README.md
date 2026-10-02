@@ -64,3 +64,4 @@ python -m http.server 8765 --bind ::
 - **Canavar:** her 3 adada bir (3., 6., 9. …) o adanın boss'unun 2 katı güçte bir canavar durur; boss yenilmeden de çıkar, bir kez yenilir ve büyük ganimet verir. Geliştirme ipuçları yalnızca takılı büyü/ekipman/kristal için çıkar.
 - Canavarların her biyom için kendi görseli vardır (`beast_*`, `tools/fix_pockets.py` iç arka plan deliklerini temizler).
 - Canavarın kendi sesleri var: yaklaşınca kükreme (+titreşim), ölünce gürleme ve zafer akoru.
+- **Gelir (IAP + reklam):** Güç Paketleri paneli (⚡) ve AdMob reklamları (alt banner + ödüllü video). Mobil uygulamada çalışır; kurulum için `docs/MONETIZATION.md`.

@@ -3,6 +3,8 @@ import { audio } from './audio.js';
 import { N, T } from './i18n.js';
 import { changed, loadSettings, settings, vibrate } from './settings.js';
 import { BUILD, CODENAME, VERSION } from './version.js';
+import { PACKS, createBilling } from './billing.js';
+import { createAds } from './ads.js';
 import { CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, statIcon, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemAbility, itemUpgradeCost, itemValue, upgradeCost, } from './data.js';
 loadSettings();
 const L = (s) => N(T(s));
@@ -260,6 +262,57 @@ function renderPanel() {
         ver.innerHTML = `<small>Hexling · ${L('Sürüm')} ${VERSION} (${CODENAME}) · ${L('Yapım')} ${BUILD}</small>`;
         panel.append(ver);
     }
+    else if (open === 'shop') {
+        setPanelTitle('Güç Paketleri', 'ui_power');
+        const info = document.createElement('div');
+        info.className = 'row';
+        info.innerHTML = `<small>${L('Güç paketleri kalıcıdır ve toplanır; ücretsiz ilerlemeyi etkilemez.')} ${L('Şu anki çarpan')}: <b>×${game.shopMul().toFixed(2)}</b></small>`;
+        panel.append(info);
+        const msg = document.createElement('div');
+        msg.className = 'row';
+        msg.innerHTML = `<small id="shop-msg">${billing.kind === 'none' ? L('Mağaza yalnızca mobil uygulamada kullanılabilir.') : billing.kind === 'dev' ? 'GELİŞTİRME MODU: sahte satın alma' : ''}</small>`;
+        panel.append(msg);
+        for (const p of PACKS) {
+            const have = game.save.shop[p.id] ?? 0;
+            const price = shopPrices[p.id] ?? p.fallbackPrice;
+            panel.append(row(ico('ui_power', 36), `${p.name}${have ? ' ×' + have : ''}`, `${L('Gücü ×')}${p.mul} ${L('artırır')}`, btn(price, '', billing.kind !== 'none', async () => {
+                const r = await billing.purchase(p.id);
+                const m = document.getElementById('shop-msg');
+                if (r.ok && billing.kind === 'dev')
+                    game.grantPack(p.id, r.receipt ?? 'dev');
+                else if (!r.ok && m)
+                    m.textContent = r.error ?? '';
+                renderPanel();
+            })));
+        }
+        // ücretsiz ödüller: ödüllü reklam izleyerek eşya edin
+        if (ads.kind !== 'none') {
+            const h = document.createElement('h3');
+            h.textContent = L('Ücretsiz ödüller (reklam)');
+            panel.append(h);
+            const left = game.adDailyLeft();
+            const rewards = [
+                { kind: 'helmet', name: 'Destansı Miğfer', icon: 'icon_helmet' },
+                { kind: 'shield', name: 'Destansı Kalkan', icon: 'icon_shield' },
+                { kind: 'geode', name: '2 Jeod', icon: 'icon_geode' },
+                { kind: 'souls', name: 'Ruh paketi', icon: 'ui_soul' },
+            ];
+            for (const r of rewards) {
+                const wait = game.adWait(r.kind);
+                const ok = left > 0 && wait === 0;
+                panel.append(row(ico(r.icon, 36), r.name, wait > 0 ? `${L('Bekleme')}: ${wait} sn` : `${L('Bugün kalan')}: ${left}`, btn(ok ? 'Reklam izle' : wait > 0 ? wait + ' sn' : '—', '', ok, async () => {
+                    const done = await ads.showRewarded();
+                    if (done)
+                        game.claimAd(r.kind);
+                    renderPanel();
+                })));
+            }
+        }
+        const rb = document.createElement('div');
+        rb.className = 'row';
+        rb.append(btn('Satın alımları geri yükle', '', billing.kind === 'native', async () => { await billing.restore(); renderPanel(); }));
+        panel.append(rb);
+    }
     else if (open === 'hof') {
         setPanelTitle('Şeref Salonu', 'ui_stats');
         panel.append(hofList(20));
@@ -510,6 +563,13 @@ function frame(now) {
     masterBtn.style.display = !open && game.nearMaster() >= 0 && !game.mapOpen && mini.style.display !== 'flex' ? 'flex' : 'none';
     requestAnimationFrame(frame);
 }
+// ---------------- mağaza ----------------
+const ads = createAds();
+const billing = createBilling((id, receipt) => { game.grantPack(id, receipt); renderPanel(); });
+let shopPrices = {};
+billing.prices().then((p) => { shopPrices = p; if (open === 'shop')
+    renderPanel(); }).catch((e) => console.error('fiyatlar alınamadı', e));
+document.getElementById('btn-shop')?.addEventListener('click', () => { open = open === 'shop' ? null : 'shop'; renderPanel(); });
 // ---------------- Şeref Salonu ----------------
 /** bu cihazdaki kahramanların sıralaması: aşılan ada > güç > öldürme */
 function hofList(max) {
@@ -566,6 +626,8 @@ function showLanding() {
 }
 function hideLanding() {
     landingOpen = false;
+    // alt barın altındaki sürekli banner (yalnızca reklam destekli ortamlarda); bar banner yüksekliği kadar yukarı kayar
+    ads.showBanner((px) => document.documentElement.style.setProperty('--ad-h', px + 'px')).catch((e) => console.error('banner gösterilemedi', e));
     landing.classList.add('hidden');
     audio.start();
     audio.setMood(game.region);

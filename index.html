@@ -18,7 +18,9 @@
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
   canvas { display: block; }
   img.ico { vertical-align: middle; image-rendering: auto; }
-  #bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 6px; padding: 8px 10px max(8px, env(safe-area-inset-bottom)); justify-content: center; align-items: stretch; background: linear-gradient(transparent, rgba(0,0,0,.65)); }
+  :root { --ad-h: 0px; }
+  #ad-slot { display: none; position: fixed; left: 0; right: 0; bottom: 0; height: var(--ad-h); background: #120c26; color: #8a84a0; font: 600 12px system-ui; align-items: center; justify-content: center; z-index: 4; border-top: 1px solid rgba(255,255,255,.1); }
+  #bar { position: fixed; left: 0; right: 0; bottom: var(--ad-h); display: flex; gap: 6px; padding: 8px 10px max(8px, env(safe-area-inset-bottom)); justify-content: center; align-items: stretch; background: linear-gradient(transparent, rgba(0,0,0,.65)); }
   #bar button { flex: 1; max-width: 76px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 2px 4px; background: rgba(40,24,86,.88); border: 1px solid rgba(190,160,255,.35); border-radius: 14px; font-size: 10px; font-weight: 600; color: #e9e1ff; }
   #bar button img { width: 34px; height: 34px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
   #bar button:active { transform: scale(.94); }
@@ -34,7 +36,7 @@
   @keyframes hintBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px) scale(1.08); } }
   @keyframes tipBob { 0%,100% { margin-top: 0; } 50% { margin-top: -6px; } }
   #essence-wrap { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,.55); color: #9be7ff; padding: 4px 12px 4px 6px; border-radius: 16px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
-  #master-btn { display: none; position: fixed; left: 50%; bottom: 104px; transform: translateX(-50%); align-items: center; gap: 8px; background: #2f8a8a; box-shadow: 0 4px 14px rgba(0,0,0,.5); padding: 10px 18px; font-size: 15px; }
+  #master-btn { display: none; position: fixed; left: 50%; bottom: calc(104px + var(--ad-h)); transform: translateX(-50%); align-items: center; gap: 8px; background: #2f8a8a; box-shadow: 0 4px 14px rgba(0,0,0,.5); padding: 10px 18px; font-size: 15px; }
   button { background: #5b34b3; color: #fff; border: 0; padding: 9px 12px; border-radius: 10px; font-size: 13px; font-weight: 600; font-family: inherit; }
   button:disabled { background: #3a3350; color: #8a84a0; }
   button.danger { background: #7a2a3a; }
@@ -73,6 +75,8 @@
   @keyframes pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   #btn-settings { position: fixed; left: 10px; top: 112px; width: 42px; height: 42px; padding: 4px; border-radius: 21px; background: rgba(40,24,86,.8); border: 1px solid rgba(190,160,255,.4); font-size: 22px; line-height: 1; }
   #btn-settings img { width: 32px; height: 32px; display: block; margin: 0 auto; }
+  #btn-shop { position: fixed; left: 10px; top: 160px; width: 42px; height: 42px; padding: 4px; border-radius: 21px; background: rgba(120,70,10,.85); border: 1px solid rgba(255,210,120,.6); font-size: 22px; line-height: 1; }
+  #btn-shop img { width: 30px; height: 30px; display: block; margin: 0 auto; }
   /* açılış ekranı */
   #landing { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: space-between; color: #fff; overflow: hidden; touch-action: manipulation; }
   #landing.hidden { display: none; }
@@ -114,8 +118,10 @@
 <canvas id="game"></canvas>
 <div id="essence-wrap"><img class="ico" src="assets/ui_soul.png" width="26" height="26" alt="" onerror="this.outerHTML='✦'"> <span id="essence">0</span></div>
 <div id="hint-tip" data-t>Buraya tıkla!</div>
+<button id="btn-shop" title="Güç Paketleri"><img src="assets/ui_power.png" alt="" onerror="this.outerHTML='⚡'"></button>
 <button id="btn-settings" title="Ayarlar"><img src="assets/ui_settings.png" alt="" onerror="this.outerHTML='⚙'"></button>
 <button id="master-btn"><img class="ico" src="assets/ui_skill.png" width="26" height="26" alt="" onerror="this.style.display='none'"> <span data-t>Usta Cadı: Eğitim</span></button>
+<div id="ad-slot"></div>
 <div id="bar">
   <button id="btn-tree"><img src="assets/ui_skill.png" alt="" onerror="this.style.display='none'"><span data-t>Yetenek</span></button>
   <button id="btn-weapons"><img src="assets/ui_spells.png" alt="" onerror="this.style.display='none'"><span data-t>Büyüler</span></button>

@@ -7,10 +7,12 @@
     "build:www": "node scripts/build-www.mjs"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^7.0.0",
     "@capacitor/android": "^7.0.0",
     "@capacitor/core": "^7.0.0",
     "@capacitor/haptics": "^7.0.0",
-    "@capacitor/ios": "^7.0.0"
+    "@capacitor/ios": "^7.0.0",
+    "cordova-plugin-purchase": "^13.0.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

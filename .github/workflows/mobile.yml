@@ -24,6 +24,10 @@ jobs:
       - run: npm install
       - run: npm run build:www
       - run: npx cap add android
+      - name: AdMob uygulama kimliği (yoksa test kimliği)
+        env:
+          ADMOB_ANDROID_APP_ID: ${{ vars.ADMOB_ANDROID_APP_ID }}
+        run: python3 scripts/inject-ads.py android
       - run: npx @capacitor/assets generate --android --assetPath resources
       - run: npx cap sync android
       - name: APK derle (debug imzalı, doğrudan kurulabilir)
@@ -47,6 +51,10 @@ jobs:
       - run: npm install
       - run: npm run build:www
       - run: npx cap add ios
+      - name: AdMob uygulama kimliği (yoksa test kimliği)
+        env:
+          ADMOB_IOS_APP_ID: ${{ vars.ADMOB_IOS_APP_ID }}
+        run: python3 scripts/inject-ads.py ios
       - run: npx @capacitor/assets generate --ios --assetPath resources
       - run: npx cap sync ios
       - name: Derle (imzasız)
