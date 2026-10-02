@@ -1379,14 +1379,14 @@ export class Game {
             this.areaHit(p, true);
         }
     }
-    /** boss evinin mührü: o adadaki diğer kampların %60'ı (ilk kez) temizlenmeden boss ortaya çıkmaz */
+    /** boss evinin mührü: o adadaki diğer kampların hepsi (ilk kez) temizlenmeden boss ortaya çıkmaz */
     sealProgress(reg) {
         let list = this.campsOf.get(reg);
         if (!list) {
             list = this.getWorld().spawners.filter((x) => x.reg === reg && x.tier !== 'boss');
             this.campsOf.set(reg, list);
         }
-        return { done: list.filter((x) => this.save.first['s' + x.id]).length, need: Math.ceil(list.length * 0.6) };
+        return { done: list.filter((x) => this.save.first['s' + x.id]).length, need: list.length };
     }
     bossSealed(sp) {
         if (sp.tier !== 'boss' || sp.bridge !== undefined || this.save.bossDown[sp.reg])

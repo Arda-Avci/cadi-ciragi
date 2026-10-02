@@ -12,7 +12,7 @@ Oyna: <https://arda-avci.github.io/cadi-ciragi/>
 - **Köprü bossları:** her köprüde, bitirilen adanın boss'u gibi 2–3 bekçi durur (bir kez yenilir, ganimet verir, kapıyı etkilemez).
 - **Kaya ve binalar** üzerinden geçilemez, etrafından dolaşılır; köprü ağızları ve kamplar açık bırakılır.
 - **Bellek:** yalnızca önceki, şimdiki ve sonraki ada (veri ve görselleri) yüklüdür; köprüde yeni ada yüklenirken "Yükleniyor…" rozeti çıkar.
-- **Boss evi mühürlüdür:** o adadaki diğer kampların %60'ı (ilk kez) temizlenince açılır. Kalıcı harita kazancı yalnızca kampın ilk temizlenişinde ve oyuncu o adanın boss gücüne (×1.3) ulaşana kadar verilir; tekrar temizleme çiftliği yoktur.
+- **Boss evi mühürlüdür:** o adadaki diğer bütün kamplar (ilk kez) temizlenince açılır. Kalıcı harita kazancı yalnızca kampın ilk temizlenişinde ve oyuncu o adanın boss gücüne (×1.3) ulaşana kadar verilir; tekrar temizleme çiftliği yoktur.
 - **Sabit kamplar, dalga yok:** kamp temizlenince gerçek zamanlı geri sayımla yeniden dolar. Kamplar halkayla işaretlidir. Boss evi içinde iyileşirsin, eve vurarak boss'a zarar verirsin.
 - **Süpürge uçuşu:** boss ya da zor düşmana verilen her %10 zararda 5 sn uçarsın; havadayken zarar görmezsin.
 - **Ev ve kamplar:** ilk adada ev, diğer adalarda giriş kampı hızlı iyileştirir; bayılınca bulunduğun adanın kampında uyanırsın.
