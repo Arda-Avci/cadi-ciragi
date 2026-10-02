@@ -1,5 +1,5 @@
 import {
-  BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, statIcon, CStat, DType, DTYPES, DTYPE_NAMES, ENEMIES, EnemyDef, EnemyId, EQUIP_NAMES,
+  BOSS_MUL, BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, statIcon, CStat, DType, DTYPES, DTYPE_NAMES, ENEMIES, EnemyDef, EnemyId, EQUIP_NAMES,
   MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SlotType, TIERS, Tier, UPGRADES, WEAPONS, ZONES, crystalValue,
   enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies,
 } from './data.js';
@@ -1491,7 +1491,7 @@ export class Game {
     const def = ENEMIES[sp.kind];
     const maxHp = def.hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv;
     const dmg = def.dmg * TIERS.boss.dmg * ZONES[reg].dmgScale * Math.sqrt(sp.lv);
-    return Math.sqrt(maxHp * (dmg / 0.6)) * 10;
+    return (Math.sqrt(maxHp * (dmg / 0.6)) * 10) / BOSS_MUL; // kazanç hedefi eski boss gücüne göre: boss 2 kat zorlaşır, oyuncu onunla büyümez
   }
 
   // ---- kale / bina hedefleri: boss kadar canlı, zarar vermez, yıkılınca canın %2'sini verir ----
@@ -1502,7 +1502,7 @@ export class Game {
     const reg = Math.floor(o.id / 100);
     const sp = this.zoneWorld(reg).spawners.find((x) => x.reg === reg && x.tier === 'boss' && x.bridge === undefined);
     if (!sp) return 1e9;
-    return (ENEMIES[sp.kind].hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv) / o.div;
+    return (ENEMIES[sp.kind].hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv) / (o.div * BOSS_MUL); // yapı canı değişmedi
   }
   bldDown(o: Obstacle): boolean { return o.kind === 'bld' && this.isCleared('o' + o.id); }
   private liveBlds(): Obstacle[] {
@@ -2058,6 +2058,13 @@ export class Game {
     return Math.floor(Math.sqrt(maxHp * (dmg / 0.6)) * 10);
   }
 
+  /** oyuncu bu adanın kapısını geçip köprüye girdi mi */
+  private passedGate(reg: number): boolean {
+    const b = this.bridge(reg);
+    const t = ((this.px - b.ax) * (b.bx - b.ax) + (this.py - b.ay) * (b.by - b.ay)) / (b.len * b.len);
+    return t > b.tGate;
+  }
+
   /** oyuncuya sıradaki hedefi gösterir: boss açıldıysa boss evi, boss yenildiyse kapı, değilse en yakın temizlenmemiş kamp */
   guideTarget(): { x: number; y: number; label: string; color: string } | null {
     const reg = this.region;
@@ -2083,6 +2090,7 @@ export class Game {
       return pick ? { x: pick.x, y: pick.y, label: 'Sıradaki düşman', color: best ? '#7bff9a' : '#ffb36b' } : null;
     }
     if (reg < last) {
+      if (this.passedGate(reg)) return null; // kapı geçildi: ok kalkar
       const g = this.gatePos(reg);
       // kapıya yaklaşan oyuncuya eğitim hakkı varsa usta cadı işaret edilir
       if (this.masterOpen(reg) && Math.hypot(g.x - this.px, g.y - this.py) < 900) {

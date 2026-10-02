@@ -97,6 +97,9 @@ export interface TierDef {
   weaponCopies: number;
 }
 
+/** boss gücü çarpanı: can ve hasar ×2 → güç ×2 (güç = √(can × hasar)) */
+export const BOSS_MUL = 2;
+
 export const TIERS: Record<Tier, TierDef> = {
   easy: { name: 'Kolay', hp: 1, dmg: 1, count: 3, respawn: 90, soul: 2, size: 1, color: '#7bd88f', permanent: 'normal', weaponCopies: 2 },
   medium: { name: 'Orta', hp: 4, dmg: 2, count: 3, respawn: 180, soul: 4, size: 1.1, color: '#ffd84a', permanent: 'normal', weaponCopies: 3 },
@@ -104,7 +107,7 @@ export const TIERS: Record<Tier, TierDef> = {
   elite: { name: 'Elit', hp: 85, dmg: 6, count: 1, respawn: 660, soul: 30, size: 1.7, color: '#ff5d8f', permanent: 'elite', weaponCopies: 7 },
   knight: { name: 'Muhafız', hp: 55, dmg: 5, count: 1, respawn: 520, soul: 22, size: 1.5, color: '#4ea1ff', permanent: 'elite', weaponCopies: 5 },
   // boss gücü %45 azaltıldı: can ve hasar ×0.55 (güç = √(can×hasar) ≈ ×0.55)
-  boss: { name: 'Boss', hp: 605, dmg: 6.6, count: 1, respawn: 1500, soul: 260, size: 2.7, color: '#b06cff', permanent: 'elite', weaponCopies: 16 },
+  boss: { name: 'Boss', hp: 605 * BOSS_MUL, dmg: 6.6 * BOSS_MUL, count: 1, respawn: 1500, soul: 260, size: 2.7, color: '#b06cff', permanent: 'elite', weaponCopies: 16 },
 };
 
 // ---- adalar ----

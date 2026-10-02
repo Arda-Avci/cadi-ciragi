@@ -31,6 +31,8 @@ export const ENEMIES = {
     golem: { id: 'golem', name: 'Taş Golem', hp: 40, speed: 30, dmg: 8, r: 17, atk: 'smash', resist: { cut: 0.2, pierce: 3, smash: 1 }, drop: 8 },
     wisp: { id: 'wisp', name: 'Fırtına Cini', hp: 10, speed: 90, dmg: 4, r: 10, atk: 'cut', resist: { cut: 3.5, pierce: 0.3, smash: 1 }, drop: 4 },
 };
+/** boss gücü çarpanı: can ve hasar ×2 → güç ×2 (güç = √(can × hasar)) */
+export const BOSS_MUL = 2;
 export const TIERS = {
     easy: { name: 'Kolay', hp: 1, dmg: 1, count: 3, respawn: 90, soul: 2, size: 1, color: '#7bd88f', permanent: 'normal', weaponCopies: 2 },
     medium: { name: 'Orta', hp: 4, dmg: 2, count: 3, respawn: 180, soul: 4, size: 1.1, color: '#ffd84a', permanent: 'normal', weaponCopies: 3 },
@@ -38,7 +40,7 @@ export const TIERS = {
     elite: { name: 'Elit', hp: 85, dmg: 6, count: 1, respawn: 660, soul: 30, size: 1.7, color: '#ff5d8f', permanent: 'elite', weaponCopies: 7 },
     knight: { name: 'Muhafız', hp: 55, dmg: 5, count: 1, respawn: 520, soul: 22, size: 1.5, color: '#4ea1ff', permanent: 'elite', weaponCopies: 5 },
     // boss gücü %45 azaltıldı: can ve hasar ×0.55 (güç = √(can×hasar) ≈ ×0.55)
-    boss: { name: 'Boss', hp: 605, dmg: 6.6, count: 1, respawn: 1500, soul: 260, size: 2.7, color: '#b06cff', permanent: 'elite', weaponCopies: 16 },
+    boss: { name: 'Boss', hp: 605 * BOSS_MUL, dmg: 6.6 * BOSS_MUL, count: 1, respawn: 1500, soul: 260, size: 2.7, color: '#b06cff', permanent: 'elite', weaponCopies: 16 },
 };
 export const ISLAND_COUNT = 40;
 /** sayıyı okunur yazar: K, M, B, T, Q, Qi... */

@@ -60,3 +60,4 @@ python -m http.server 8765 --bind ::
 - **Yönlendirme oku:** boss evi açılınca boss evini, boss yenilince kapıyı, aksi halde gücüne göre rahatça yenebileceğin en yakın düşmanı (yoksa en zayıfını) gösterir (ekran dışındaysa kenarda ok + mesafe). Ayarlardan kapatılabilir.
 - **Sandıklar:** her adada 2 açıkta, 2 gizli (yalnızca yaklaşınca görünür, haritada yok), 2 tanesi güçlü bir kamp ilk kez temizlenince belirir. Kapıya yaklaşırken eğitim hakkın varsa ok usta cadıyı gösterir.
 - Karakter oyun alanının dışına çıkamaz: denizde, kilitli kapının ötesinde ya da engelin içinde bulunursa (eski kayıt, yeniden kurulan yapı vb.) en yakın yürünebilir noktaya alınır.
+- **Boss gücü ×2** (can ve hasar ×2); kalıcı güç kazancı hedefi eski boss gücüne göre kaldığı için bosslar oyuncuya göre gerçekten 2 kat zorlaşır. Kapıyı geçince "Kapı" oku kalkar.
