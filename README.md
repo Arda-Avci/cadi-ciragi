@@ -58,3 +58,4 @@ python -m http.server 8765 --bind ::
 - **Kale/binalar** boss kadar canlıdır, zarar vermez; vurulup yıkılınca azami canın %2'sini iyileştirir ve 10 dk sonra yeniden kurulur. Aynı türden (tür + nadirlik + hasar türü) ekipman toplanınca otomatik birleşir, seviyesi artar.
 - Yapıların %20'si boss canında, kalanı boss canının 1/2–1/5'i kadardır; ilk yıkışta kalıcı +%2 can verir (tekrarlarda yalnızca %2 iyileştirir). Eve dönerken engele takılan düşman iyileşmez; 1.2 sn takılırsa eve ışınlanır, ikinci takılmada iyileşmesi durur.
 - **Yönlendirme oku:** boss evi açılınca boss evini, boss yenilince kapıyı, aksi halde en yakın temizlenmemiş kampı gösterir (ekran dışındaysa kenarda ok + mesafe). Ayarlardan kapatılabilir.
+- **Sandıklar:** her adada 2 açıkta, 2 gizli (yalnızca yaklaşınca görünür, haritada yok), 2 tanesi güçlü bir kamp ilk kez temizlenince belirir. Kapıya yaklaşırken eğitim hakkın varsa ok usta cadıyı gösterir.

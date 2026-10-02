@@ -54,7 +54,8 @@ export interface SaveData {
 
 interface Spawner { id: number; reg: number; x: number; y: number; tier: Tier; kind: EnemyId; tag?: SlotType; lv: number; bridge?: number }
 interface ResTree { id: number; reg: number; x: number; y: number; s: number; big: boolean }
-interface Chest { id: number; reg: number; x: number; y: number }
+/** visible: açıkta; hidden: yalnızca yaklaşınca görünür, haritada yok; drop: bağlı kamp ilk kez temizlenince belirir */
+interface Chest { id: number; reg: number; x: number; y: number; mode: 'visible' | 'hidden' | 'drop'; src?: number }
 /** kaya ya da bina: üzerinden geçilemez */
 interface Obstacle { id: number; x: number; y: number; r: number; kind: 'rock' | 'bld'; art: string; size: number; flip: number; /** can bölen: 1 = boss kadar, 2–5 = boss/2…5 */ div: number }
 interface World { spawners: Spawner[]; trees: ResTree[]; chests: Chest[]; obstacles: Obstacle[] }
@@ -519,7 +520,13 @@ export class Game {
       }
     });
     for (let i = 0; i < zone.resTrees; i++) { const p = place(160, R - 100, 120); trees.push({ id: reg * 1000 + trees.length, reg, x: p.x, y: p.y, s: 1.4, big: true }); }
-    for (let i = 0; i < 6; i++) { const p = place(200, R - 80, 160); chests.push({ id: reg * 6 + chests.length, reg, x: p.x, y: p.y }); }
+    for (let i = 0; i < 6; i++) { const p = place(200, R - 80, 160); chests.push({ id: reg * 6 + chests.length, reg, x: p.x, y: p.y, mode: i < 2 ? 'visible' : i < 4 ? 'hidden' : 'drop' }); }
+    // 'drop' sandıkları güçlü bir kampın yerine konur; o kamp ilk kez temizlenince ortaya çıkar
+    const guards = spawners.filter((s) => s.tier === 'hard' || s.tier === 'elite' || s.tier === 'knight');
+    chests.filter((ch) => ch.mode === 'drop').forEach((ch, k) => {
+      const g = guards[(k * 2 + reg) % Math.max(1, guards.length)];
+      if (g) { ch.x = g.x + 40; ch.y = g.y + 30; ch.src = g.id; } else ch.mode = 'visible';
+    });
     // diğer bütün ağaçlar da kesilebilir (küçük ödül)
     for (let i = 0; i < 80 + Math.min(reg, 10) * 6; i++) {
       const a = rnd() * Math.PI * 2;
@@ -1564,6 +1571,10 @@ export class Game {
     const first = !this.save.first['s' + id];
     const wasSealed = this.getWorld().spawners.some((x) => x.reg === sp.reg && this.bossSealed(x));
     this.save.first['s' + id] = 1;
+    if (first && this.getWorld().chests.some((ch) => ch.mode === 'drop' && ch.src === id)) {
+      this.say('Bir sandık belirdi!');
+      audio.play('chest');
+    }
     if (wasSealed && !this.getWorld().spawners.some((x) => x.reg === sp.reg && this.bossSealed(x))) {
       this.say('Boss evinin mührü kalktı!');
       audio.play('gate');
@@ -1622,9 +1633,18 @@ export class Game {
     this.onChange();
   }
 
+  /** sandık şu an görünür mü (haritada ve sahnede) */
+  chestShown(c: Chest, near = 170): boolean {
+    if (this.save.chests.includes(c.id)) return true;
+    if (c.mode === 'visible') return true;
+    if (c.mode === 'drop') return !!(c.src !== undefined && this.save.first['s' + c.src]);
+    return Math.hypot(c.x - this.px, c.y - this.py) < near; // hidden
+  }
+
   private checkChests(): void {
     for (const c of this.getWorld().chests) {
       if (this.save.chests.includes(c.id)) continue;
+      if (c.mode === 'drop' && !this.chestShown(c)) continue;
       if (Math.hypot(c.x - this.px, c.y - this.py) < 28) {
         this.save.chests.push(c.id);
         audio.play('chest');
@@ -1959,6 +1979,14 @@ export class Game {
     for (const ch of world.chests) {
       if (!this.inView(ch.x, ch.y, 40, camX, camY)) continue;
       const open = this.save.chests.includes(ch.id);
+      if (!this.chestShown(ch)) {
+        // gizli sandık: yakında solgun bir parıltı ipucu
+        if (ch.mode === 'hidden' && Math.hypot(ch.x - this.px, ch.y - this.py) < 330) {
+          const a = 0.25 + 0.2 * Math.sin(this.time * 4 + ch.id);
+          c.fillStyle = `rgba(255,230,140,${a})`; c.beginPath(); c.arc(ch.x, ch.y, 5 + 2 * Math.sin(this.time * 3), 0, Math.PI * 2); c.fill();
+        }
+        continue;
+      }
       if (this.spr('chest')) {
         c.globalAlpha = open ? 0.4 : 1;
         this.drawSprX('chest', ch.x, ch.y, 44, { bob: open ? 0 : Math.sin(this.time * 3 + ch.id) * 1.5 });
@@ -2019,7 +2047,15 @@ export class Game {
       }
       return best ? { x: best.x, y: best.y, label: 'Sıradaki kamp', color: '#ffe36b' } : null;
     }
-    if (reg < last) { const g = this.gatePos(reg); return { x: g.x, y: g.y, label: 'Kapı', color: '#7bff9a' }; }
+    if (reg < last) {
+      const g = this.gatePos(reg);
+      // kapıya yaklaşan oyuncuya eğitim hakkı varsa usta cadı işaret edilir
+      if (this.masterOpen(reg) && Math.hypot(g.x - this.px, g.y - this.py) < 900) {
+        const m = this.masterPos(reg);
+        return { x: m.x, y: m.y, label: 'Usta Cadı', color: '#9ff0ff' };
+      }
+      return { x: g.x, y: g.y, label: 'Kapı', color: '#7bff9a' };
+    }
     return null;
   }
 
@@ -2187,7 +2223,7 @@ export class Game {
     else if (cast > 0 && has('witch_cast1') && has('witch_cast2')) frame = cast > 0.5 ? 'witch_cast2' : 'witch_cast1';
     else if (cast > 0 && has('witch_cast')) frame = 'witch_cast';
     else if (this.moving && has('witch_walk4')) frame = 'witch_walk' + (1 + (Math.floor(t * 9) % 4));
-    const drawn = this.drawSprX(frame, this.px, this.py - 8, flying ? 90.3 : 77.7, {
+    const drawn = this.drawSprX(frame, this.px, this.py - 8, flying ? 94.8 : 81.6, {
       flip, rot: o.rot + cast * 0.12 * flip, sx: o.sx * sc, sy: o.sy * sc, bob: o.bob + lift, flash: this.hurtFlash > 0,
     });
     if (!drawn) {
@@ -2210,7 +2246,7 @@ export class Game {
     c.globalAlpha = 1;
     // karakterin üstünde can ve güç
     const bw = 62;
-    const by = this.py - 70 + (flying ? -30 : 0);
+    const by = this.py - 73 + (flying ? -30 : 0);
     if (flying) {
       c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(this.px - bw / 2 - 1, by + 9, bw + 2, 6);
       c.fillStyle = '#c8b6ff'; c.fillRect(this.px - bw / 2, by + 10, (bw * this.flyT) / 5, 4);
@@ -2445,7 +2481,7 @@ export class Game {
     }
     c.fillStyle = '#fff';
     for (const ch of this.getWorld().chests) {
-      if (this.save.chests.includes(ch.id) || Math.hypot(ch.x - this.px, ch.y - this.py) > 520) continue;
+      if (this.save.chests.includes(ch.id) || !this.chestShown(ch, 0) || Math.hypot(ch.x - this.px, ch.y - this.py) > 520) continue;
       c.fillRect(X(ch.x) - 2, Y(ch.y) - 2, 4, 4);
     }
     this.drawSpr('ui_home', X(HOME.x), Y(HOME.y), 16);
@@ -2501,7 +2537,7 @@ export class Game {
     }
     c.fillStyle = '#fff';
     for (const ch of this.getWorld().chests) {
-      if (this.save.chests.includes(ch.id)) continue;
+      if (this.save.chests.includes(ch.id) || !this.chestShown(ch, 0)) continue;
       if (Math.hypot(ch.x - this.px, ch.y - this.py) < 900) c.fillRect(X(ch.x) - 2.5, Y(ch.y) - 2.5, 5, 5);
     }
     this.drawSpr('ui_home', X(HOME.x), Y(HOME.y), 24);
