@@ -100,7 +100,8 @@ export const TIERS: Record<Tier, TierDef> = {
   hard: { name: 'Zor', hp: 14, dmg: 3.5, count: 3, respawn: 330, soul: 8, size: 1.2, color: '#ff9a3c', permanent: 'normal', weaponCopies: 4 },
   elite: { name: 'Elit', hp: 85, dmg: 6, count: 1, respawn: 660, soul: 30, size: 1.7, color: '#ff5d8f', permanent: 'elite', weaponCopies: 7 },
   knight: { name: 'Muhafız', hp: 55, dmg: 5, count: 1, respawn: 520, soul: 22, size: 1.5, color: '#4ea1ff', permanent: 'elite', weaponCopies: 5 },
-  boss: { name: 'Boss', hp: 1100, dmg: 12, count: 1, respawn: 1500, soul: 260, size: 2.7, color: '#b06cff', permanent: 'elite', weaponCopies: 16 },
+  // boss gücü %45 azaltıldı: can ve hasar ×0.55 (güç = √(can×hasar) ≈ ×0.55)
+  boss: { name: 'Boss', hp: 605, dmg: 6.6, count: 1, respawn: 1500, soul: 260, size: 2.7, color: '#b06cff', permanent: 'elite', weaponCopies: 16 },
 };
 
 // ---- adalar ----

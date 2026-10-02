@@ -13,43 +13,74 @@
   :root { color-scheme: dark; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0c2742; font-family: system-ui, sans-serif; touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
-  @media (max-width: 520px) {
-    #bar { gap: 4px; padding: 8px 6px max(8px, env(safe-area-inset-bottom)); }
-    #bar button { padding: 9px 2px; font-size: 11px; min-width: 0; }
-    #panel { top: 3%; max-height: 82vh; }
-    .row button { min-width: 64px; }
-  }
   canvas { display: block; }
-  #bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; padding: 10px 12px; justify-content: center; align-items: center; background: linear-gradient(transparent, rgba(0,0,0,.6)); }
-  #bar button { flex: 1; max-width: 160px; padding: 10px 6px; font-size: 13px; }
-  #essence-wrap { position: fixed; top: 12px; right: 12px; background: rgba(0,0,0,.55); color: #9be7ff; padding: 6px 12px; border-radius: 14px; font-weight: 700; }
-  button { background: #5b34b3; color: #fff; border: 0; padding: 10px 14px; border-radius: 10px; font-size: 14px; font-weight: 600; }
+  img.ico { vertical-align: middle; image-rendering: auto; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 6px; padding: 8px 10px max(8px, env(safe-area-inset-bottom)); justify-content: center; align-items: stretch; background: linear-gradient(transparent, rgba(0,0,0,.65)); }
+  #bar button { flex: 1; max-width: 76px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 2px 4px; background: rgba(40,24,86,.88); border: 1px solid rgba(190,160,255,.35); border-radius: 14px; font-size: 10px; font-weight: 600; color: #e9e1ff; }
+  #bar button img { width: 34px; height: 34px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+  #bar button:active { transform: scale(.94); }
+  #essence-wrap { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,.55); color: #9be7ff; padding: 4px 12px 4px 6px; border-radius: 16px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
+  #master-btn { display: none; position: fixed; left: 50%; bottom: 104px; transform: translateX(-50%); align-items: center; gap: 8px; background: #2f8a8a; box-shadow: 0 4px 14px rgba(0,0,0,.5); padding: 10px 18px; font-size: 15px; }
+  button { background: #5b34b3; color: #fff; border: 0; padding: 9px 12px; border-radius: 10px; font-size: 13px; font-weight: 600; font-family: inherit; }
   button:disabled { background: #3a3350; color: #8a84a0; }
-  button.danger { background: #7a2a3a; margin-top: 12px; width: 100%; }
-  #panel { display: none; position: fixed; top: 6%; left: 50%; transform: translateX(-50%); width: min(520px, 94vw); max-height: 78vh; overflow-y: auto; background: rgba(18,14,34,.96); color: #eee; border-radius: 16px; padding: 12px 14px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
+  button.danger { background: #7a2a3a; }
+  button.x { background: #7a2a3a; padding: 6px 12px; }
+  #panel { display: none; position: fixed; top: 5%; left: 50%; transform: translateX(-50%); width: min(540px, 95vw); max-height: 80vh; overflow-y: auto; background: rgba(18,14,34,.97); color: #eee; border-radius: 18px; padding: 12px 14px 16px; box-shadow: 0 12px 40px rgba(0,0,0,.6); }
   #panel .head { display: flex; justify-content: space-between; align-items: center; font-size: 18px; margin-bottom: 6px; }
   #panel h3 { margin: 14px 0 4px; color: #b79bff; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
   .row small { color: #a9a3c2; }
-  .row button { min-width: 84px; }
+  .rtxt { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .rtxt > div { min-width: 0; }
+  .rar { display: inline-flex; border: 2px solid; border-radius: 10px; padding: 2px; background: rgba(255,255,255,.05); }
+  .on { color: #7bff9a; font-weight: 700; }
+  .row button { min-width: 64px; }
   .btns { display: flex; flex-direction: column; gap: 4px; }
   .btns button { font-size: 12px; padding: 6px 10px; }
-  .btns button.danger { margin-top: 0; width: auto; }
-  #essence-wrap { top: 12px; right: 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; padding-top: 6px; }
+  .card { background: #241a45; border: 1px solid rgba(190,160,255,.35); border-radius: 12px; overflow: hidden; text-align: center; }
+  .card img { width: 100%; display: block; aspect-ratio: 5/7; object-fit: cover; background: #120c26; }
+  .card.unknown img { filter: brightness(0) contrast(0.6); opacity: .7; }
+  .cname { font-weight: 700; padding: 6px 4px 0; font-size: 13px; }
+  .cinfo { color: #b9b1d6; font-size: 11px; padding: 2px 4px 8px; }
+  #mini { display: none; position: fixed; inset: 0; background: rgba(4,8,20,.9); align-items: center; justify-content: center; z-index: 20; touch-action: manipulation; }
+  .mbox { background: #1a1238; border: 1px solid rgba(190,160,255,.45); border-radius: 18px; padding: 16px 18px 20px; width: min(360px, 92vw); text-align: center; color: #eee; }
+  .mbox h3 { margin: 0 0 6px; color: #d8c8ff; text-transform: none; letter-spacing: 0; font-size: 18px; }
+  .big { font-size: 38px; font-weight: 800; color: #ffe36b; min-height: 44px; margin: 6px 0; }
+  .big-btn { font-size: 20px; padding: 14px 40px; margin-top: 6px; background: #d9822b; }
+  .bar { position: relative; height: 34px; margin: 14px 4px; background: #2a2150; border-radius: 17px; overflow: hidden; }
+  .zone { position: absolute; left: 41%; width: 18%; top: 0; bottom: 0; background: rgba(123,255,154,.55); }
+  .mark { position: absolute; top: 3px; bottom: 3px; width: 8px; margin-left: -4px; background: #fff; border-radius: 4px; box-shadow: 0 0 8px #fff; }
+  .pads { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0 4px; }
+  .pad { height: 96px; border-radius: 16px; opacity: .55; transition: opacity .1s, transform .1s; }
+  .pad.lit { opacity: 1; transform: scale(1.06); box-shadow: 0 0 22px #fff; }
+  .field { position: relative; height: 280px; margin-top: 8px; background: #120c2a; border-radius: 14px; overflow: hidden; touch-action: none; }
+  .star { position: absolute; animation: pop .25s ease-out; }
+  @keyframes pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @media (max-width: 520px) {
+    #bar { gap: 4px; padding: 6px 5px max(6px, env(safe-area-inset-bottom)); }
+    #bar button img { width: 30px; height: 30px; }
+    #bar button { font-size: 9px; }
+    #panel { top: 3%; max-height: 84vh; }
+    #master-btn { bottom: 96px; }
+  }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="essence-wrap">✦ <span id="essence">0</span></div>
+<div id="essence-wrap"><img class="ico" src="assets/ui_soul.png" width="26" height="26" alt="" onerror="this.outerHTML='✦'"> <span id="essence">0</span></div>
+<button id="master-btn"><img class="ico" src="assets/ui_skill.png" width="26" height="26" alt="" onerror="this.style.display='none'"> Usta Cadı: Eğitim</button>
 <div id="bar">
-  <button id="btn-tree">Yetenek</button>
-  <button id="btn-weapons">Büyüler</button>
-  <button id="btn-gear">Ekipman</button>
-  <button id="btn-crystals">Kristal</button>
-  <button id="btn-stats">Stat</button>
-  <button id="btn-zones">Harita</button>
+  <button id="btn-tree"><img src="assets/ui_skill.png" alt="" onerror="this.style.display='none'">Yetenek</button>
+  <button id="btn-weapons"><img src="assets/ui_spells.png" alt="" onerror="this.style.display='none'">Büyüler</button>
+  <button id="btn-gear"><img src="assets/ui_gear.png" alt="" onerror="this.style.display='none'">Ekipman</button>
+  <button id="btn-crystals"><img src="assets/ui_crystal.png" alt="" onerror="this.style.display='none'">Kristal</button>
+  <button id="btn-stats"><img src="assets/ui_stats.png" alt="" onerror="this.style.display='none'">Stat</button>
+  <button id="btn-cards"><img src="assets/ui_cards.png" alt="" onerror="this.style.display='none'">Kartlar</button>
+  <button id="btn-map"><img src="assets/ui_map.png" alt="" onerror="this.style.display='none'">Harita</button>
 </div>
 <div id="panel"></div>
+<div id="mini"></div>
 <script type="module" src="dist/main.js"></script>
 </body>
 </html>
