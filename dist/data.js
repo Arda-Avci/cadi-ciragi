@@ -172,6 +172,8 @@ export const CRYSTAL_STATS = {
     lifesteal: { name: 'Can Çalma', base: 1.2, unit: '%' }, // verilen hasarın yüzdesi can
     evasion: { name: 'Kaçınma', base: 2, unit: '%' }, // darbeden kaçma şansı
 };
+/** kristal yeteneği simgesi (can ve hasar mevcut simgeleri kullanır) */
+export const statIcon = (s) => (s === 'hp' ? 'ui_heart' : s === 'dmg' ? 'ui_power' : 'ui_' + s);
 export const CSTAT_KEYS = Object.keys(CRYSTAL_STATS);
 export const RARITIES = [
     { name: 'Sıradan', color: '#bdbdbd', mul: 1, w: 60 },

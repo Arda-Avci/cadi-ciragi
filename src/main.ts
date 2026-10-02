@@ -4,7 +4,7 @@ import { N, T } from './i18n.js';
 import { changed, loadSettings, settings, vibrate } from './settings.js';
 import { BUILD, CODENAME, VERSION } from './version.js';
 import {
-  CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS,
+  CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, statIcon, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS,
   UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemAbility, itemUpgradeCost, itemValue, upgradeCost,
 } from './data.js';
 
@@ -171,7 +171,7 @@ function renderPanel(): void {
       const val = crystalValue(c.stat, c.rarity, c.enchant);
       const cost = enchantCost(c.enchant);
       panel.append(row(
-        `<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico('ui_' + c.stat, 34)}</span>`,
+        `<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico(statIcon(c.stat), 34)}</span>`,
         `<span style="color:${RARITIES[c.rarity].color}">${L(RARITIES[c.rarity].name)} ${L(st.name)}</span> +${c.enchant}`,
         `+${val.toFixed(st.unit === '/sn' ? 2 : 1)}${st.unit} ${L(st.name)}`,
         btns(

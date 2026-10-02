@@ -3,7 +3,7 @@ import { audio } from './audio.js';
 import { N, T } from './i18n.js';
 import { changed, loadSettings, settings, vibrate } from './settings.js';
 import { BUILD, CODENAME, VERSION } from './version.js';
-import { CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemAbility, itemUpgradeCost, itemValue, upgradeCost, } from './data.js';
+import { CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, statIcon, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemAbility, itemUpgradeCost, itemValue, upgradeCost, } from './data.js';
 loadSettings();
 const L = (s) => N(T(s));
 const canvas = document.getElementById('game');
@@ -146,7 +146,7 @@ function renderPanel() {
             const st = CRYSTAL_STATS[c.stat];
             const val = crystalValue(c.stat, c.rarity, c.enchant);
             const cost = enchantCost(c.enchant);
-            panel.append(row(`<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico('ui_' + c.stat, 34)}</span>`, `<span style="color:${RARITIES[c.rarity].color}">${L(RARITIES[c.rarity].name)} ${L(st.name)}</span> +${c.enchant}`, `+${val.toFixed(st.unit === '/sn' ? 2 : 1)}${st.unit} ${L(st.name)}`, btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => { if (!game.toggleCrystal(c.id))
+            panel.append(row(`<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico(statIcon(c.stat), 34)}</span>`, `<span style="color:${RARITIES[c.rarity].color}">${L(RARITIES[c.rarity].name)} ${L(st.name)}</span> +${c.enchant}`, `+${val.toFixed(st.unit === '/sn' ? 2 : 1)}${st.unit} ${L(st.name)}`, btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => { if (!game.toggleCrystal(c.id))
                 note = L('Boş yuva yok.'); renderPanel(); }), btn(c.enchant >= MAX_ENCHANT ? 'MAX' : `✦ ${cost} · %${Math.round(enchantChance(c.enchant) * 100)}`, '', c.enchant < MAX_ENCHANT && game.save.dust >= cost, () => {
                 const r = game.enchantCrystal(c.id);
                 note = r === 'ok' ? 'Başarılı!' : r === 'fail' ? 'Başarısız, toz gitti.' : '';

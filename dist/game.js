@@ -1,4 +1,4 @@
-import { BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies, } from './data.js';
+import { BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, statIcon, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies, } from './data.js';
 import { VERSION } from './version.js';
 import { audio } from './audio.js';
 import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
@@ -1852,7 +1852,7 @@ export class Game {
                 this.save.essence += souls;
                 this.save.geodes += 1;
                 this.say('Gizli sandık bulundu! (' + this.chestsOpened(c.reg) + '/6)');
-                this.gain('+' + amt.toFixed(1) + CRYSTAL_STATS[stat].unit + ' ' + CRYSTAL_STATS[stat].name + ' kazanıldı (kalıcı)', '#ffd84a', 'ui_' + stat);
+                this.gain('+' + amt.toFixed(1) + CRYSTAL_STATS[stat].unit + ' ' + CRYSTAL_STATS[stat].name + ' kazanıldı (kalıcı)', '#ffd84a', statIcon(stat));
                 this.gain('+' + this.fmt(souls) + ' Ruh', '#8fdcff', 'ui_soul');
                 this.gain('+1 Jeod', '#7dffb0', 'icon_geode');
                 this.persist();
