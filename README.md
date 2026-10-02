@@ -1,58 +1,51 @@
-# Cadı Çırağı
+# Hexling: Kırk Ada
 
-Tarayıcıda ve telefonda çalışan, özgün cadı temalı bir keşif/aksiyon RPG'si. Hiçbir görsel/ses/kod başka bir oyundan alınmadı. Görseller Antigravity (`agy`) ile üretildi, hepsi `assets/` altında.
+Tarayıcıda, Android'de ve iOS'ta çalışan, özgün cadı temalı bir keşif/aksiyon RPG'si. Hiçbir görsel, ses veya kod başka bir oyundan alınmadı: görseller Antigravity (`agy`) ile üretildi, ses ve müzik oyun içinde WebAudio ile sentezlenir.
+
+Oyna: <https://arda-avci.github.io/cadi-ciragi/>
 
 ## Oyun mantığı
 
-- **Tek büyük dünya:** üç bölge (Mantar Ormanı, Karanlık Bataklık, Buz Mağarası) köprülerle bağlı. Karakter serbestçe gezer. Bölgeler arası **kapı** önceki bölgenin boss'u yenilince açılır. Sağ üstteki minimap bütün dünyayı gösterir.
-- **Büyüler (çevrede dönen bir şey yok):** cadı en yakın hedefe kendiliğinden büyü fırlatır.
-  - Yıldız Değneği: delip geçen yıldız oku (Delme)
-  - Uçan Süpürge: gidip dönen bumerang (Kesme)
-  - Kaynar İksir: fırlatılıp patlayan iksir, alan hasarı (Ezme)
-  - Büyülü Kepçe: yakın menzil darbesi (Ezme)
-- **Güç:** oyuncunun ve her düşmanın üstünde güç sayısı yazar (yeşil: senden zayıf, sarı: denk, kırmızı: güçlü). Güç sonucu tek başına belirlemez: hasar türü eşleşmesi (zayıf olduğu türden ×4, dirençli ×0.15), kalkanın türü, miğfer, kristal yetenekleri (kritik, can çalma, kaçınma) ve hareket önemlidir.
-- **Sabit kamplar, dalga yok:** bir kamp temizlenince gerçek zamanlı geri sayımla yeniden dolar (oyun kapalıyken de akar). Kamp gücü çok geniş aralıkta değişir.
-- **Hızlı gelişim:** kopya eşikleri, yetenek/ekipman fiyatları ve kalıcı kazançlar cömert. Optimal bir oyuncu ilk boss'u ~8, dünyayı ~18 dakikada bitirir.
-- **Kalıcı harita statları (`map.*`)**, kaynak ağaçları, **Muhafız** kampları (miğfer/kalkan düşürür), kopyayla silah seviyesi, kristaller (jeod, enchant), gizli sandıklar, yetenek ağacı.
+- **40 ada, tek dünya:** 8 biyom (Mantar Ormanı, Bataklık, Buz Mağarası, Kızıl Çöl, Kristal Vadisi, Volkan, Bulut Sarayı, Gölge Diyarı) × 5 çeşit. Adalar altıgen bir ızgarada farklı açılardan köprülerle bağlanır. Her adanın kapısı o adanın boss'u yenilince açılır; boss bir kez yenilir, bir daha çıkmaz.
+- **Her yeni ada öncekinden 1.2–1.8 kat daha güçlüdür** (güç = √(can × hasar)). Değerler `src/data.ts` içinde sabit tohumla üretilir.
+- **Güç tek başına belirleyici değil:** hasar türü eşleşmesi (kesme/delme/ezme, zayıf olduğu türden ×4), kalkanın türü, miğfer ve kristal yetenekleri (kritik, can çalma, kaçınma) önemlidir. Can azaldıkça güç de düşer.
+- **Sabit kamplar, dalga yok:** kamp temizlenince gerçek zamanlı geri sayımla yeniden dolar. Kamplar halkayla işaretlidir. Boss evi içinde iyileşirsin, eve vurarak boss'a zarar verirsin.
+- **Süpürge uçuşu:** boss ya da zor düşmana verilen her %10 zararda 5 sn uçarsın; havadayken zarar görmezsin.
+- **Ev ve kamplar:** ilk adada ev, diğer adalarda giriş kampı hızlı iyileştirir; bayılınca bulunduğun adanın kampında uyanırsın.
+- **Usta Cadı:** o seviyenin boss'u yenilince kapıda belirir; her seviye için günde 2 mini oyun eğitimi (kalıcı güç). Hakkın yoksa usta ve düğmesi görünmez.
+- Kalıcı harita statları, kaynak ağaçları (bütün ağaçlar kesilir), Muhafız kampları (miğfer/kalkan; daha iyisi anında kuşanılır), kopyayla silah seviyesi, kristaller, gizli sandıklar, yetenek ağacı.
+- **Şeref Salonu:** bu cihazdaki kahramanlar aşılan ada > güç > öldürme sırasıyla listelenir (Stat sayfası ve açılış ekranı). Küresel sıralama için sunucu gerekir, yoktur.
+- Kuşanılan büyüler, ekipman ve kristaller kendi listelerinin en üstünde durur.
+- **Ayarlar** (dişli simgesi): müzik ve efekt sesi, titreşim (destekleyen cihazlarda), dil (Türkçe / English).
 
-## Son eklenenler
+Hareket: ekrana basılı tutup sürükle. Büyüler en yakın hedefe kendiliğinden atılır. M tuşu haritayı açar.
 
-- **Ev:** doğduğun yer; içinde durunca hızlı iyileşirsin.
-- **Usta Cadı:** her kapının yanında; üç mini oyunla (zamanlama, hafıza, yıldız) çırağı eğitir, kalıcı güç verir.
-- **Ganimet otomatik:** düşman ölünce kazanç ekranda yazar ("+30 Can kazanıldı").
-- **Harita:** sağ üstte bulunduğun alan, dokununca büyük harita; ok bakış yönünü gösterir.
-- **Tüm ağaçlar kesilir**, oyuncunun üstünde can ve güç görünür, düşmanlarda halka yok, karakterler animasyonlu.
-- **Boss gücü %45 azaltıldı.**
+## Mobil derleme (GitHub Actions)
 
-## Telefonda oynama
+`.github/workflows/mobile.yml` Capacitor ile hem Android hem iOS paketini derler. Elle çalıştırmak için GitHub'da **Actions → Mobil derleme → Run workflow**, ya da `v*` etiketi at:
 
-1. **Aynı Wi-Fi:** bilgisayarda sunucuyu `0.0.0.0` ile başlat (aşağıda), telefonun Chrome'unda `http://<bilgisayar-IP>:8766/index.html` aç.
-2. **USB ile (çevrimdışı da çalışır):** telefonu USB hata ayıklamayla bağla, `adb reverse tcp:8765 tcp:8765`, telefonda `http://localhost:8765/index.html` aç, menüden **Ana ekrana ekle** de. İlk açılıştan sonra uygulama çevrimdışı çalışır.
+```bash
+git tag v0.9.0 && git push origin v0.9.0
+```
 
-Hareket: ekrana basılı tutup sürükle. Alt çubuktan Yetenek, Büyüler, Ekipman, Kristal, Stat, Harita.
+- **Android:** `Hexling-android.apk` (debug imzalı). Telefonda "bilinmeyen kaynaklardan kur" iznini verip doğrudan kurulur. Mağaza için kendi anahtarınla imzalanmış release gerekir.
+- **iOS:** `Hexling-ios-unsigned.ipa` **imzasızdır**. iPhone'a kurmak için Apple kimliğinle imzalaman gerekir: Sideloadly / AltStore (ücretsiz Apple kimliğiyle 7 gün geçerli) ya da ücretli Apple Developer hesabıyla TestFlight. iOS'ta imzasız IPA'yı doğrudan kurmanın yolu yoktur.
+- Etiket atılırsa ikisi de GitHub Release'e eklenir.
 
-## Çalıştırma (bilgisayar)
+Alternatif: iPhone'da Safari ile oyun adresini açıp **Paylaş → Ana Ekrana Ekle** (PWA, imza gerekmez, çevrimdışı çalışır).
+
+## Geliştirme
 
 ```powershell
 & "C:\Users\Damla\Proje\AI-Publisher\node_modules\.bin\tsc.cmd" -p tsconfig.json
-python -m http.server 8765 --bind 127.0.0.1     # yalnız bu bilgisayar
-python -m http.server 8766 --bind 0.0.0.0       # ağdaki telefon için
+python -m http.server 8765 --bind ::
 ```
 
-## Görsel üretimi
+- `src/data.ts` büyü, düşman, 40 ada üretimi ve denge değerleri; `src/game.ts` oyun mantığı ve çizim; `src/scenery.ts` köprü/kapı/kıyı/parçacık çizimleri; `src/audio.ts` müzik ve efektler; `src/i18n.ts` çeviri; `src/settings.ts` ayarlar; `src/version.ts` sürüm bilgisi.
+- `tools/bot.js` hızlandırılmış denge botu (sayfada `eval` ile yüklenir, `BOT.runAsync(saniye)`).
+- Görseller: `python tools/agy_assets.py [ad ...]`, animasyon şeritleri `python tools/agy_sheet.py walk|cast|fly`, simgeler `python tools/make_icons.py`. İstemler `tools/gen_assets.py` içinde.
+- Yayın klasörüne eşitleme: `python tools/yayinla.py`.
 
-`python tools/agy_assets.py [ad ...] [--force]` — `agy`nin `generate_image` aracıyla üretir, magenta arka planı şeffaflaştırır, `assets/manifest.json`'u günceller. İstemler `tools/gen_assets.py` içinde.
+## Sürüm
 
-## Dosyalar
-
-- `src/data.ts` büyü, yetenek, düşman, kamp seviyesi ve bölge tanımları (dengeyi buradan ayarla)
-- `src/game.ts` oyun mantığı ve çizim
-- `src/main.ts` paneller ve girdi
-- `sw.js`, `manifest.webmanifest` telefona kurulabilir/çevrimdışı çalışma
-- **Boss bir kez yenilir**, bir daha çıkmaz; kapı açılınca ekranda animasyon oynar.
-- **Süpürge uçuşu:** boss ya da zor düşmana verilen her %10 zararda 5 sn uçarsın; havadayken zarar görmezsin.
-- Can azaldıkça güç düşer; düşman sağlık çubuğu %50 altında sarı, %20 altında kırmızı. Kamplar halkayla işaretli, yürürken toz izi bırakılır. Yeni miğfer/kalkan daha iyiyse anında kuşanılır.
-- **Usta Cadı** yalnızca o seviyenin boss'u yenilince ortaya çıkar; her seviye için günde 2 eğitim hakkı vardır (gece yarısı yenilenir).
-- **Boss evi:** içindeyken hızlı iyileşirsin; eve vurarak boss'a zarar verirsin.
-- **Yeni animasyon kareleri** (yürüme 4, büyü 2, uçuş 2) `tools/agy_sheet.py` ile Gemini/agy kare şeridinden üretilir.
-- Yapılabilecek geliştirme varsa ilgili düğme parlar ve "Buraya tıkla!" balonu çıkar; oyun kesilmez.
+`src/version.ts` içindeki `VERSION` / `BUILD`, açılış ekranında ve Stat/Ayarlar sayfalarında görünür.

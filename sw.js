@@ -1,6 +1,6 @@
 // Çevrimdışı çalışma: önce önbellek, arkada güncelle (stale-while-revalidate).
-const CACHE = 'cadi-v6';
-const CORE = ['index.html', 'manifest.webmanifest', 'dist/main.js', 'dist/game.js', 'dist/data.js', 'assets/manifest.json'];
+const CACHE = 'hexling-v7';
+const CORE = ['index.html', 'manifest.webmanifest', 'dist/main.js', 'dist/game.js', 'dist/data.js', 'dist/audio.js', 'dist/settings.js', 'dist/i18n.js', 'dist/scenery.js', 'dist/version.js', 'assets/manifest.json', 'assets/title_bg.jpg', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {

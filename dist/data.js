@@ -27,6 +27,9 @@ export const ENEMIES = {
     mushroom: { id: 'mushroom', name: 'Mantar Cücesi', hp: 28, speed: 36, dmg: 6, r: 16, atk: 'smash', resist: { cut: 4, pierce: 1, smash: 0.15 }, drop: 6 },
     pumpkin: { id: 'pumpkin', name: 'Balkabağı Cin', hp: 22, speed: 46, dmg: 5, r: 14, atk: 'pierce', resist: { cut: 0.15, pierce: 4, smash: 1 }, drop: 5 },
     bat: { id: 'bat', name: 'Gece Yarasası', hp: 8, speed: 85, dmg: 3, r: 10, atk: 'cut', resist: { cut: 1, pierce: 2.5, smash: 0.3 }, drop: 3 },
+    scorpion: { id: 'scorpion', name: 'Çöl Akrebi', hp: 20, speed: 54, dmg: 6, r: 13, atk: 'pierce', resist: { cut: 1, pierce: 0.2, smash: 3.5 }, drop: 5 },
+    golem: { id: 'golem', name: 'Taş Golem', hp: 40, speed: 30, dmg: 8, r: 17, atk: 'smash', resist: { cut: 0.2, pierce: 3, smash: 1 }, drop: 8 },
+    wisp: { id: 'wisp', name: 'Fırtına Cini', hp: 10, speed: 90, dmg: 4, r: 10, atk: 'cut', resist: { cut: 3.5, pierce: 0.3, smash: 1 }, drop: 4 },
 };
 export const TIERS = {
     easy: { name: 'Kolay', hp: 1, dmg: 1, count: 3, respawn: 90, soul: 2, size: 1, color: '#7bd88f', permanent: 'normal', weaponCopies: 2 },
@@ -37,21 +40,118 @@ export const TIERS = {
     // boss gücü %45 azaltıldı: can ve hasar ×0.55 (güç = √(can×hasar) ≈ ×0.55)
     boss: { name: 'Boss', hp: 605, dmg: 6.6, count: 1, respawn: 1500, soul: 260, size: 2.7, color: '#b06cff', permanent: 'elite', weaponCopies: 16 },
 };
-/** Tek büyük dünya: bölgeler köprülerle bağlı, aralarında boss'la açılan kapılar var. */
-export const ZONES = [
-    {
-        name: 'Mantar Ormanı', bg: '#14301f', dot: '#1f4a30', enemies: ['mushroom', 'ghost'], scale: 1, dmgScale: 1, cx: 0, cy: 0, radius: 1300,
-        layout: { easy: 6, medium: 4, hard: 3, elite: 2, knight: 2, boss: 1 }, resTrees: 10, bossName: 'Dev Baykuş',
-    },
-    {
-        name: 'Karanlık Bataklık', bg: '#1b1f3a', dot: '#2b3160', enemies: ['pumpkin', 'bat', 'ghost'], scale: 8, dmgScale: 3, cx: 3300, cy: -500, radius: 1500,
-        layout: { easy: 6, medium: 5, hard: 4, elite: 3, knight: 2, boss: 1 }, resTrees: 12, bossName: 'Bataklık Kraliçesi',
-    },
-    {
-        name: 'Buz Mağarası', bg: '#183347', dot: '#2a5875', enemies: ['bat', 'mushroom', 'pumpkin'], scale: 70, dmgScale: 9, cx: 6900, cy: 200, radius: 1700,
-        layout: { easy: 6, medium: 5, hard: 5, elite: 3, knight: 3, boss: 1 }, resTrees: 14, bossName: 'Kış Cadısı',
-    },
+export const ISLAND_COUNT = 40;
+/** sayıyı okunur yazar: K, M, B, T, Q, Qi... */
+export function fmtNum(n) {
+    if (!isFinite(n))
+        return '∞';
+    const units = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx'];
+    let u = 0;
+    let v = Math.abs(n);
+    while (v >= 1000 && u < units.length - 1) {
+        v /= 1000;
+        u++;
+    }
+    const s = u === 0 ? String(Math.ceil(v)) : (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)) + units[u];
+    return n < 0 ? '-' + s : s;
+}
+const BIOMES = [
+    { name: 'Mantar Ormanı', bg: '#14301f', dot: '#1f4a30', enemies: ['mushroom', 'ghost'], boss: 'Dev Baykuş', art: 'forest', bossArt: 'owl', trees: 10 },
+    { name: 'Karanlık Bataklık', bg: '#1b1f3a', dot: '#2b3160', enemies: ['pumpkin', 'bat', 'ghost'], boss: 'Bataklık Kraliçesi', art: 'swamp', bossArt: 'swamp', trees: 12 },
+    { name: 'Buz Mağarası', bg: '#183347', dot: '#2a5875', enemies: ['bat', 'mushroom', 'pumpkin'], boss: 'Kış Cadısı', art: 'ice', bossArt: 'frost', trees: 14 },
+    { name: 'Kızıl Çöl', bg: '#3a2a14', dot: '#5a431f', enemies: ['scorpion', 'mushroom', 'bat'], boss: 'Çöl Akrep Kralı', art: 'desert', bossArt: 'desert', trees: 14 },
+    { name: 'Kristal Vadisi', bg: '#1d1a38', dot: '#38306b', enemies: ['golem', 'wisp', 'pumpkin'], boss: 'Kristal Bekçi', art: 'crystal', bossArt: 'crystal', trees: 15 },
+    { name: 'Volkan Adası', bg: '#2a1410', dot: '#4d221a', enemies: ['golem', 'bat', 'scorpion'], boss: 'Magma Ejderi', art: 'volcano', bossArt: 'volcano', trees: 16 },
+    { name: 'Bulut Sarayı', bg: '#2b3f66', dot: '#4a6595', enemies: ['wisp', 'ghost', 'bat'], boss: 'Fırtına Kartalı', art: 'sky', bossArt: 'sky', trees: 16 },
+    { name: 'Gölge Diyarı', bg: '#140f1f', dot: '#2b1d3d', enemies: ['wisp', 'golem', 'ghost', 'pumpkin'], boss: 'Gölge Kraliçe', art: 'shadow', bossArt: 'shadow', trees: 18 },
 ];
+const VARIANTS = [
+    { pre: '', hue: 0 }, { pre: 'Kadim ', hue: 55 }, { pre: 'Altın ', hue: 120 }, { pre: 'Buzul ', hue: 200 }, { pre: 'Efsanevi ', hue: 290 },
+];
+const MASTERS = ['Elmira', 'Zehra', 'Nilüfer', 'Melek', 'Sevgül', 'Aysel', 'Gülsüm', 'Esma', 'Fidan', 'Hümeyra', 'Perihan', 'Selma',
+    'Nergis', 'Yıldız', 'Ayten', 'Gönül', 'Rana', 'Şule', 'Dilara', 'Filiz'];
+function lcg(seed) {
+    let s = seed >>> 0;
+    return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+}
+/** hex ızgarada kendini kesmeyen bir yol: ardışık adalar komşudur ve yön sık değişir (farklı açılardan bağlanır) */
+function islandPath(count) {
+    const dirs = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+    const rnd = lcg(20261002);
+    const inside = (q, r) => Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) <= 4;
+    const key = (q, r) => q + ',' + r;
+    const path = [{ q: 0, r: 0 }];
+    const seen = new Set([key(0, 0)]);
+    const lastDir = [-1];
+    let guard = 0;
+    const go = () => {
+        if (path.length === count)
+            return true;
+        if (++guard > 200000)
+            return false;
+        const cur = path[path.length - 1];
+        const prev = lastDir[lastDir.length - 1];
+        const order = dirs.map((_, i) => i).sort(() => rnd() - 0.5);
+        // dönmeyi tercih et: düz gitmek en sona kalır
+        order.sort((a, b) => Number(a === prev) - Number(b === prev));
+        for (const d of order) {
+            const q = cur.q + dirs[d][0];
+            const r = cur.r + dirs[d][1];
+            if (!inside(q, r) || seen.has(key(q, r)))
+                continue;
+            // komşu adalara çok yakın sıkışmayı önle: yolun kendi geçmişine 2'den fazla komşuluk olmasın
+            let adj = 0;
+            for (const e of dirs)
+                if (seen.has(key(q + e[0], r + e[1])))
+                    adj++;
+            if (adj > 2)
+                continue;
+            path.push({ q, r });
+            seen.add(key(q, r));
+            lastDir.push(d);
+            if (go())
+                return true;
+            path.pop();
+            seen.delete(key(q, r));
+            lastDir.pop();
+        }
+        return false;
+    };
+    if (!go())
+        throw new Error('ada yolu bulunamadı');
+    return path;
+}
+function buildZones() {
+    const path = islandPath(ISLAND_COUNT);
+    const rnd = lcg(7742);
+    const D = 5400;
+    let power = 1;
+    const zones = [];
+    for (let i = 0; i < ISLAND_COUNT; i++) {
+        const b = BIOMES[i % BIOMES.length];
+        const v = VARIANTS[Math.floor(i / BIOMES.length)];
+        const step = i === 0 ? 1 : 1.2 + 0.6 * rnd(); // önceki adaya göre 1.2–1.8 kat
+        power *= step;
+        const { q, r } = path[i];
+        const jx = (rnd() - 0.5) * 700;
+        const jy = (rnd() - 0.5) * 700;
+        const tint = v.hue ? '@' + v.hue : '';
+        zones.push({
+            name: v.pre + b.name, bg: b.bg, dot: b.dot, enemies: b.enemies,
+            scale: Math.pow(power, 1.5), dmgScale: Math.sqrt(power), step, power,
+            cx: Math.round(D * (q + r / 2) + (i === 0 ? 0 : jx)), cy: Math.round(D * r * 0.866 + (i === 0 ? 0 : jy)), radius: 1100 + 22 * i,
+            layout: {
+                easy: 6, medium: 4 + Math.floor(i / 10), hard: 3 + Math.floor(i / 8), elite: 2 + Math.floor(i / 14), knight: 2 + Math.floor(i / 14), boss: 1,
+            },
+            resTrees: b.trees + Math.floor(i / 4), bossName: v.pre + b.boss,
+            art: { ground: 'ground_' + b.art + tint, tree: 'tree_' + b.art + tint, boss: 'boss_' + b.bossArt + tint },
+            master: MASTERS[i % MASTERS.length],
+        });
+    }
+    return zones;
+}
+/** Tek büyük dünya: 40 ada köprülerle bağlı, aralarında boss'la açılan kapılar var. */
+export const ZONES = buildZones();
 export const BRIDGE_HALF_WIDTH = 95;
 export const CRYSTAL_STATS = {
     hp: { name: 'Can', base: 6, unit: '%' },

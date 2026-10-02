@@ -1,0 +1,8 @@
+{
+  "appId": "com.ardaavci.hexling",
+  "appName": "Hexling",
+  "webDir": "www",
+  "backgroundColor": "#140c34",
+  "ios": { "contentInset": "never", "backgroundColor": "#140c34" },
+  "android": { "backgroundColor": "#140c34" }
+}

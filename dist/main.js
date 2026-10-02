@@ -1,22 +1,21 @@
 import { Game } from './game.js';
-import { CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, itemAbility, itemUpgradeCost, itemValue, upgradeCost, } from './data.js';
+import { audio } from './audio.js';
+import { N, T } from './i18n.js';
+import { changed, loadSettings, settings, vibrate } from './settings.js';
+import { BUILD, CODENAME, VERSION } from './version.js';
+import { CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemAbility, itemUpgradeCost, itemValue, upgradeCost, } from './data.js';
+loadSettings();
+const L = (s) => N(T(s));
 const canvas = document.getElementById('game');
 const game = new Game(canvas);
 const panel = document.getElementById('panel');
 const essenceEl = document.getElementById('essence');
 const masterBtn = document.getElementById('master-btn');
 let open = null;
+let landingOpen = true;
 let note = '';
 let trainMaster = 0;
-const fmt = (n) => {
-    if (n >= 1e9)
-        return (n / 1e9).toFixed(2) + 'B';
-    if (n >= 1e6)
-        return (n / 1e6).toFixed(2) + 'M';
-    if (n >= 1e3)
-        return (n / 1e3).toFixed(1) + 'K';
-    return String(Math.floor(n));
-};
+const fmt = (n) => (n < 1000 ? String(Math.floor(n)) : fmtNum(n));
 /** simge: görsel yüklenemezse gizlenir */
 const ico = (name, size = 22) => `<img class="ico" src="assets/${name}.png" width="${size}" height="${size}" alt="" onerror="this.style.display='none'">`;
 const UP_ICON = {
@@ -25,7 +24,7 @@ const UP_ICON = {
 };
 function btn(text, cls, enabled, onClick) {
     const b = document.createElement('button');
-    b.innerHTML = text;
+    b.innerHTML = L(text);
     if (cls)
         b.className = cls;
     b.disabled = !enabled;
@@ -37,7 +36,7 @@ function row(iconHtml, title, sub, right) {
     el.className = 'row';
     const txt = document.createElement('div');
     txt.className = 'rtxt';
-    txt.innerHTML = `${iconHtml}<div><b>${title}</b><br><small>${sub}</small></div>`;
+    txt.innerHTML = `${iconHtml}<div><b>${L(title)}</b><br><small>${L(sub)}</small></div>`;
     el.append(txt);
     if (right)
         el.append(right);
@@ -52,7 +51,7 @@ function btns(...b) {
 function setPanelTitle(t, iconName) {
     const head = document.createElement('div');
     head.className = 'head';
-    head.innerHTML = `<b>${ico(iconName, 26)} ${t}</b>`;
+    head.innerHTML = `<b>${ico(iconName, 26)} ${L(t)}</b>`;
     head.append(btn('✕', 'x', true, () => { open = null; renderPanel(); }));
     panel.append(head);
 }
@@ -61,7 +60,7 @@ function renderPanel() {
     essenceEl.textContent = fmt(game.save.essence);
     if (!open) {
         panel.style.display = 'none';
-        game.paused = false;
+        game.paused = landingOpen;
         return;
     }
     game.paused = true;
@@ -90,7 +89,9 @@ function renderPanel() {
         n.className = 'row';
         n.innerHTML = `<small>${ico('ui_spells', 14)} Yuva: ${game.equippedWeapons().length}/${game.weaponSlots()} (boss yendikçe artar). Düşmanın zayıf olduğu türden büyü kuşan! Kopyalar kamplardan düşer.</small>`;
         panel.append(n);
-        WEAPONS.forEach((w, i) => {
+        const order = WEAPONS.map((_, i) => i).sort((a, b) => Number(game.save.loadout.includes(b)) - Number(game.save.loadout.includes(a)) || a - b);
+        order.forEach((i) => {
+            const w = WEAPONS[i];
             const lvl = game.save.weapons[i];
             const need = game.weaponNeed(i);
             const have = game.save.copies[i];
@@ -110,7 +111,8 @@ function renderPanel() {
         top.innerHTML = `<div class="rtxt">${ico('icon_helmet', 30)} ${slot('helmet')} &nbsp; ${ico('icon_shield', 30)} ${slot('shield')}</div>`
             + `<div>${ico('ui_dust', 20)} ${Math.floor(game.save.dust)}</div>`;
         panel.append(top);
-        const list = [...game.save.items].sort((a, b) => b.rarity - a.rarity || b.level - a.level);
+        const worn = (id) => (game.save.eq.helmet === id || game.save.eq.shield === id ? 1 : 0);
+        const list = [...game.save.items].sort((a, b) => worn(b.id) - worn(a.id) || b.rarity - a.rarity || b.level - a.level);
         for (const it of list.slice(0, 40)) {
             const eq = game.save.eq[it.type] === it.id;
             const val = itemValue(it.type, it.rarity, it.level);
@@ -134,7 +136,7 @@ function renderPanel() {
             renderPanel();
         }));
         panel.append(info);
-        const list = [...game.save.crystals].sort((a, b) => b.rarity - a.rarity || b.enchant - a.enchant);
+        const list = [...game.save.crystals].sort((a, b) => Number(game.save.equipped.includes(b.id)) - Number(game.save.equipped.includes(a.id)) || b.rarity - a.rarity || b.enchant - a.enchant);
         for (const c of list.slice(0, 40)) {
             const eq = game.save.equipped.includes(c.id);
             const st = CRYSTAL_STATS[c.stat];
@@ -161,6 +163,14 @@ function renderPanel() {
         for (const l of game.statLines())
             panel.append(row(iconFor(l.label), l.label, '', (() => { const d = document.createElement('div'); d.innerHTML = `<b>${l.value}</b>`; return d; })()));
         panel.append(row(ico('ui_skill', 24), 'Eğitim (usta cadı)', `+%${game.perm('train.dmg').toFixed(1)} hasar · +%${game.perm('train.hp').toFixed(1)} can · +${game.perm('train.regen').toFixed(2)} yenilenme`, null));
+        const h = document.createElement('h3');
+        h.textContent = L('Şeref Salonu');
+        panel.append(h);
+        panel.append(hofList(10));
+        const v = document.createElement('div');
+        v.className = 'row';
+        v.innerHTML = `<small>Hexling · ${L('Sürüm')} ${VERSION} (${CODENAME}) · ${L('Yapım')} ${BUILD}</small>`;
+        panel.append(v);
     }
     else if (open === 'cards') {
         setPanelTitle('Karakter Kartları', 'ui_cards');
@@ -169,20 +179,88 @@ function renderPanel() {
         const card = (img, name, info, known) => {
             const d = document.createElement('div');
             d.className = 'card' + (known ? '' : ' unknown');
-            d.innerHTML = `<img src="assets/${img}.png" alt="" onerror="this.style.visibility='hidden'"><div class="cname">${known ? name : '???'}</div><div class="cinfo">${known ? info : 'Henüz karşılaşmadın'}</div>`;
+            d.innerHTML = `<img src="assets/${img}.png" alt="" onerror="this.style.visibility='hidden'"><div class="cname">${known ? N(name) : '???'}</div><div class="cinfo">${known ? info : L('Henüz karşılaşmadın')}</div>`;
             return d;
         };
         grid.append(card('card_witch', 'Cadı Çırağı', `${ico('ui_power', 14)} Güç ${fmt(game.power())} · ${ico('ui_heart', 14)} ${fmt(game.maxHp())}`, true));
-        for (const id of ['ghost', 'mushroom', 'pumpkin', 'bat']) {
+        for (const id of ['ghost', 'mushroom', 'pumpkin', 'bat', 'scorpion', 'golem', 'wisp']) {
             const e = ENEMIES[id];
             const w = DTYPES.reduce((b, t) => (e.resist[t] > e.resist[b] ? t : b), DTYPES[0]);
             grid.append(card('card_' + id, e.name, `vurur ${ico('ui_' + e.atk, 14)} · zayıf ${ico('ui_' + w, 14)}`, !!game.save.seen[id]));
         }
-        ZONES.forEach((z, i) => grid.append(card(['card_boss_owl', 'card_boss_swamp', 'card_boss_frost'][i], z.bossName, `${TIERS.boss.name} · ${z.name}`, !!game.save.seen['mushroom_boss' + i] || !!game.save.seen[Object.keys(game.save.seen).find((k) => k.endsWith('_boss' + i)) ?? ''])));
+        const bossCard = ['card_boss_owl', 'card_boss_swamp', 'card_boss_frost', 'card_boss_desert', 'card_boss_crystal', 'card_boss_volcano', 'card_boss_sky', 'card_boss_shadow'];
+        ZONES.slice(0, 8).forEach((z, i) => grid.append(card(bossCard[i], N(z.bossName), `${L(TIERS.boss.name)} · ${N(z.name)}`, Object.keys(game.save.seen).some((k) => k.endsWith('_boss' + i) && game.save.seen[k]))));
         panel.append(grid);
     }
+    else if (open === 'settings') {
+        setPanelTitle('Ayarlar', 'ui_settings');
+        const slider = (label, icon, get, set) => {
+            const d = document.createElement('div');
+            d.className = 'set-row';
+            const name = document.createElement('div');
+            name.className = 'rtxt';
+            name.innerHTML = `${ico(icon, 28)} <b>${L(label)}</b>`;
+            const r = document.createElement('input');
+            r.type = 'range';
+            r.min = '0';
+            r.max = '100';
+            r.value = String(Math.round(get() * 100));
+            r.addEventListener('input', () => { audio.start(); set(Number(r.value) / 100); changed(); });
+            r.addEventListener('change', () => audio.play('click'));
+            d.append(name, r);
+            return d;
+        };
+        panel.append(slider('Müzik', 'ui_spells', () => settings.music, (v) => { settings.music = v; }));
+        panel.append(slider('Efekt sesi', 'ui_crit', () => settings.sfx, (v) => { settings.sfx = v; }));
+        const seg = (label, icon, opts, cur, on) => {
+            const d = document.createElement('div');
+            d.className = 'set-row';
+            const name = document.createElement('div');
+            name.className = 'rtxt';
+            name.innerHTML = `${ico(icon, 28)} <b>${L(label)}</b>`;
+            const g = document.createElement('div');
+            g.className = 'seg';
+            for (const [t, v] of opts)
+                g.append(btn(t, v === cur ? 'sel' : '', true, () => { on(v); changed(); renderPanel(); }));
+            d.append(name, g);
+            return d;
+        };
+        panel.append(seg('Titreşim', 'ui_speed', [['Açık', true], ['Kapalı', false]], settings.vibrate, (v) => { settings.vibrate = v; if (v)
+            vibrate(40); }));
+        const hint = document.createElement('div');
+        hint.className = 'row';
+        hint.innerHTML = `<small>${L('Titreşim yalnızca destekleyen cihazlarda çalışır.')}</small>`;
+        panel.append(hint);
+        const lang = document.createElement('div');
+        lang.className = 'set-row';
+        lang.innerHTML = `<div class="rtxt">${ico('ui_map', 28)} <b>${L('Dil')}</b></div>`;
+        const lg = document.createElement('div');
+        lg.className = 'seg';
+        for (const [code, name] of [['tr', 'Türkçe'], ['en', 'English']]) {
+            const b = document.createElement('button');
+            b.textContent = name;
+            if (settings.lang === code)
+                b.className = 'sel';
+            b.addEventListener('click', () => { settings.lang = code; changed(); applyLang(); renderPanel(); });
+            lg.append(b);
+        }
+        lang.append(lg);
+        panel.append(lang);
+        const foot = document.createElement('div');
+        foot.className = 'row';
+        foot.append(btn('Ana menü', '', true, () => { open = null; renderPanel(); showLanding(); }), btn('Oyuna dön', '', true, () => { open = null; renderPanel(); }));
+        panel.append(foot);
+        const ver = document.createElement('div');
+        ver.className = 'row';
+        ver.innerHTML = `<small>Hexling · ${L('Sürüm')} ${VERSION} (${CODENAME}) · ${L('Yapım')} ${BUILD}</small>`;
+        panel.append(ver);
+    }
+    else if (open === 'hof') {
+        setPanelTitle('Şeref Salonu', 'ui_stats');
+        panel.append(hofList(20));
+    }
     else if (open === 'train') {
-        setPanelTitle(trainMaster === 0 ? 'Usta Cadı Elmira' : 'Usta Cadı Zehra', 'ui_skill');
+        setPanelTitle('Usta Cadı ' + ZONES[trainMaster].master, 'ui_skill');
         const t = document.createElement('div');
         t.className = 'row';
         const plays = game.trainPlaysLeft(trainMaster);
@@ -386,7 +464,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden)
     game.persist(); });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 // telefonda çevrimdışı çalışsın (?nosw=1 ile kapatılır)
-if ('serviceWorker' in navigator && !location.search.includes('nosw')) {
+if ('serviceWorker' in navigator && !location.search.includes('nosw') && !window.Capacitor) {
     navigator.serviceWorker.register('sw.js').catch((e) => console.error('service worker kaydedilemedi', e));
 }
 // yapılabilecek geliştirme varsa ilgili düğme parlar, "Buraya tıkla!" balonu zıplar (oyun kesilmez, dokunma engellenmez)
@@ -427,6 +505,88 @@ function frame(now) {
     masterBtn.style.display = !open && game.nearMaster() >= 0 && !game.mapOpen && mini.style.display !== 'flex' ? 'flex' : 'none';
     requestAnimationFrame(frame);
 }
+// ---------------- Şeref Salonu ----------------
+/** bu cihazdaki kahramanların sıralaması: aşılan ada > güç > öldürme */
+function hofList(max) {
+    const wrap = document.createElement('div');
+    const list = Game.hofRanking().slice(0, max);
+    if (!list.length) {
+        wrap.innerHTML = `<div class="row"><small>${L('Henüz kayıt yok')}</small></div>`;
+        return wrap;
+    }
+    list.forEach((e, i) => {
+        const medal = ['🥇', '🥈', '🥉'][i] ?? String(i + 1);
+        const me = e.id === game.save.hero.id ? ' style="color:#ffe36b"' : '';
+        const d = document.createElement('div');
+        d.className = 'hof-row';
+        d.innerHTML = `<div class="hof-rank">${medal}</div><div><b${me}>${e.name.replace(/</g, '&lt;')}</b><br><small>${ico('ui_power', 12)} ${fmt(e.power)} · ${ico('ui_heart', 12)} ${fmt(e.maxHp)} · ${e.kills} ${L('öldürme')}</small></div>`
+            + `<div style="text-align:right"><b>${e.islands}</b><br><small>${L('ada')}</small></div>`;
+        wrap.append(d);
+    });
+    return wrap;
+}
+// ---------------- dil ----------------
+function applyLang() {
+    document.documentElement.lang = settings.lang;
+    document.querySelectorAll('[data-t]').forEach((el) => {
+        if (!el.dataset.orig)
+            el.dataset.orig = el.textContent ?? '';
+        el.textContent = L(el.dataset.orig);
+    });
+    const nameIn = document.getElementById('l-name');
+    nameIn.placeholder = L('Kahraman adı');
+    document.getElementById('btn-settings').title = L('Ayarlar');
+    document.title = 'Hexling';
+    refreshLanding();
+}
+// ---------------- açılış ekranı ----------------
+const landing = document.getElementById('landing');
+const lName = document.getElementById('l-name');
+function refreshLanding() {
+    const sv = Game.peekSave();
+    const cont = document.getElementById('l-continue');
+    cont.style.display = sv ? '' : 'none';
+    document.getElementById('l-save').textContent = sv ? `${sv.name} · ${sv.islands}/${ZONES.length} ${L('ada')} · ${sv.kills} ${L('öldürme')}` : '';
+    document.getElementById('l-ver').textContent = `${L('Sürüm')} ${VERSION} · ${CODENAME} · ${L('Yapım')} ${BUILD}`;
+    if (!lName.value)
+        lName.value = sv ? sv.name : '';
+}
+function showLanding() {
+    landingOpen = true;
+    game.persist();
+    landing.classList.remove('hidden');
+    lName.value = '';
+    refreshLanding();
+    renderPanel();
+}
+function hideLanding() {
+    landingOpen = false;
+    landing.classList.add('hidden');
+    audio.start();
+    audio.setMood(game.region);
+    renderPanel();
+}
+document.getElementById('l-continue')?.addEventListener('click', () => {
+    if (lName.value.trim())
+        game.setHeroName(lName.value);
+    hideLanding();
+});
+document.getElementById('l-new')?.addEventListener('click', () => {
+    const sv = Game.peekSave();
+    if (sv && sv.kills > 0 && !confirm(L('Mevcut kahraman Şeref Salonu\'nda kalır. Yeni oyun başlatılsın mı?')))
+        return;
+    game.newGame(lName.value || L('Çırak'));
+    hideLanding();
+});
+document.getElementById('l-settings')?.addEventListener('click', () => { open = 'settings'; renderPanel(); });
+document.getElementById('l-hof')?.addEventListener('click', () => { open = 'hof'; renderPanel(); });
+document.getElementById('btn-settings')?.addEventListener('click', () => { open = open === 'settings' ? null : 'settings'; renderPanel(); });
+// her düğmeye dokunuşta tık sesi
+document.addEventListener('click', (e) => { if (e.target.closest('button')) {
+    audio.start();
+    audio.play('click');
+} }, true);
+applyLang();
 renderPanel();
 requestAnimationFrame(frame);
 window.game = game;

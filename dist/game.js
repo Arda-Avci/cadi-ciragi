@@ -1,8 +1,14 @@
-import { BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies, } from './data.js';
+import { BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies, } from './data.js';
+import { VERSION } from './version.js';
+import { audio } from './audio.js';
+import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
+import { N, T } from './i18n.js';
+import { vibrate } from './settings.js';
+const HOF_KEY = 'cadi-ciragi-hof';
 /** Evimiz: doğduğumuz yer ve hızlı iyileşme alanı */
 export const HOME = { x: 0, y: 40, r: 150 };
 const HOME_HEAL = 0.28; // saniyede azami canın oranı
-const SAVE_KEY = 'cadi-ciragi-v5';
+const SAVE_KEY = 'cadi-ciragi-v6'; // v6: 40 adalık yeni dünya
 const TREE_RESPAWN = 120;
 const GATE_GAP = 160; // kapı, bölge kıyısından bu kadar ileride
 function rng(seed) {
@@ -45,6 +51,7 @@ export class Game {
         this.flyMark = new WeakMap();
         this.puffs = [];
         this.puffT = 0;
+        this.ambient = new Ambient();
         this.bossHealAcc = 0;
         this.bossHealShow = 0;
         /** kapı açılış animasyonu (bölge numarası, kalan süre) */
@@ -63,9 +70,17 @@ export class Game {
         this.w = 0;
         this.h = 0;
         this.sprites = new Map();
+        this.tinted = new Map();
+        this.rests = null;
         this.houseFlash = new Map();
         this.onMaster = () => { };
         this.ctx = canvas.getContext('2d');
+        // sahne içi bütün yazılar seçili dile çevrilir
+        const c2 = this.ctx;
+        const ft = c2.fillText.bind(c2);
+        const st = c2.strokeText.bind(c2);
+        c2.fillText = (t, x, y, w) => ft(N(T(String(t))), x, y, w);
+        c2.strokeText = (t, x, y, w) => st(N(T(String(t))), x, y, w);
         this.loadSprites();
         this.save = this.load();
         this.px = this.save.x;
@@ -87,7 +102,47 @@ export class Game {
         })
             .catch(() => { });
     }
-    spr(name) { return this.sprites.get(name) ?? null; }
+    /** 'ad' ya da 'ad@renk' (renk = ton döndürme derecesi; her çeşit ada farklı renkte görünür) */
+    spr(name) {
+        const at = name.indexOf('@');
+        if (at < 0)
+            return this.sprites.get(name) ?? null;
+        const hit = this.tinted.get(name);
+        if (hit)
+            return hit;
+        const base = this.sprites.get(name.slice(0, at));
+        if (!base)
+            return null;
+        const cv = document.createElement('canvas');
+        cv.width = base.width;
+        cv.height = base.height;
+        const cx = cv.getContext('2d');
+        if (!cx)
+            return base;
+        cx.drawImage(base, 0, 0);
+        const img = cx.getImageData(0, 0, cv.width, cv.height);
+        const d = img.data;
+        const a = (Number(name.slice(at + 1)) * Math.PI) / 180;
+        const cs = Math.cos(a);
+        const sn = Math.sin(a);
+        // YIQ benzeri ton döndürme matrisi (tarayıcıdan bağımsız, ctx.filter gerekmez)
+        const m = [
+            0.213 + cs * 0.787 - sn * 0.213, 0.715 - cs * 0.715 - sn * 0.715, 0.072 - cs * 0.072 + sn * 0.928,
+            0.213 - cs * 0.213 + sn * 0.143, 0.715 + cs * 0.285 + sn * 0.140, 0.072 - cs * 0.072 - sn * 0.283,
+            0.213 - cs * 0.213 - sn * 0.787, 0.715 - cs * 0.715 + sn * 0.715, 0.072 + cs * 0.928 + sn * 0.072,
+        ];
+        for (let i = 0; i < d.length; i += 4) {
+            const r = d[i];
+            const g = d[i + 1];
+            const b = d[i + 2];
+            d[i] = Math.max(0, Math.min(255, r * m[0] + g * m[1] + b * m[2]));
+            d[i + 1] = Math.max(0, Math.min(255, r * m[3] + g * m[4] + b * m[5]));
+            d[i + 2] = Math.max(0, Math.min(255, r * m[6] + g * m[7] + b * m[8]));
+        }
+        cx.putImageData(img, 0, 0);
+        this.tinted.set(name, cv);
+        return cv;
+    }
     drawSpr(name, x, y, size, rot = 0) {
         const img = this.spr(name);
         if (!img)
@@ -105,31 +160,103 @@ export class Game {
     fresh() {
         return {
             essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
-            bossDown: [false, false, false], kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
+            bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
             chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, nextItem: 1, spawn: {}, perm: {},
         };
     }
     load() {
         try {
             const raw = localStorage.getItem(SAVE_KEY);
-            if (raw)
-                return { ...this.fresh(), ...JSON.parse(raw) };
+            if (raw) {
+                const s = { ...this.fresh(), ...JSON.parse(raw) };
+                while (s.bossDown.length < ZONES.length)
+                    s.bossDown.push(false);
+                return s;
+            }
         }
         catch (e) {
             console.error('kayıt okunamadı', e);
         }
         return this.fresh();
     }
+    /** kayıtlı bir oyun var mı (açılış sayfası "Devam et" için) */
+    static hasSave() {
+        try {
+            return !!localStorage.getItem(SAVE_KEY);
+        }
+        catch (e) {
+            console.error('kayıt okunamadı', e);
+            return false;
+        }
+    }
+    /** kayıt özeti (açılış sayfası için) */
+    static peekSave() {
+        try {
+            const raw = localStorage.getItem(SAVE_KEY);
+            if (!raw)
+                return null;
+            const s = JSON.parse(raw);
+            return { name: s.hero?.name ?? 'Çırak', islands: (s.bossDown ?? []).filter(Boolean).length, kills: s.kills ?? 0 };
+        }
+        catch (e) {
+            console.error('kayıt okunamadı', e);
+            return null;
+        }
+    }
+    // ---- Şeref Salonu (bu cihazdaki kahramanlar) ----
+    static loadHof() {
+        try {
+            return JSON.parse(localStorage.getItem(HOF_KEY) ?? '[]');
+        }
+        catch (e) {
+            console.error('şeref salonu okunamadı', e);
+            return [];
+        }
+    }
+    /** sıralama: önce aşılan ada, sonra güç, sonra öldürme */
+    static hofRanking() {
+        return Game.loadHof().sort((a, b) => b.islands - a.islands || b.power - a.power || b.kills - a.kills).slice(0, 20);
+    }
+    updateHof() {
+        if (this.save.kills === 0 && this.bossesDown() === 0)
+            return; // hiç oynamayan kayıt listeye girmez
+        const list = Game.loadHof();
+        const e = {
+            id: this.save.hero.id, name: this.save.hero.name, power: Math.max(this.fullPower(), list.find((x) => x.id === this.save.hero.id)?.power ?? 0),
+            islands: this.bossesDown(), kills: this.save.kills, deaths: this.save.deaths, maxHp: this.maxHp(), born: this.save.hero.born,
+            updated: Date.now(), version: VERSION,
+        };
+        const at = list.findIndex((x) => x.id === e.id);
+        if (at >= 0)
+            list[at] = e;
+        else
+            list.push(e);
+        try {
+            localStorage.setItem(HOF_KEY, JSON.stringify(list.slice(-60)));
+        }
+        catch (err) {
+            console.error('şeref salonu yazılamadı', err);
+        }
+    }
     persist() {
         try {
             this.save.x = this.px;
             this.save.y = this.py;
             localStorage.setItem(SAVE_KEY, JSON.stringify(this.save));
+            this.updateHof();
         }
         catch (e) {
             console.error('kayıt yazılamadı', e);
         }
     }
+    /** yeni oyun: eski kahraman Şeref Salonu'nda kalır */
+    newGame(name) {
+        this.persist();
+        this.resetSave();
+        this.save.hero.name = name.trim().slice(0, 16) || 'Çırak';
+        this.persist();
+    }
+    setHeroName(name) { this.save.hero.name = name.trim().slice(0, 16) || 'Çırak'; this.persist(); }
     resetSave() {
         localStorage.removeItem(SAVE_KEY);
         this.save = this.fresh();
@@ -158,12 +285,14 @@ export class Game {
     now() { return this.nowMs + this.skew; }
     /** ganimet/kazanç yazısı: efektli, sıraya girerek oyuncunun üstünde belirir */
     gain(text, color = '#ffe36b', icon = '', merge) {
+        text = N(T(text));
+        audio.play('gain');
         if (merge) {
             // aynı türden kısa aralıklı kazançlar tek satırda toplanır (+7, +7, +7 → +21)
             const same = this.gains.find((g) => g.key === merge.key && g.t > 1.0);
             if (same) {
                 same.amount = (same.amount ?? 0) + merge.amount;
-                same.text = merge.fmt(same.amount);
+                same.text = N(T(merge.fmt(same.amount)));
                 same.t = 1.9;
                 return;
             }
@@ -185,7 +314,26 @@ export class Game {
         const len = Math.hypot(b.x - a.x, b.y - a.y);
         return { ax: a.x, ay: a.y, bx: b.x, by: b.y, len, tGate: (a.r + GATE_GAP) / len };
     }
-    inHome() { return Math.hypot(this.px - HOME.x, this.py - HOME.y) < HOME.r; }
+    /** dinlenme noktaları: ada 0'da ev, diğer adalarda giriş kampı (hızlı iyileşme, güvenli bölge, ölünce burada uyanılır) */
+    restPoints() {
+        if (this.rests)
+            return this.rests;
+        this.rests = ZONES.map((z, i) => {
+            if (i === 0)
+                return { x: HOME.x, y: HOME.y, r: HOME.r, reg: 0 };
+            const b = this.bridge(i - 1);
+            const t = (b.len - z.radius + 300) / b.len;
+            return { x: b.ax + (b.bx - b.ax) * t, y: b.ay + (b.by - b.ay) * t, r: HOME.r, reg: i };
+        });
+        return this.rests;
+    }
+    restAt() {
+        for (const p of this.restPoints())
+            if (Math.hypot(this.px - p.x, this.py - p.y) < p.r)
+                return p;
+        return null;
+    }
+    inHome() { return this.restAt() !== null; }
     gateLocked(i) { return !this.save.bossDown[i]; }
     gatePos(i) {
         const b = this.bridge(i);
@@ -240,7 +388,8 @@ export class Game {
             const R = zone.radius;
             const rnd = rng(reg * 7919 + 13);
             const placed = [];
-            const clearOfHome = (p) => reg !== 0 || Math.hypot(p.x - HOME.x, p.y - HOME.y) > 330;
+            const rest = this.restPoints()[reg];
+            const clearOfHome = (p) => Math.hypot(p.x - rest.x, p.y - rest.y) > 330;
             const place = (minD, maxD, sep) => {
                 for (let tries = 0; tries < 60; tries++) {
                     const a = rnd() * Math.PI * 2;
@@ -280,7 +429,7 @@ export class Game {
                 chests.push({ id: chests.length, reg, x: p.x, y: p.y });
             }
             // diğer bütün ağaçlar da kesilebilir (küçük ödül)
-            for (let i = 0; i < 90 + reg * 20; i++) {
+            for (let i = 0; i < 80 + Math.min(reg, 10) * 6; i++) {
                 const a = rnd() * Math.PI * 2;
                 const d = 60 + rnd() * (R - 100);
                 const p = { x: zone.cx + Math.cos(a) * d, y: zone.cy + Math.sin(a) * d };
@@ -371,13 +520,15 @@ export class Game {
             this.save.loadout.push(i);
     }
     /** Güç: kuşanılan büyülerin saniyelik hasarı ile savunma düzeltmeli canın geometrik ortalaması. */
-    power() {
+    /** tam canla güç (sıralama için) */
+    fullPower() { return this.power(this.maxHp()); }
+    power(hpNow = this.hp) {
         let dps = 0;
         for (const i of this.equippedWeapons())
             dps += (this.weaponDmg(i) * this.weaponCopies(i) * this.castSpeed()) / WEAPONS[i].cooldown;
         const red = (this.typedReduction('cut') + this.typedReduction('pierce') + this.typedReduction('smash')) / 3 / 100;
         // can azaldıkça güç de azalır: mevcut can esas alınır
-        const effHp = Math.max(1, Math.min(this.hp, this.maxHp())) / (this.armor() * (1 - Math.min(0.9, red)));
+        const effHp = Math.max(1, Math.min(hpNow, this.maxHp())) / (this.armor() * (1 - Math.min(0.9, red)));
         return Math.floor(Math.sqrt(effHp * Math.max(1, dps)) * 10);
     }
     enemyDmg(e) { return e.def.dmg * TIERS[e.tier].dmg * ZONES[e.reg].dmgScale * Math.sqrt(e.lv); }
@@ -598,6 +749,7 @@ export class Game {
                 this.respawn();
             return;
         }
+        this.save.playSec += dt;
         this.flyT = Math.max(0, this.flyT - dt);
         if (this.gateAnim) {
             this.gateAnim.t -= dt;
@@ -606,7 +758,10 @@ export class Game {
         }
         this.movePlayer(dt);
         this.updatePuffs(dt);
+        const reg0 = this.region;
         this.region = this.regionAt(this.px, this.py);
+        if (this.region !== reg0)
+            audio.setMood(this.region);
         const calm = !this.enemies.some((e) => e.state === 'chase');
         const atHome = this.inHome();
         const before = this.hp;
@@ -711,11 +866,17 @@ export class Game {
     }
     /** Temizlenmemiş kampları sahada tutar. Dalga yok: kamp yalnızca temizlenip süresi dolunca yeniden dolar. */
     syncSpawners() {
+        // 40 adalık dünyada yalnızca yakındaki kamplar sahada tutulur; uzaklaşılan (dokunulmamış) kamplar kaldırılıp tam canla yeniden doğar
+        const NEAR = 2400;
+        const FAR = 3400;
+        this.enemies = this.enemies.filter((e) => e.state !== 'idle' || e.hp < e.maxHp || Math.hypot(e.x - this.px, e.y - this.py) < FAR);
         const live = new Set();
         for (const e of this.enemies)
             live.add(e.sp);
         for (const sp of this.getWorld().spawners) {
             if (live.has(sp.id) || this.spCleared(sp))
+                continue;
+            if (Math.abs(sp.x - this.px) > NEAR || Math.abs(sp.y - this.py) > NEAR || Math.hypot(sp.x - this.px, sp.y - this.py) > NEAR)
                 continue;
             this.spawnGroup(sp);
         }
@@ -823,6 +984,8 @@ export class Game {
                 const hit = this.enemyDmg(e) * this.armor() * (1 - Math.min(0.9, this.typedReduction(e.def.atk) / 100));
                 this.hp -= hit;
                 this.hurtFlash = 0.25;
+                audio.play('hurt');
+                vibrate(35);
                 this.invuln = 0.6;
                 this.float(this.px, this.py - 20, '-' + this.fmt(hit), '#ff6b6b');
                 if (this.hp <= 0) {
@@ -889,6 +1052,7 @@ export class Game {
         const n = this.weaponCopies(i);
         const ang = Math.atan2(t.y - this.py, t.x - this.px);
         this.castPulse = 0.28;
+        audio.play('cast');
         if (!this.moving)
             this.face = ang;
         const reach = this.reachMul();
@@ -1080,6 +1244,7 @@ export class Game {
         const dmg = Math.max(1, raw * e.def.resist[dtype] * (crit ? 3 : 1));
         e.hp -= dmg;
         e.flash = 0.14;
+        audio.play('hit');
         if (e.tier === 'boss' || e.tier === 'hard') {
             // her %10'luk zararda 5 sn süpürge uçuşu
             const bucket = Math.min(10, Math.floor((1 - Math.max(0, e.hp) / e.maxHp) * 10));
@@ -1087,6 +1252,7 @@ export class Game {
             this.flyMark.set(e, bucket);
             if (bucket > prev) {
                 this.flyT = 5;
+                audio.play('fly');
                 this.gain('Süpürge uçuşu! 5 sn dokunulmazsın', '#c8b6ff', 'icon_broom');
             }
         }
@@ -1101,6 +1267,7 @@ export class Game {
         const maxHp = this.treeMaxHp(t);
         const hp = (this.treeHp.get(t.id) ?? maxHp) - raw;
         this.float(t.x, t.y - 34 * t.s, this.fmt(raw), '#c8ffc8');
+        audio.play('chop');
         if (hp <= 0)
             this.chopTree(t);
         else
@@ -1126,7 +1293,7 @@ export class Game {
         }
     }
     fmt(n) {
-        return n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'K' : String(Math.ceil(n));
+        return n < 1e4 ? String(Math.ceil(n)) : fmtNum(n);
     }
     addPerm(k, v) { this.save.perm[k] = (this.save.perm[k] ?? 0) + v; }
     chopTree(t) {
@@ -1144,11 +1311,14 @@ export class Game {
     }
     killEnemy(e) {
         this.save.kills++;
+        audio.play(e.tier === 'boss' ? 'boss' : 'kill');
+        if (e.tier === 'boss')
+            vibrate([60, 40, 120]);
         const value = Math.max(1, Math.round(e.def.drop * TIERS[e.tier].soul * Math.pow(ZONES[e.reg].scale, 0.7) * Math.sqrt(e.lv) * this.yieldMul()));
         // ganimet otomatik toplanır, etkisi yazıyla gösterilir
         this.save.essence += value;
         this.gain('+' + this.fmt(value) + ' Ruh', '#8fdcff', 'ui_soul', { key: 'soul', amount: value, fmt: (n) => '+' + this.fmt(n) + ' Ruh' });
-        this.deathFx.push({ x: e.x, y: e.y, t: 0.45, name: e.tier === 'boss' ? ['boss_owl', 'boss_swamp', 'boss_frost'][e.reg] : e.def.id,
+        this.deathFx.push({ x: e.x, y: e.y, t: 0.45, name: e.tier === 'boss' ? ZONES[e.reg].art.boss : e.def.id,
             size: e.def.r * TIERS[e.tier].size * 3.3, flip: e.flip });
         this.onChange();
     }
@@ -1213,8 +1383,11 @@ export class Game {
             this.gainItem('shield', 2);
             if (!this.save.bossDown[sp.reg]) {
                 this.save.bossDown[sp.reg] = true;
-                if (sp.reg < ZONES.length - 1)
+                if (sp.reg < ZONES.length - 1) {
                     this.gateAnim = { i: sp.reg, t: 3.6 };
+                    audio.play('gate');
+                    vibrate([80, 60, 200]);
+                }
                 this.say(ZONES[sp.reg].bossName + ' yenildi! ' + (sp.reg < ZONES.length - 1 ? 'Sonraki bölgenin kapısı açıldı.' : 'Dünyayı tamamladın!'));
             }
             else
@@ -1229,6 +1402,8 @@ export class Game {
                 continue;
             if (Math.hypot(c.x - this.px, c.y - this.py) < 28) {
                 this.save.chests.push(c.id);
+                audio.play('chest');
+                vibrate(60);
                 const stat = CSTAT_KEYS[Math.floor(Math.random() * CSTAT_KEYS.length)];
                 const amt = CRYSTAL_STATS[stat].base * 0.6;
                 this.save.chestBonus[stat] = (this.save.chestBonus[stat] ?? 0) + amt;
@@ -1246,20 +1421,22 @@ export class Game {
     }
     die() {
         this.dead = 2.5;
+        vibrate(250);
         this.save.deaths++;
         this.persist();
         this.say('Bayıldın… düşmanlar kamplarına döndü.');
     }
     respawn() {
         this.hp = this.maxHp();
-        this.px = HOME.x;
-        this.py = HOME.y + 70; // evimizde uyanırız
+        const rp = this.restPoints()[Math.min(this.region, this.restPoints().length - 1)]; // bulunduğumuz adanın dinlenme noktasında uyanırız
+        this.px = rp.x;
+        this.py = rp.y + 70;
         for (const e of this.enemies)
             e.state = 'return';
         this.projs = [];
         this.invuln = 2;
     }
-    say(text) { this.banner = text; this.bannerT = 4; }
+    say(text) { this.banner = N(T(text)); this.bannerT = 4; }
     float(x, y, text, color) {
         if (this.floaters.length < 60)
             this.floaters.push({ x, y, t: 0.8, text, color });
@@ -1288,7 +1465,7 @@ export class Game {
         return -1;
     }
     /** usta cadı yalnızca o seviyenin boss'u yenilince ortaya çıkar */
-    masterOpen(i) { return !!this.save.bossDown[i]; }
+    masterOpen(i) { return !!this.save.bossDown[i] && this.trainPlaysLeft(i) > 0; }
     dayNo() { return Math.floor((this.now() - new Date().getTimezoneOffset() * -60000) / 86400000); }
     /** bugün bu usta için kalan eğitim hakkı (her seviye için günde 2) */
     trainPlaysLeft(master) {
@@ -1362,7 +1539,7 @@ export class Game {
         c.save();
         c.translate(-camX, -camY);
         this.drawWorldObjects(camX, camY);
-        this.drawHome();
+        this.drawHome(camX, camY);
         for (let i = 0; i < ZONES.length - 1; i++)
             this.drawMaster(i, camX, camY);
         for (const d of this.deathFx)
@@ -1382,6 +1559,9 @@ export class Game {
         }
         c.globalAlpha = 1;
         c.restore();
+        this.ambient.update(0.016, this.w, this.h);
+        this.ambient.draw(c, this.w, this.h, this.region, this.time);
+        drawVignette(c, this.w, this.h);
         this.drawGains();
         this.drawGateBanner();
         this.drawHud();
@@ -1428,30 +1608,15 @@ export class Game {
     }
     drawLand(camX, camY) {
         const c = this.ctx;
-        for (let i = 0; i < ZONES.length - 1; i++) {
-            const b = this.bridge(i);
-            c.strokeStyle = 'rgba(0,0,0,0.25)';
-            c.lineWidth = BRIDGE_HALF_WIDTH * 2 + 10;
-            c.lineCap = 'butt';
-            c.beginPath();
-            c.moveTo(b.ax - camX, b.ay - camY);
-            c.lineTo(b.bx - camX, b.by - camY);
-            c.stroke();
-            c.strokeStyle = '#6b5436';
-            c.lineWidth = BRIDGE_HALF_WIDTH * 2;
-            c.beginPath();
-            c.moveTo(b.ax - camX, b.ay - camY);
-            c.lineTo(b.bx - camX, b.by - camY);
-            c.stroke();
-            c.strokeStyle = 'rgba(255,230,180,0.18)';
-            c.lineWidth = 6;
-            c.setLineDash([22, 18]);
-            c.beginPath();
-            c.moveTo(b.ax - camX, b.ay - camY);
-            c.lineTo(b.bx - camX, b.by - camY);
-            c.stroke();
-            c.setLineDash([]);
-        }
+        ZONES.forEach((zone) => {
+            const cx = zone.cx - camX;
+            const cy = zone.cy - camY;
+            if (cx + zone.radius + 60 < 0 || cx - zone.radius - 60 > this.w || cy + zone.radius + 60 < 0 || cy - zone.radius - 60 > this.h)
+                return;
+            drawShore(c, cx, cy, zone.radius, this.time, shade(zone.dot, 1.9));
+        });
+        for (let i = 0; i < ZONES.length - 1; i++)
+            drawBridge(c, this.bridge(i), i, camX, camY, this.w, this.h, this.time, this.gateLocked(i));
         ZONES.forEach((zone, reg) => {
             const cx = zone.cx - camX;
             const cy = zone.cy - camY;
@@ -1474,7 +1639,7 @@ export class Game {
     }
     drawGround(camX, camY, dot, reg) {
         const c = this.ctx;
-        const tile = this.spr(['ground_forest', 'ground_swamp', 'ground_ice'][reg]);
+        const tile = this.spr(ZONES[reg].art.ground);
         if (tile) {
             const T = 256;
             for (let x = Math.floor(camX / T) * T; x < camX + this.w + T; x += T) {
@@ -1508,7 +1673,7 @@ export class Game {
             c.arc(t.x, t.y, 52, 0, Math.PI * 2);
             c.fill();
         }
-        const name = ['tree_forest', 'tree_swamp', 'tree_ice'][t.reg];
+        const name = ZONES[t.reg].art.tree;
         if (this.drawSprX(name, t.x, t.y - 10, size, { rot: sway }))
             return;
         const s = size / 64;
@@ -1630,30 +1795,35 @@ export class Game {
             this.drawGate(i, camX, camY);
     }
     /** Evimiz: doğduğumuz yer ve hızlı iyileşme alanı */
-    drawHome() {
+    drawHome(camX, camY) {
         const c = this.ctx;
         const pulse = 0.5 + 0.5 * Math.sin(this.time * 2);
-        const g = c.createRadialGradient(HOME.x, HOME.y, 10, HOME.x, HOME.y, HOME.r);
-        g.addColorStop(0, `rgba(120,255,170,${0.22 + 0.1 * pulse})`);
-        g.addColorStop(1, 'rgba(120,255,170,0)');
-        c.fillStyle = g;
-        c.beginPath();
-        c.arc(HOME.x, HOME.y, HOME.r, 0, Math.PI * 2);
-        c.fill();
-        if (!this.drawSprX('home', HOME.x, HOME.y - 70, 150)) {
-            c.fillStyle = '#7a5a3a';
-            c.fillRect(HOME.x - 34, HOME.y - 80, 68, 50);
-            c.fillStyle = '#b04a4a';
+        for (const rp of this.restPoints()) {
+            if (!this.inView(rp.x, rp.y, rp.r + 120, camX, camY))
+                continue;
+            const g = c.createRadialGradient(rp.x, rp.y, 10, rp.x, rp.y, rp.r);
+            g.addColorStop(0, `rgba(120,255,170,${0.22 + 0.1 * pulse})`);
+            g.addColorStop(1, 'rgba(120,255,170,0)');
+            c.fillStyle = g;
             c.beginPath();
-            c.moveTo(HOME.x - 44, HOME.y - 80);
-            c.lineTo(HOME.x, HOME.y - 118);
-            c.lineTo(HOME.x + 44, HOME.y - 80);
+            c.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
             c.fill();
+            const size = rp.reg === 0 ? 150 : 110;
+            if (!this.drawSprX('home', rp.x, rp.y - size * 0.47, size)) {
+                c.fillStyle = '#7a5a3a';
+                c.fillRect(rp.x - 34, rp.y - 80, 68, 50);
+                c.fillStyle = '#b04a4a';
+                c.beginPath();
+                c.moveTo(rp.x - 44, rp.y - 80);
+                c.lineTo(rp.x, rp.y - 118);
+                c.lineTo(rp.x + 44, rp.y - 80);
+                c.fill();
+            }
+            c.font = 'bold 12px sans-serif';
+            c.textAlign = 'center';
+            c.fillStyle = '#c8ffd8';
+            c.fillText(rp.reg === 0 ? 'EV · hızlı iyileşme' : 'KAMP · hızlı iyileşme', rp.x, rp.y + 34);
         }
-        c.font = 'bold 12px sans-serif';
-        c.textAlign = 'center';
-        c.fillStyle = '#c8ffd8';
-        c.fillText('EV · hızlı iyileşme', HOME.x, HOME.y + 34);
         if (this.inHome()) {
             for (let k = 0; k < 6; k++) {
                 const ph = (this.time * 0.7 + k / 6) % 1;
@@ -1680,7 +1850,7 @@ export class Game {
         c.font = 'bold 12px sans-serif';
         c.textAlign = 'center';
         c.fillStyle = '#9ff0ff';
-        c.fillText(i === 0 ? 'Usta Cadı Elmira' : 'Usta Cadı Zehra', m.x, m.y - 64);
+        c.fillText('Usta Cadı ' + ZONES[i].master, m.x, m.y - 64);
         if (near) {
             c.fillStyle = '#ffe36b';
             c.fillText('Eğitim için dokun!', m.x, m.y - 80 + Math.sin(this.time * 5) * 2);
@@ -1694,50 +1864,23 @@ export class Game {
         const b = this.bridge(i);
         const ang = Math.atan2(b.by - b.ay, b.bx - b.ax);
         const locked = this.gateLocked(i);
-        c.save();
-        c.translate(g.x, g.y);
-        c.rotate(ang);
-        c.fillStyle = '#5a5a66';
-        c.fillRect(-14, -BRIDGE_HALF_WIDTH - 16, 28, 34);
-        c.fillRect(-14, BRIDGE_HALF_WIDTH - 18, 28, 34);
         const ga = this.gateAnim && this.gateAnim.i === i ? this.gateAnim : null;
-        if (locked) {
-            c.fillStyle = '#8a5a2b';
-            c.fillRect(-10, -BRIDGE_HALF_WIDTH + 14, 20, BRIDGE_HALF_WIDTH * 2 - 28);
-            c.fillStyle = '#d9c25a';
-            c.fillRect(-6, -8, 12, 16);
-        }
-        else if (ga) {
-            // kapı kanatları iki yana kayar, ışık halkaları yayılır
-            const k = Math.min(1, (3.6 - ga.t) / 1.4);
-            const half = (BRIDGE_HALF_WIDTH - 14) * (1 - k);
-            c.fillStyle = '#8a5a2b';
-            c.fillRect(-10, -BRIDGE_HALF_WIDTH + 14, 20, Math.max(0, half));
-            c.fillRect(-10, BRIDGE_HALF_WIDTH - 14 - Math.max(0, half), 20, Math.max(0, half));
+        const open = locked ? 0 : ga ? Math.min(1, (3.6 - ga.t) / 1.4) : 1;
+        drawGateArt(c, g.x, g.y, -Math.sin(ang), Math.cos(ang), locked, open, this.time, this.spr('ui_lock'));
+        if (ga) {
             for (let r = 0; r < 3; r++) {
                 const ph = ((3.6 - ga.t) * 0.9 + r / 3) % 1;
                 c.strokeStyle = `rgba(150,255,190,${1 - ph})`;
                 c.lineWidth = 5;
                 c.beginPath();
-                c.arc(0, 0, 20 + ph * 130, 0, Math.PI * 2);
+                c.arc(g.x, g.y, 20 + ph * 130, 0, Math.PI * 2);
                 c.stroke();
             }
         }
-        else {
-            c.strokeStyle = 'rgba(120,255,160,0.55)';
-            c.lineWidth = 4;
-            c.setLineDash([8, 8]);
-            c.beginPath();
-            c.moveTo(0, -BRIDGE_HALF_WIDTH + 14);
-            c.lineTo(0, BRIDGE_HALF_WIDTH - 14);
-            c.stroke();
-            c.setLineDash([]);
-        }
-        c.restore();
         c.font = 'bold 12px sans-serif';
         c.textAlign = 'center';
         c.fillStyle = locked ? '#ffd0a0' : '#b8ffcc';
-        c.fillText(locked ? 'KİLİTLİ — ' + ZONES[i].bossName + ' yenilmeli' : 'Kapı açık', g.x, g.y - BRIDGE_HALF_WIDTH - 24);
+        c.fillText(locked ? 'KİLİTLİ — ' + ZONES[i].bossName + ' yenilmeli' : 'Kapı açık', g.x, g.y - 130);
     }
     drawPlayer() {
         const c = this.ctx;
@@ -1886,9 +2029,9 @@ export class Game {
         c.beginPath();
         c.ellipse(e.x, e.y + r * 0.7, r * 0.9, r * 0.32, 0, 0, Math.PI * 2);
         c.fill();
-        const sprName = boss ? ['boss_owl', 'boss_swamp', 'boss_frost'][e.reg] : e.def.id;
+        const sprName = boss ? ZONES[e.reg].art.boss : e.def.id;
         if (!this.drawSprX(sprName, e.x, e.y, size, o)) {
-            const fallback = { ghost: '#e8e8ff', mushroom: '#e0576a', pumpkin: '#ff9a3c', bat: '#8a6bd1' };
+            const fallback = { ghost: '#e8e8ff', mushroom: '#e0576a', pumpkin: '#ff9a3c', bat: '#8a6bd1', scorpion: '#d9a24a', golem: '#8a7a74', wisp: '#7be0ff' };
             c.fillStyle = boss ? '#7a4fd0' : fallback[e.def.id];
             c.beginPath();
             c.arc(e.x, e.y, r, 0, Math.PI * 2);
@@ -2201,8 +2344,8 @@ export class Game {
         const c = this.ctx;
         c.fillStyle = 'rgba(4,12,24,0.88)';
         c.fillRect(0, 0, this.w, this.h);
-        const minX = ZONES[0].cx - ZONES[0].radius - 80;
-        const maxX = ZONES[ZONES.length - 1].cx + ZONES[ZONES.length - 1].radius + 80;
+        const minX = Math.min(...ZONES.map((z) => z.cx - z.radius)) - 80;
+        const maxX = Math.max(...ZONES.map((z) => z.cx + z.radius)) + 80;
         const minY = Math.min(...ZONES.map((z) => z.cy - z.radius)) - 80;
         const maxY = Math.max(...ZONES.map((z) => z.cy + z.radius)) + 80;
         const k = Math.min((this.w * 0.94) / (maxX - minX), (this.h * 0.6) / (maxY - minY));
@@ -2220,24 +2363,24 @@ export class Game {
         for (let i = 0; i < ZONES.length - 1; i++) {
             const b = this.bridge(i);
             c.strokeStyle = '#6b5436';
-            c.lineWidth = BRIDGE_HALF_WIDTH * 2 * k;
+            c.lineWidth = Math.max(3, BRIDGE_HALF_WIDTH * 2 * k);
             c.beginPath();
             c.moveTo(X(b.ax), Y(b.ay));
             c.lineTo(X(b.bx), Y(b.by));
             c.stroke();
         }
-        ZONES.forEach((z) => {
+        ZONES.forEach((z, zi) => {
             c.fillStyle = z.bg;
             c.beginPath();
             c.arc(X(z.cx), Y(z.cy), z.radius * k, 0, Math.PI * 2);
             c.fill();
-            c.strokeStyle = 'rgba(255,255,255,0.25)';
-            c.lineWidth = 2;
+            c.strokeStyle = zi === this.region ? '#ffe36b' : this.save.bossDown[zi] ? 'rgba(120,255,160,0.7)' : 'rgba(255,255,255,0.25)';
+            c.lineWidth = zi === this.region ? 3 : 2;
             c.stroke();
-            c.font = 'bold 14px sans-serif';
+            c.font = `bold ${Math.max(9, Math.min(15, z.radius * k * 0.6))}px sans-serif`;
             c.textAlign = 'center';
             c.fillStyle = '#fff';
-            c.fillText(z.name, X(z.cx), Y(z.cy - z.radius) + 20);
+            c.fillText(String(zi + 1), X(z.cx), Y(z.cy) + 4);
         });
         for (const sp of this.getWorld().spawners) {
             c.fillStyle = this.spCleared(sp) ? 'rgba(160,160,160,0.7)' : TIERS[sp.tier].color;
@@ -2267,6 +2410,10 @@ export class Game {
             c.fill();
         }
         this.arrow(X(this.px), Y(this.py), this.face, 11);
+        c.font = 'bold 16px sans-serif';
+        c.textAlign = 'center';
+        c.fillStyle = '#ffe36b';
+        c.fillText(`Ada ${this.region + 1}/${ZONES.length} · ${ZONES[this.region].name} · aşılan: ${this.bossesDown()}`, this.w / 2, 28);
         // açıklama
         const items = [['Kolay', TIERS.easy.color], ['Orta', TIERS.medium.color], ['Zor', TIERS.hard.color], ['Elit', TIERS.elite.color],
             ['Muhafız', TIERS.knight.color], ['Boss', TIERS.boss.color], ['Temiz', '#a0a0a0'], ['Usta', '#9ff0ff'], ['Sandık', '#ffffff']];

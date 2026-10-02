@@ -7,8 +7,11 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="assets/witch.png">
-<title>Cadı Çırağı</title>
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-title" content="Hexling">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Hexling</title>
 <style>
   :root { color-scheme: dark; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0c2742; font-family: system-ui, sans-serif; touch-action: none;
@@ -68,6 +71,36 @@
   .field { position: relative; height: 280px; margin-top: 8px; background: #120c2a; border-radius: 14px; overflow: hidden; touch-action: none; }
   .star { position: absolute; animation: pop .25s ease-out; }
   @keyframes pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  #btn-settings { position: fixed; left: 10px; top: 112px; width: 42px; height: 42px; padding: 4px; border-radius: 21px; background: rgba(40,24,86,.8); border: 1px solid rgba(190,160,255,.4); font-size: 22px; line-height: 1; }
+  #btn-settings img { width: 32px; height: 32px; display: block; margin: 0 auto; }
+  /* açılış ekranı */
+  #landing { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: space-between; color: #fff; overflow: hidden; touch-action: manipulation; }
+  #landing.hidden { display: none; }
+  .l-bg { position: absolute; inset: 0; background: #1a1240 url(assets/title_bg.jpg) center/cover no-repeat; animation: lzoom 24s ease-in-out infinite alternate; }
+  .l-bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(rgba(10,6,30,.55) 0%, rgba(10,6,30,0) 26%, rgba(10,6,30,0) 52%, rgba(10,6,30,.88) 100%); }
+  @keyframes lzoom { from { transform: scale(1); } to { transform: scale(1.08); } }
+  .l-top { position: relative; text-align: center; padding: max(26px, env(safe-area-inset-top)) 16px 0; }
+  #l-logo { width: min(80vw, 400px, 62vh); filter: drop-shadow(0 6px 14px rgba(0,0,0,.65)); animation: lfloat 4s ease-in-out infinite; }
+  #l-logo-txt { display: none; font-size: 54px; font-weight: 900; letter-spacing: .12em; color: #ffe36b; text-shadow: 0 4px 0 #5b34b3, 0 8px 18px rgba(0,0,0,.7); }
+  .l-sub { margin-top: 2px; font-size: 18px; font-weight: 800; letter-spacing: .5em; color: #e9dcff; text-shadow: 0 2px 8px rgba(0,0,0,.8); text-transform: uppercase; }
+  @keyframes lfloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+  .l-bottom { position: relative; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 0 22px max(18px, env(safe-area-inset-bottom)); }
+  #l-save { font-size: 13px; color: #e0d4ff; text-shadow: 0 1px 6px #000; min-height: 18px; }
+  #l-name { width: min(280px, 80vw); text-align: center; font-size: 17px; font-weight: 700; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.35); background: rgba(10,6,30,.65); color: #fff; user-select: text; -webkit-user-select: text; }
+  .l-btn { width: min(280px, 80vw); padding: 13px 16px; font-size: 17px; border-radius: 14px; background: rgba(60,36,130,.9); border: 1px solid rgba(190,160,255,.5); box-shadow: 0 4px 14px rgba(0,0,0,.45); }
+  .l-btn.primary { background: linear-gradient(#ffb347, #e07a1f); color: #2a1200; border-color: #ffd98a; font-weight: 800; font-size: 19px; }
+  .l-row { display: flex; gap: 8px; width: min(280px, 80vw); }
+  .l-btn.small { flex: 1; width: auto; padding: 9px 6px; font-size: 13px; }
+  #l-help { font-size: 12px; color: #d6caf5; text-align: center; max-width: 320px; text-shadow: 0 1px 6px #000; }
+  #l-ver { font-size: 11px; color: #b9aee0; text-shadow: 0 1px 4px #000; }
+  .hof-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .hof-rank { font-weight: 800; color: #ffe36b; text-align: center; }
+  .hof-row small { color: #a9a3c2; }
+  .set-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .set-row input[type=range] { flex: 1; max-width: 220px; accent-color: #ffb347; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { padding: 8px 14px; background: #3a3350; }
+  .seg button.sel { background: #d9822b; color: #2a1200; }
   @media (max-width: 520px) {
     #bar { gap: 4px; padding: 6px 5px max(6px, env(safe-area-inset-bottom)); }
     #bar button img { width: 30px; height: 30px; }
@@ -80,19 +113,40 @@
 <body>
 <canvas id="game"></canvas>
 <div id="essence-wrap"><img class="ico" src="assets/ui_soul.png" width="26" height="26" alt="" onerror="this.outerHTML='✦'"> <span id="essence">0</span></div>
-<div id="hint-tip">Buraya tıkla!</div>
-<button id="master-btn"><img class="ico" src="assets/ui_skill.png" width="26" height="26" alt="" onerror="this.style.display='none'"> Usta Cadı: Eğitim</button>
+<div id="hint-tip" data-t>Buraya tıkla!</div>
+<button id="btn-settings" title="Ayarlar"><img src="assets/ui_settings.png" alt="" onerror="this.outerHTML='⚙'"></button>
+<button id="master-btn"><img class="ico" src="assets/ui_skill.png" width="26" height="26" alt="" onerror="this.style.display='none'"> <span data-t>Usta Cadı: Eğitim</span></button>
 <div id="bar">
-  <button id="btn-tree"><img src="assets/ui_skill.png" alt="" onerror="this.style.display='none'">Yetenek</button>
-  <button id="btn-weapons"><img src="assets/ui_spells.png" alt="" onerror="this.style.display='none'">Büyüler</button>
-  <button id="btn-gear"><img src="assets/ui_gear.png" alt="" onerror="this.style.display='none'">Ekipman</button>
-  <button id="btn-crystals"><img src="assets/ui_crystal.png" alt="" onerror="this.style.display='none'">Kristal</button>
-  <button id="btn-stats"><img src="assets/ui_stats.png" alt="" onerror="this.style.display='none'">Stat</button>
-  <button id="btn-cards"><img src="assets/ui_cards.png" alt="" onerror="this.style.display='none'">Kartlar</button>
-  <button id="btn-map"><img src="assets/ui_map.png" alt="" onerror="this.style.display='none'">Harita</button>
+  <button id="btn-tree"><img src="assets/ui_skill.png" alt="" onerror="this.style.display='none'"><span data-t>Yetenek</span></button>
+  <button id="btn-weapons"><img src="assets/ui_spells.png" alt="" onerror="this.style.display='none'"><span data-t>Büyüler</span></button>
+  <button id="btn-gear"><img src="assets/ui_gear.png" alt="" onerror="this.style.display='none'"><span data-t>Ekipman</span></button>
+  <button id="btn-crystals"><img src="assets/ui_crystal.png" alt="" onerror="this.style.display='none'"><span data-t>Kristal</span></button>
+  <button id="btn-stats"><img src="assets/ui_stats.png" alt="" onerror="this.style.display='none'"><span data-t>Stat</span></button>
+  <button id="btn-cards"><img src="assets/ui_cards.png" alt="" onerror="this.style.display='none'"><span data-t>Kartlar</span></button>
+  <button id="btn-map"><img src="assets/ui_map.png" alt="" onerror="this.style.display='none'"><span data-t>Harita</span></button>
 </div>
 <div id="panel"></div>
 <div id="mini"></div>
+<div id="landing">
+  <div class="l-bg"></div>
+  <div class="l-top">
+    <img id="l-logo" src="assets/logo_title.png" alt="HEXLING" onerror="this.style.display='none';document.getElementById('l-logo-txt').style.display='block'">
+    <div id="l-logo-txt">HEXLING</div>
+    <div class="l-sub"><span data-t>Kırk Ada</span></div>
+  </div>
+  <div class="l-bottom">
+    <div id="l-save"></div>
+    <input id="l-name" maxlength="16" autocomplete="off" spellcheck="false">
+    <button id="l-continue" class="l-btn primary"><span data-t>Devam et</span></button>
+    <button id="l-new" class="l-btn"><span data-t>Yeni oyun</span></button>
+    <div class="l-row">
+      <button id="l-settings" class="l-btn small"><img src="assets/ui_settings.png" width="20" height="20" alt="" onerror="this.style.display='none'"> <span data-t>Ayarlar</span></button>
+      <button id="l-hof" class="l-btn small"><img src="assets/ui_stats.png" width="20" height="20" alt="" onerror="this.style.display='none'"> <span data-t>Şeref Salonu</span></button>
+    </div>
+    <div id="l-help" data-t>Hareket: ekrana basılı tutup sürükle. Büyüler kendiliğinden atılır.</div>
+    <div id="l-ver"></div>
+  </div>
+</div>
 <script type="module" src="dist/main.js"></script>
 </body>
 </html>
