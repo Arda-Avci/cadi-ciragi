@@ -64,6 +64,8 @@ const RULES = [
     [/^\+(\d+) (.+) kopyası$/, '+$1 $2 copy'],
     [/^(.+) kuşanıldı \(ek yuva\)$/, '$1 equipped (extra slot)'],
     [/^(.+) kuşanıldı$/, '$1 equipped'],
+    [/^(.+) birleştirildi \(sv\.(.+)\)$/, '$1 merged (lv.$2)'],
+    [/^\+(.+) Can iyileşti \(yıkılan yapı\)$/, '+$1 Health restored (destroyed structure)'],
     [/^(.+) bulundu!$/, '$1 found!'],
     [/^(.+) açıldı!$/, '$1 unlocked!'],
     [/^(.+) yenildi! (.+)$/, '$1 defeated! $2'],

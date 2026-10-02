@@ -91,6 +91,9 @@ export class Game {
         this.campsOf = new Map();
         this.houseFlash = new Map();
         this.weightCache = new Map();
+        // ---- kale / bina hedefleri: boss kadar canlı, zarar vermez, yıkılınca canın %2'sini verir ----
+        this.bldHp = new Map();
+        this.bldFlash = new Map();
         this.onMaster = () => { };
         this.ctx = canvas.getContext('2d');
         // sahne içi bütün yazılar seçili dile çevrilir
@@ -374,7 +377,7 @@ export class Game {
         if (!this.world)
             return false;
         for (const o of this.world.obstacles)
-            if (Math.hypot(o.x - x, o.y - y) < o.r + pad)
+            if (Math.hypot(o.x - x, o.y - y) < o.r + pad && !this.bldDown(o))
                 return true;
         return false;
     }
@@ -537,7 +540,7 @@ export class Game {
                 if (obstacles.some((o) => Math.hypot(o.x - x, o.y - y) < o.r + r + 70))
                     continue;
                 obstacles.push({
-                    x, y, r, kind: bld ? 'bld' : 'rock', art: bld ? zone.art.bld[k % 3] : zone.art.rock, size: bld ? 170 : r * 3.6, flip: orng() < 0.5 ? 1 : -1,
+                    id: reg * 100 + obstacles.length, x, y, r, kind: bld ? 'bld' : 'rock', art: bld ? zone.art.bld[k % 3] : zone.art.rock, size: bld ? 170 : r * 3.6, flip: orng() < 0.5 ? 1 : -1,
                 });
                 break;
             }
@@ -881,6 +884,19 @@ export class Game {
         const it = {
             id: this.save.nextItem++, type, rarity: Math.max(minRarity, r), level: 1, dtype: DTYPES[Math.floor(Math.random() * 3)],
         };
+        // aynı türden (tür + nadirlik + hasar türü) eşya otomatik birleştirilir: eldekinin seviyesi artar
+        const twin = this.save.items.find((x) => x.type === type && x.rarity === it.rarity && x.dtype === it.dtype);
+        if (twin) {
+            if (twin.level < MAX_ITEM_LEVEL)
+                twin.level++;
+            else
+                this.save.dust += 8 * (1 + twin.rarity) * twin.level;
+            this.save.nextItem--;
+            this.gain(RARITIES[twin.rarity].name + ' ' + EQUIP_NAMES[type][twin.rarity] + ' birleştirildi (sv.' + twin.level + ')', RARITIES[twin.rarity].color, 'icon_' + type);
+            this.persist();
+            this.onChange();
+            return twin;
+        }
         this.save.items.push(it);
         this.gain(RARITIES[it.rarity].name + ' ' + EQUIP_NAMES[type][it.rarity] + ' (' + DTYPE_NAMES[it.dtype] + ') bulundu!', RARITIES[it.rarity].color, 'icon_' + type);
         // hemen kullanılabilir: yuva boşsa ya da yeni eşya daha güçlüyse anında kuşanılır
@@ -953,6 +969,12 @@ export class Game {
         this.castPulse = Math.max(0, this.castPulse - dt);
         this.hurtFlash = Math.max(0, this.hurtFlash - dt);
         this.loadT = Math.max(0, this.loadT - dt);
+        for (const [k, v] of this.bldFlash) {
+            if (v <= dt)
+                this.bldFlash.delete(k);
+            else
+                this.bldFlash.set(k, v - dt);
+        }
         for (const g of this.gains) {
             if (g.delay > 0)
                 g.delay -= dt;
@@ -1263,6 +1285,15 @@ export class Game {
         }
         if (best)
             return best;
+        for (const o of this.liveBlds()) {
+            const d = Math.hypot(o.x - this.px, o.y - this.py);
+            if (d < bd && this.visible(o.x, o.y)) {
+                bd = d;
+                best = { x: o.x, y: o.y };
+            }
+        }
+        if (best)
+            return best;
         for (const t of this.treesNear(this.px, this.py, range)) {
             if (this.isCleared('t' + t.id))
                 continue;
@@ -1405,6 +1436,9 @@ export class Game {
         for (const s of this.bossHouses())
             if (apply(s.x, s.y, 56))
                 this.hitHouse(s, p.dmg, p.dtype);
+        for (const o of this.liveBlds())
+            if (apply(o.x, o.y, o.r))
+                this.hitBld(o, p.dmg);
     }
     updateProjs(dt) {
         const keep = [];
@@ -1494,6 +1528,19 @@ export class Game {
             if (Math.hypot(s.x - p.x, s.y - p.y) < 56 + r) {
                 p.hit.add(s);
                 this.hitHouse(s, p.dmg, p.dtype);
+                if (!once) {
+                    p.pierce--;
+                    if (p.pierce < 0)
+                        return;
+                }
+            }
+        }
+        for (const o of this.liveBlds()) {
+            if (p.hit.has(o))
+                continue;
+            if (Math.hypot(o.x - p.x, o.y - p.y) < o.r + r) {
+                p.hit.add(o);
+                this.hitBld(o, p.dmg);
                 if (!once) {
                     p.pierce--;
                     if (p.pierce < 0)
@@ -1591,6 +1638,38 @@ export class Game {
         const maxHp = def.hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv;
         const dmg = def.dmg * TIERS.boss.dmg * ZONES[reg].dmgScale * Math.sqrt(sp.lv);
         return Math.sqrt(maxHp * (dmg / 0.6)) * 10;
+    }
+    /** bu adadaki boss'un azami canı: binalar da bu kadar candır */
+    bldMaxHp(reg) {
+        const sp = this.zoneWorld(reg).spawners.find((x) => x.reg === reg && x.tier === 'boss' && x.bridge === undefined);
+        if (!sp)
+            return 1e9;
+        return ENEMIES[sp.kind].hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv;
+    }
+    bldDown(o) { return o.kind === 'bld' && this.isCleared('o' + o.id); }
+    liveBlds() {
+        return this.world ? this.world.obstacles.filter((o) => o.kind === 'bld' && !this.bldDown(o)) : [];
+    }
+    bldReg(o) { return Math.floor(o.id / 100); }
+    hitBld(o, raw) {
+        const max = this.bldMaxHp(this.bldReg(o));
+        const hp = (this.bldHp.get(o.id) ?? max) - raw;
+        this.bldFlash.set(o.id, 0.12);
+        audio.play('hit');
+        this.float(o.x, o.y - o.size * 0.7, this.fmt(raw), '#ffd9a0');
+        if (hp > 0) {
+            this.bldHp.set(o.id, hp);
+            return;
+        }
+        this.bldHp.delete(o.id);
+        this.save.spawn['o' + o.id] = this.now() + 600 * 1000; // 10 dk sonra yeniden kurulur
+        const h = Math.min(this.maxHp() - this.hp, this.maxHp() * 0.02);
+        this.hp += h;
+        audio.play('kill');
+        this.deathFx.push({ x: o.x, y: o.y, t: 0.45, name: o.art, size: o.size, flip: o.flip });
+        this.gain('+' + this.fmt(this.maxHp() * 0.02) + ' Can iyileşti (yıkılan yapı)', '#7bff9a', 'ui_heart');
+        this.persist();
+        this.onChange();
     }
     /**
      * Kalıcı harita kazancı: adadaki kalan kazanç kaynakları arasında, güç o adanın boss gücünün MARGIN katına ulaşacak
@@ -2150,15 +2229,29 @@ export class Game {
                 continue;
             if (!this.inView(o.x, o.y, o.size, camX, camY))
                 continue;
+            if (this.bldDown(o))
+                continue;
             c.fillStyle = 'rgba(0,0,0,0.3)';
             c.beginPath();
             c.ellipse(o.x + 4, o.y + o.r * 0.5, o.r * 1.15, o.r * 0.42, 0, 0, Math.PI * 2);
             c.fill();
-            if (!this.drawSprX(o.art, o.x, o.y - o.size * 0.3, o.size, { flip: o.flip })) {
+            const fl = o.kind === 'bld' && (this.bldFlash.get(o.id) ?? 0) > 0;
+            if (!this.drawSprX(o.art, o.x, o.y - o.size * 0.3, o.size, { flip: o.flip, flash: fl })) {
                 c.fillStyle = o.kind === 'bld' ? '#7a5a3a' : '#6e7480';
                 c.beginPath();
                 c.arc(o.x, o.y - o.r * 0.3, o.r, 0, Math.PI * 2);
                 c.fill();
+            }
+            if (o.kind === 'bld') {
+                const cur = this.bldHp.get(o.id);
+                if (cur !== undefined) {
+                    const f = Math.max(0, cur / this.bldMaxHp(this.bldReg(o)));
+                    const bw = 70;
+                    c.fillStyle = 'rgba(0,0,0,0.55)';
+                    c.fillRect(o.x - bw / 2 - 1, o.y - o.size * 0.95 - 1, bw + 2, 8);
+                    c.fillStyle = f <= 0.2 ? '#ff5a5a' : f <= 0.5 ? '#ffd84a' : '#5fe07a';
+                    c.fillRect(o.x - bw / 2, o.y - o.size * 0.95, bw * f, 6);
+                }
             }
         }
     }
