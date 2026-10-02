@@ -375,12 +375,37 @@ if ('serviceWorker' in navigator && !location.search.includes('nosw')) {
   navigator.serviceWorker.register('sw.js').catch((e) => console.error('service worker kaydedilemedi', e));
 }
 
+// yapılabilecek geliştirme varsa ilgili düğme parlar, "Buraya tıkla!" balonu zıplar (oyun kesilmez, dokunma engellenmez)
+const hintTip = document.getElementById('hint-tip') as HTMLDivElement;
+const hintBtns: [string, 'tree' | 'weapons' | 'gear' | 'crystals'][] = [['btn-tree', 'tree'], ['btn-weapons', 'weapons'], ['btn-gear', 'gear'], ['btn-crystals', 'crystals']];
+let hintAt = 0;
+function updateHints(now: number): void {
+  if (now - hintAt < 500) return;
+  hintAt = now;
+  const h = game.upgradeHints();
+  let first: HTMLElement | null = null;
+  for (const [id, key] of hintBtns) {
+    const b = document.getElementById(id) as HTMLElement | null;
+    if (!b) continue;
+    const on = h[key] && open !== key && mini.style.display !== 'flex';
+    b.classList.toggle('hint', on);
+    if (on && !first) first = b;
+  }
+  if (first && !open) {
+    const r = first.getBoundingClientRect();
+    hintTip.style.display = 'block';
+    hintTip.style.left = r.left + r.width / 2 + 'px';
+    hintTip.style.top = r.top - 34 + 'px';
+  } else hintTip.style.display = 'none';
+}
+
 let last = performance.now();
 function frame(now: number): void {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   game.update(dt);
   game.render();
+  updateHints(now);
   masterBtn.style.display = !open && game.nearMaster() >= 0 && !game.mapOpen && mini.style.display !== 'flex' ? 'flex' : 'none';
   requestAnimationFrame(frame);
 }

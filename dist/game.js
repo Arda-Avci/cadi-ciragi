@@ -45,6 +45,8 @@ export class Game {
         this.flyMark = new WeakMap();
         this.puffs = [];
         this.puffT = 0;
+        this.bossHealAcc = 0;
+        this.bossHealShow = 0;
         /** kapı açılış animasyonu (bölge numarası, kalan süre) */
         this.gateAnim = null;
         this.hurtFlash = 0;
@@ -61,6 +63,7 @@ export class Game {
         this.w = 0;
         this.h = 0;
         this.sprites = new Map();
+        this.houseFlash = new Map();
         this.onMaster = () => { };
         this.ctx = canvas.getContext('2d');
         this.loadSprites();
@@ -432,6 +435,19 @@ export class Game {
         this.onChange();
         return true;
     }
+    /** hangi paneller için yapılabilecek bir geliştirme var (oyunu kesmeyen "buraya tıkla" uyarısı için) */
+    upgradeHints() {
+        const s = this.save;
+        const tree = UPGRADES.some((u) => {
+            const l = this.lv(u.id);
+            return l < u.max && (!u.requires || this.lv(u.requires) >= 1) && s.essence >= upgradeCost(u, l);
+        });
+        const weapons = WEAPONS.some((_, i) => s.weapons[i] < MAX_WEAPON_LEVEL && s.copies[i] >= this.weaponNeed(i));
+        const gear = s.items.some((it) => it.level < MAX_ITEM_LEVEL && s.essence >= itemUpgradeCost(it.level, it.rarity));
+        const crystals = s.geodes >= 1 || (s.crystals.length > s.equipped.length && s.equipped.length < this.slots())
+            || s.crystals.some((c) => c.enchant < MAX_ENCHANT && s.dust >= enchantCost(c.enchant));
+        return { tree, weapons, gear, crystals };
+    }
     // ---- kristaller ----
     openGeode() {
         if (this.save.geodes < 1)
@@ -603,6 +619,24 @@ export class Game {
                 this.healAcc = 0;
                 this.healShow = 1.1;
             }
+        }
+        if (this.inBossHouse()) {
+            // boss evinin içi: hızlı iyileşme
+            const b4 = this.hp;
+            this.hp = Math.min(this.maxHp(), this.hp + 0.12 * this.maxHp() * dt);
+            this.bossHealAcc += this.hp - b4;
+            this.bossHealShow -= dt;
+            if (this.bossHealShow <= 0 && this.bossHealAcc >= 1) {
+                this.gain('+' + this.fmt(this.bossHealAcc) + ' Can iyileşti (boss evi)', '#7bff9a', 'ui_heart');
+                this.bossHealAcc = 0;
+                this.bossHealShow = 1.1;
+            }
+        }
+        for (const [k, v] of this.houseFlash) {
+            if (v <= dt)
+                this.houseFlash.delete(k);
+            else
+                this.houseFlash.set(k, v - dt);
         }
         this.invuln = Math.max(0, this.invuln - dt);
         this.syncSpawners();
@@ -809,6 +843,13 @@ export class Game {
                 best = { x: e.x, y: e.y };
             }
         }
+        for (const s of this.bossHouses()) {
+            const d = Math.hypot(s.x - this.px, s.y - this.py);
+            if (d < bd) {
+                bd = d;
+                best = { x: s.x, y: s.y };
+            }
+        }
         if (best)
             return best;
         for (const t of this.getWorld().trees) {
@@ -895,6 +936,22 @@ export class Game {
             this.areaHit(p, true);
         }
     }
+    /** canlı boss'un evi (kampı): vurulabilir, vuruşlar boss'a zarar verir */
+    bossHouses() {
+        return this.getWorld().spawners.filter((s) => s.tier === 'boss' && !this.spCleared(s) && this.enemies.some((e) => e.sp === s.id));
+    }
+    hitHouse(sp, raw, dtype) {
+        const boss = this.enemies.find((e) => e.sp === sp.id);
+        if (!boss)
+            return;
+        this.houseFlash.set(sp.id, 0.15);
+        this.hitEnemy(boss, raw * 0.6, dtype);
+        this.float(sp.x, sp.y - 50, 'EV', '#ffb36b');
+    }
+    /** boss evinin içindeyken sağlık kazanılır */
+    inBossHouse() {
+        return this.bossHouses().some((s) => Math.hypot(s.x - this.px, s.y - this.py) < 130);
+    }
     /** Alan hasarı: ring (iksir patlaması) ya da slash (kepçe, ön koni) */
     areaHit(p, cone) {
         const apply = (ex, ey, er) => {
@@ -918,6 +975,9 @@ export class Game {
             if (!this.isCleared('t' + t.id) && apply(t.x, t.y, 24))
                 this.hitTree(t, p.dmg);
         }
+        for (const s of this.bossHouses())
+            if (apply(s.x, s.y, 56))
+                this.hitHouse(s, p.dmg, p.dtype);
     }
     updateProjs(dt) {
         const keep = [];
@@ -994,6 +1054,19 @@ export class Game {
             if (Math.hypot(t.x - p.x, t.y - p.y) < 26 + r) {
                 p.hit.add(t);
                 this.hitTree(t, p.dmg);
+                if (!once) {
+                    p.pierce--;
+                    if (p.pierce < 0)
+                        return;
+                }
+            }
+        }
+        for (const s of this.bossHouses()) {
+            if (p.hit.has(s))
+                continue;
+            if (Math.hypot(s.x - p.x, s.y - p.y) < 56 + r) {
+                p.hit.add(s);
+                this.hitHouse(s, p.dmg, p.dtype);
                 if (!once) {
                     p.pierce--;
                     if (p.pierce < 0)
@@ -1469,6 +1542,21 @@ export class Game {
                 c.arc(sp.x, sp.y, sp.tier === 'boss' ? 400 : 250, 0, Math.PI * 2);
                 c.stroke();
                 c.restore();
+                if (sp.tier === 'boss') {
+                    // boss evi: içi iyileştirir (yeşil alan), vurulabilir
+                    const pulse = 0.5 + 0.5 * Math.sin(this.time * 2.2);
+                    const gr = c.createRadialGradient(sp.x, sp.y, 10, sp.x, sp.y, 130);
+                    gr.addColorStop(0, `rgba(120,255,170,${0.2 + 0.1 * pulse})`);
+                    gr.addColorStop(1, 'rgba(120,255,170,0)');
+                    c.fillStyle = gr;
+                    c.beginPath();
+                    c.arc(sp.x, sp.y, 130, 0, Math.PI * 2);
+                    c.fill();
+                    c.font = 'bold 12px sans-serif';
+                    c.textAlign = 'center';
+                    c.fillStyle = '#c8ffd8';
+                    c.fillText('BOSS EVİ · vur / iyileş', sp.x, sp.y + 78);
+                }
             }
             c.globalAlpha = cleared ? 0.45 : 1;
             if (!this.drawSpr('camp', sp.x, sp.y, 120)) {
@@ -1479,6 +1567,13 @@ export class Game {
                 c.stroke();
             }
             c.globalAlpha = 1;
+            const hf = this.houseFlash.get(sp.id);
+            if (hf) {
+                c.fillStyle = `rgba(255,255,255,${Math.min(0.6, hf * 4)})`;
+                c.beginPath();
+                c.arc(sp.x, sp.y, 52, 0, Math.PI * 2);
+                c.fill();
+            }
             if (cleared && sp.tier === 'boss') {
                 c.fillStyle = '#b8ffcc';
                 c.font = 'bold 13px sans-serif';
@@ -1674,12 +1769,17 @@ export class Game {
         const lift = flying ? -30 + Math.sin(t * 4) * 3 : 0;
         // animasyon karesi: uçuş > büyü > yürüyüş (iki kare) > duruş
         let frame = 'witch';
-        if (flying && this.spr('witch_fly'))
+        const has = (n) => !!this.spr(n);
+        if (flying && has('witch_fly1') && has('witch_fly2'))
+            frame = Math.floor(t * 4) % 2 === 0 ? 'witch_fly1' : 'witch_fly2';
+        else if (flying && has('witch_fly'))
             frame = 'witch_fly';
-        else if (cast > 0 && this.spr('witch_cast'))
+        else if (cast > 0 && has('witch_cast1') && has('witch_cast2'))
+            frame = cast > 0.5 ? 'witch_cast2' : 'witch_cast1';
+        else if (cast > 0 && has('witch_cast'))
             frame = 'witch_cast';
-        else if (this.moving && this.spr('witch_walk1') && this.spr('witch_walk2'))
-            frame = Math.floor(t * 8) % 2 === 0 ? 'witch_walk1' : 'witch_walk2';
+        else if (this.moving && has('witch_walk4'))
+            frame = 'witch_walk' + (1 + (Math.floor(t * 9) % 4));
         const drawn = this.drawSprX(frame, this.px, this.py - 8, flying ? 86 : 74, {
             flip, rot: o.rot + cast * 0.12 * flip, sx: o.sx * sc, sy: o.sy * sc, bob: o.bob + lift, flash: this.hurtFlash > 0,
         });

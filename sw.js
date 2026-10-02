@@ -1,5 +1,5 @@
 // Çevrimdışı çalışma: önce önbellek, arkada güncelle (stale-while-revalidate).
-const CACHE = 'cadi-v5';
+const CACHE = 'cadi-v6';
 const CORE = ['index.html', 'manifest.webmanifest', 'dist/main.js', 'dist/game.js', 'dist/data.js', 'assets/manifest.json'];
 
 self.addEventListener('install', (e) => {
