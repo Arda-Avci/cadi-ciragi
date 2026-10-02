@@ -121,6 +121,13 @@ export class Game {
   moving = false;
   mapOpen = false;
   castPulse = 0;
+  /** süpürge uçuşu: kalan saniye; havadayken düşman zarar veremez */
+  flyT = 0;
+  private flyMark = new WeakMap<Enemy, number>();
+  private puffs: { x: number; y: number; t: number; fly: boolean }[] = [];
+  private puffT = 0;
+  /** kapı açılış animasyonu (bölge numarası, kalan süre) */
+  gateAnim: { i: number; t: number } | null = null;
   hurtFlash = 0;
   deathFx: DeathFx[] = [];
   gains: Gain[] = [];
@@ -354,6 +361,8 @@ export class Game {
   }
 
   isCleared(key: string): boolean { return (this.save.spawn[key] ?? 0) > this.now(); }
+  /** kamp temiz mi: yenilen boss bir daha çıkmaz */
+  spCleared(sp: Spawner): boolean { return this.isCleared('s' + sp.id) || (sp.tier === 'boss' && this.save.bossDown[sp.reg]); }
 
   // ---- statlar ----
   lv(id: string): number { return this.save.upgrades[id] ?? 0; }
@@ -390,7 +399,7 @@ export class Game {
   reachMul(): number { return 1 + 0.06 * this.lv('reach'); }
   magnet(): number { return 70 + 25 * this.lv('magnet') + this.cb('magnet'); }
   yieldMul(): number { return (1 + 0.1 * this.lv('yield')) * (1 + this.cb('yield') / 100); }
-  speed(): number { return 150 * (1 + 0.04 * this.lv('speed')) * (1 + this.cb('speed') / 100); }
+  speed(): number { return 150 * (1 + 0.04 * this.lv('speed')) * (1 + this.cb('speed') / 100) * (this.flyT > 0 ? 1.35 : 1); }
   critChance(): number { return Math.min(0.75, this.cb('crit') / 100); }
   lifesteal(): number { return Math.min(0.5, this.cb('lifesteal') / 100); }
   evasion(): number { return Math.min(0.6, this.cb('evasion') / 100); }
@@ -427,11 +436,12 @@ export class Game {
     let dps = 0;
     for (const i of this.equippedWeapons()) dps += (this.weaponDmg(i) * this.weaponCopies(i) * this.castSpeed()) / WEAPONS[i].cooldown;
     const red = (this.typedReduction('cut') + this.typedReduction('pierce') + this.typedReduction('smash')) / 3 / 100;
-    const effHp = this.maxHp() / (this.armor() * (1 - Math.min(0.9, red)));
+    // can azaldıkça güç de azalır: mevcut can esas alınır
+    const effHp = Math.max(1, Math.min(this.hp, this.maxHp())) / (this.armor() * (1 - Math.min(0.9, red)));
     return Math.floor(Math.sqrt(effHp * Math.max(1, dps)) * 10);
   }
   enemyDmg(e: Enemy): number { return e.def.dmg * TIERS[e.tier].dmg * ZONES[e.reg].dmgScale * Math.sqrt(e.lv); }
-  enemyPower(e: Enemy): number { return Math.floor(Math.sqrt(e.maxHp * (this.enemyDmg(e) / 0.6)) * 10); }
+  enemyPower(e: Enemy): number { return Math.floor(Math.sqrt(Math.max(1, e.hp) * (this.enemyDmg(e) / 0.6)) * 10); }
   weakness(e: Enemy): DType { return DTYPES.reduce((b, t) => (e.def.resist[t] > e.def.resist[b] ? t : b), DTYPES[0]); }
 
   statLines(): { label: string; value: string }[] {
@@ -547,6 +557,12 @@ export class Game {
     };
     this.save.items.push(it);
     this.gain(RARITIES[it.rarity].name + ' ' + EQUIP_NAMES[type][it.rarity] + ' (' + DTYPE_NAMES[it.dtype] + ') bulundu!', RARITIES[it.rarity].color, 'icon_' + type);
+    // hemen kullanılabilir: yuva boşsa ya da yeni eşya daha güçlüyse anında kuşanılır
+    const cur = this.save.items.find((x) => x.id === this.save.eq[type]);
+    if (!cur || it.rarity * 100 + it.level > cur.rarity * 100 + cur.level) {
+      this.save.eq[type] = it.id;
+      this.gain(EQUIP_NAMES[type][it.rarity] + ' kuşanıldı', '#ffe36b', 'icon_' + type);
+    }
     this.persist();
     this.onChange();
     return it;
@@ -600,7 +616,10 @@ export class Game {
       if (this.dead <= 0) this.respawn();
       return;
     }
+    this.flyT = Math.max(0, this.flyT - dt);
+    if (this.gateAnim) { this.gateAnim.t -= dt; if (this.gateAnim.t <= 0) this.gateAnim = null; }
     this.movePlayer(dt);
+    this.updatePuffs(dt);
     this.region = this.regionAt(this.px, this.py);
     const calm = !this.enemies.some((e) => e.state === 'chase');
     const atHome = this.inHome();
@@ -626,6 +645,20 @@ export class Game {
     this.floaters = this.floaters.filter((f) => f.t > 0);
     this.saveT += dt;
     if (this.saveT > 5) { this.saveT = 0; this.persist(); }
+  }
+
+  /** yürüyüş tozu / uçuş parıltısı izi */
+  private updatePuffs(dt: number): void {
+    for (const p of this.puffs) p.t -= dt;
+    this.puffs = this.puffs.filter((p) => p.t > 0);
+    this.puffT -= dt;
+    if (this.moving && this.puffT <= 0 && this.puffs.length < 40) {
+      const fly = this.flyT > 0;
+      this.puffT = fly ? 0.05 : 0.13;
+      const bx = -Math.cos(this.face);
+      const by = -Math.sin(this.face);
+      this.puffs.push({ x: this.px + bx * 12 + (Math.random() - 0.5) * 8, y: this.py + (fly ? 22 : 16) + by * 6 + (Math.random() - 0.5) * 4, t: fly ? 0.5 : 0.45, fly });
+    }
   }
 
   private movePlayer(dt: number): void {
@@ -657,7 +690,7 @@ export class Game {
     const live = new Set<number>();
     for (const e of this.enemies) live.add(e.sp);
     for (const sp of this.getWorld().spawners) {
-      if (live.has(sp.id) || this.isCleared('s' + sp.id)) continue;
+      if (live.has(sp.id) || this.spCleared(sp)) continue;
       this.spawnGroup(sp);
     }
   }
@@ -724,7 +757,7 @@ export class Game {
       if (this.walkable(nx, ny, true)) { e.x = nx; e.y = ny; }
       e.moving = Math.abs(vx) + Math.abs(vy) > 14;
       if (Math.abs(vx) > 4) e.flip = vx > 0 ? 1 : -1;
-      if (d < e.def.r * TIERS[e.tier].size + 14 && this.invuln <= 0) {
+      if (d < e.def.r * TIERS[e.tier].size + 14 && this.invuln <= 0 && this.flyT <= 0) {
         e.lunge = 0.25;
         if (Math.random() < this.blockChance()) {
           this.invuln = 0.6;
@@ -898,6 +931,16 @@ export class Game {
     const dmg = Math.max(1, raw * e.def.resist[dtype] * (crit ? 3 : 1));
     e.hp -= dmg;
     e.flash = 0.14;
+    if (e.tier === 'boss' || e.tier === 'hard') {
+      // her %10'luk zararda 5 sn süpürge uçuşu
+      const bucket = Math.min(10, Math.floor((1 - Math.max(0, e.hp) / e.maxHp) * 10));
+      const prev = this.flyMark.get(e) ?? 0;
+      this.flyMark.set(e, bucket);
+      if (bucket > prev) {
+        this.flyT = 5;
+        this.gain('Süpürge uçuşu! 5 sn dokunulmazsın', '#c8b6ff', 'icon_broom');
+      }
+    }
     if (this.lifesteal() > 0) this.hp = Math.min(this.maxHp(), this.hp + dmg * this.lifesteal());
     if (e.state === 'idle') e.state = 'chase';
     this.float(e.x, e.y - e.def.r * TIERS[e.tier].size - 22, (crit ? '!' : '') + this.fmt(dmg), crit ? '#ffd84a' : '#ffffff');
@@ -964,7 +1007,7 @@ export class Game {
     if (!sp) return;
     const tier = TIERS[sp.tier];
     const z = ZONES[sp.reg].scale;
-    this.save.spawn['s' + id] = this.now() + tier.respawn * 1000;
+    this.save.spawn['s' + id] = this.now() + (sp.tier === 'boss' ? 1e12 : tier.respawn * 1000); // boss bir daha çıkmaz
     const lvK = Math.sqrt(sp.lv);
     const FAST = 0.9; // kalıcı kazanç çarpanı (orijinale göre yine hızlı: haritada boss'a kadar ~10 dk)
     const hp0 = this.maxHp();
@@ -1013,6 +1056,7 @@ export class Game {
       this.gainItem('shield', 2);
       if (!this.save.bossDown[sp.reg]) {
         this.save.bossDown[sp.reg] = true;
+        if (sp.reg < ZONES.length - 1) this.gateAnim = { i: sp.reg, t: 3.6 };
         this.say(ZONES[sp.reg].bossName + ' yenildi! ' + (sp.reg < ZONES.length - 1 ? 'Sonraki bölgenin kapısı açıldı.' : 'Dünyayı tamamladın!'));
       } else this.say(ZONES[sp.reg].bossName + ' yenildi!');
     }
@@ -1063,7 +1107,7 @@ export class Game {
 
   campProgress(reg: number = this.region): { done: number; total: number } {
     const sps = this.getWorld().spawners.filter((s) => s.reg === reg);
-    return { done: sps.filter((s) => this.isCleared('s' + s.id)).length, total: sps.length };
+    return { done: sps.filter((s) => this.spCleared(s)).length, total: sps.length };
   }
 
   // ---- usta cadılar (kapı başında eğitim) ----
@@ -1148,6 +1192,7 @@ export class Game {
     c.globalAlpha = 1;
     c.restore();
     this.drawGains();
+    this.drawGateBanner();
     this.drawHud();
     this.drawMinimap();
     if (this.mapOpen) this.drawFullMap();
@@ -1259,14 +1304,27 @@ export class Game {
     const world = this.getWorld();
     for (const sp of world.spawners) {
       if (!this.inView(sp.x, sp.y, 90, camX, camY)) continue;
-      const cleared = this.isCleared('s' + sp.id);
+      const cleared = this.spCleared(sp);
+      if (!cleared) {
+        // kamp çemberi: evin etrafı (düşmanların kampı) renkli halkayla işaretli
+        const col = TIERS[sp.tier].color;
+        c.save();
+        c.strokeStyle = col; c.globalAlpha = 0.55; c.lineWidth = 3;
+        c.beginPath(); c.arc(sp.x, sp.y, sp.tier === 'boss' ? 130 : 76, 0, Math.PI * 2); c.stroke();
+        c.globalAlpha = 0.18; c.setLineDash([10, 10]);
+        c.beginPath(); c.arc(sp.x, sp.y, sp.tier === 'boss' ? 400 : 250, 0, Math.PI * 2); c.stroke();
+        c.restore();
+      }
       c.globalAlpha = cleared ? 0.45 : 1;
       if (!this.drawSpr('camp', sp.x, sp.y, 120)) {
         c.strokeStyle = 'rgba(0,0,0,0.4)'; c.lineWidth = 5;
         c.beginPath(); c.arc(sp.x, sp.y, 50, 0, Math.PI * 2); c.stroke();
       }
       c.globalAlpha = 1;
-      if (cleared) {
+      if (cleared && sp.tier === 'boss') {
+        c.fillStyle = '#b8ffcc'; c.font = 'bold 13px sans-serif'; c.textAlign = 'center';
+        c.fillText('YENİLDİ', sp.x, sp.y + 5);
+      } else if (cleared) {
         const left = Math.max(0, Math.ceil(((this.save.spawn['s' + sp.id] ?? 0) - this.now()) / 1000));
         c.fillStyle = '#fff'; c.font = 'bold 14px sans-serif'; c.textAlign = 'center';
         c.fillText(left >= 60 ? Math.floor(left / 60) + 'dk ' + (left % 60) + 'sn' : left + 'sn', sp.x, sp.y + 5);
@@ -1359,11 +1417,24 @@ export class Game {
     c.fillStyle = '#5a5a66';
     c.fillRect(-14, -BRIDGE_HALF_WIDTH - 16, 28, 34);
     c.fillRect(-14, BRIDGE_HALF_WIDTH - 18, 28, 34);
+    const ga = this.gateAnim && this.gateAnim.i === i ? this.gateAnim : null;
     if (locked) {
       c.fillStyle = '#8a5a2b';
       c.fillRect(-10, -BRIDGE_HALF_WIDTH + 14, 20, BRIDGE_HALF_WIDTH * 2 - 28);
       c.fillStyle = '#d9c25a';
       c.fillRect(-6, -8, 12, 16);
+    } else if (ga) {
+      // kapı kanatları iki yana kayar, ışık halkaları yayılır
+      const k = Math.min(1, (3.6 - ga.t) / 1.4);
+      const half = (BRIDGE_HALF_WIDTH - 14) * (1 - k);
+      c.fillStyle = '#8a5a2b';
+      c.fillRect(-10, -BRIDGE_HALF_WIDTH + 14, 20, Math.max(0, half));
+      c.fillRect(-10, BRIDGE_HALF_WIDTH - 14 - Math.max(0, half), 20, Math.max(0, half));
+      for (let r = 0; r < 3; r++) {
+        const ph = ((3.6 - ga.t) * 0.9 + r / 3) % 1;
+        c.strokeStyle = `rgba(150,255,190,${1 - ph})`; c.lineWidth = 5;
+        c.beginPath(); c.arc(0, 0, 20 + ph * 130, 0, Math.PI * 2); c.stroke();
+      }
     } else {
       c.strokeStyle = 'rgba(120,255,160,0.55)'; c.lineWidth = 4; c.setLineDash([8, 8]);
       c.beginPath(); c.moveTo(0, -BRIDGE_HALF_WIDTH + 14); c.lineTo(0, BRIDGE_HALF_WIDTH - 14); c.stroke();
@@ -1387,11 +1458,24 @@ export class Game {
     const helm = this.item('helmet');
     const shield = this.item('shield');
     c.globalAlpha = blink ? 0.5 : 1;
-    // gölge
-    c.fillStyle = 'rgba(0,0,0,0.25)';
-    c.beginPath(); c.ellipse(this.px, this.py + 18, 20, 7, 0, 0, Math.PI * 2); c.fill();
-    const drawn = this.drawSprX('witch', this.px, this.py - 8, 74, {
-      flip, rot: o.rot + cast * 0.12 * flip, sx: o.sx * sc, sy: o.sy * sc, bob: o.bob, flash: this.hurtFlash > 0,
+    const flying = this.flyT > 0;
+    // yürüyüş tozu / uçuş parıltısı
+    for (const p of this.puffs) {
+      const k = p.t / (p.fly ? 0.5 : 0.45);
+      c.fillStyle = p.fly ? `rgba(200,170,255,${0.7 * k})` : `rgba(215,200,170,${0.5 * k})`;
+      c.beginPath(); c.arc(p.x, p.y, (p.fly ? 3 : 4) + (1 - k) * (p.fly ? 6 : 8), 0, Math.PI * 2); c.fill();
+    }
+    // gölge (uçarken küçülür)
+    c.fillStyle = flying ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.25)';
+    c.beginPath(); c.ellipse(this.px, this.py + 18, flying ? 14 : 20, flying ? 5 : 7, 0, 0, Math.PI * 2); c.fill();
+    const lift = flying ? -30 + Math.sin(t * 4) * 3 : 0;
+    // animasyon karesi: uçuş > büyü > yürüyüş (iki kare) > duruş
+    let frame = 'witch';
+    if (flying && this.spr('witch_fly')) frame = 'witch_fly';
+    else if (cast > 0 && this.spr('witch_cast')) frame = 'witch_cast';
+    else if (this.moving && this.spr('witch_walk1') && this.spr('witch_walk2')) frame = Math.floor(t * 8) % 2 === 0 ? 'witch_walk1' : 'witch_walk2';
+    const drawn = this.drawSprX(frame, this.px, this.py - 8, flying ? 86 : 74, {
+      flip, rot: o.rot + cast * 0.12 * flip, sx: o.sx * sc, sy: o.sy * sc, bob: o.bob + lift, flash: this.hurtFlash > 0,
     });
     if (!drawn) {
       c.fillStyle = '#6d3fc0';
@@ -1413,10 +1497,14 @@ export class Game {
     c.globalAlpha = 1;
     // karakterin üstünde can ve güç
     const bw = 62;
-    const by = this.py - 66;
+    const by = this.py - 66 + (flying ? -30 : 0);
+    if (flying) {
+      c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(this.px - bw / 2 - 1, by + 9, bw + 2, 6);
+      c.fillStyle = '#c8b6ff'; c.fillRect(this.px - bw / 2, by + 10, (bw * this.flyT) / 5, 4);
+    }
     c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(this.px - bw / 2 - 1, by - 1, bw + 2, 8);
     const f = Math.max(0, Math.min(1, this.hp / this.maxHp()));
-    c.fillStyle = f > 0.5 ? '#5fe07a' : f > 0.25 ? '#ffd84a' : '#ff5a5a';
+    c.fillStyle = f > 0.5 ? '#5fe07a' : f > 0.2 ? '#ffd84a' : '#ff5a5a';
     c.fillRect(this.px - bw / 2, by, bw * f, 6);
     c.font = 'bold 12px sans-serif'; c.textAlign = 'center';
     c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.7)';
@@ -1457,7 +1545,9 @@ export class Game {
     const sp = this.getWorld().spawners[e.sp];
     if (sp && sp.tag) this.drawSpr('icon_' + sp.tag, e.x, e.y - r - 44, 22);
     c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(e.x - r - 1, e.y - r - 15, r * 2 + 2, 8);
-    c.fillStyle = '#5f5'; c.fillRect(e.x - r, e.y - r - 14, (r * 2 * e.hp) / e.maxHp, 6);
+    const hf = Math.max(0, e.hp) / e.maxHp;
+    c.fillStyle = hf <= 0.2 ? '#ff5a5a' : hf <= 0.5 ? '#ffd84a' : '#5fe07a';
+    c.fillRect(e.x - r, e.y - r - 14, r * 2 * hf, 6);
     const ratio = this.enemyPower(e) / Math.max(1, this.power());
     const col = ratio < 0.6 ? '#7bff9a' : ratio < 1.6 ? '#ffe36b' : '#ff6b6b';
     c.font = 'bold 13px sans-serif'; c.textAlign = 'center';
@@ -1503,6 +1593,33 @@ export class Game {
   }
 
   /** ganimet / kazanç yazıları: karakterin üstünde, sıralı, efektli ("+30 Can kazanıldı") */
+  /** kapı açılınca ekranda büyüyüp sönen yazı + ışık patlaması */
+  private drawGateBanner(): void {
+    const ga = this.gateAnim;
+    if (!ga) return;
+    const c = this.ctx;
+    const age = 3.6 - ga.t;
+    const pop = 1 + 0.6 * Math.exp(-age * 5);
+    const alpha = Math.min(1, ga.t / 0.8, age / 0.15);
+    const cx = this.w / 2;
+    const cy = this.h * 0.7;
+    c.save();
+    c.globalAlpha = alpha * 0.35;
+    const g = c.createRadialGradient(cx, cy, 10, cx, cy, 220);
+    g.addColorStop(0, 'rgba(150,255,190,0.9)'); g.addColorStop(1, 'rgba(150,255,190,0)');
+    c.fillStyle = g; c.fillRect(cx - 220, cy - 220, 440, 440);
+    c.globalAlpha = alpha;
+    c.translate(cx, cy); c.scale(pop, pop);
+    c.font = 'bold 30px sans-serif'; c.textAlign = 'center';
+    c.lineWidth = 6; c.strokeStyle = 'rgba(0,40,20,0.85)';
+    c.strokeText('KAPI AÇILDI!', 0, 0);
+    c.fillStyle = '#b8ffcc'; c.fillText('KAPI AÇILDI!', 0, 0);
+    c.font = 'bold 15px sans-serif';
+    const sub = ZONES[ga.i + 1].name + ' yolu açık';
+    c.strokeText(sub, 0, 26); c.fillStyle = '#fff'; c.fillText(sub, 0, 26);
+    c.restore();
+  }
+
   private drawGains(): void {
     const c = this.ctx;
     const active = this.gains.filter((g) => g.delay <= 0);
@@ -1609,7 +1726,7 @@ export class Game {
     ZONES.forEach((z) => { c.fillStyle = z.bg; c.beginPath(); c.arc(X(z.cx), Y(z.cy), z.radius * k, 0, Math.PI * 2); c.fill(); });
     for (const sp of this.getWorld().spawners) {
       if (Math.abs(sp.x - this.px) > view || Math.abs(sp.y - this.py) > view) continue;
-      c.fillStyle = this.isCleared('s' + sp.id) ? 'rgba(160,160,160,0.7)' : TIERS[sp.tier].color;
+      c.fillStyle = this.spCleared(sp) ? 'rgba(160,160,160,0.7)' : TIERS[sp.tier].color;
       const s = sp.tier === 'boss' ? 6 : sp.tier === 'elite' || sp.tier === 'knight' ? 4.5 : 3.2;
       c.fillRect(X(sp.x) - s / 2, Y(sp.y) - s / 2, s, s);
     }
@@ -1663,7 +1780,7 @@ export class Game {
       c.fillText(z.name, X(z.cx), Y(z.cy - z.radius) + 20);
     });
     for (const sp of this.getWorld().spawners) {
-      c.fillStyle = this.isCleared('s' + sp.id) ? 'rgba(160,160,160,0.7)' : TIERS[sp.tier].color;
+      c.fillStyle = this.spCleared(sp) ? 'rgba(160,160,160,0.7)' : TIERS[sp.tier].color;
       const s = sp.tier === 'boss' ? 9 : sp.tier === 'elite' || sp.tier === 'knight' ? 6 : 4;
       c.fillRect(X(sp.x) - s / 2, Y(sp.y) - s / 2, s, s);
     }
