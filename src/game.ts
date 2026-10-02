@@ -143,6 +143,10 @@ export class Game {
   moving = false;
   mapOpen = false;
   castPulse = 0;
+  /** kamera yakınlığı: nişan mesafesi arttıkça uzaklaşır (1 = normal) */
+  zoom = 1;
+  private vw = 0;
+  private vh = 0;
   /** süpürge uçuşu: kalan saniye; havadayken düşman zarar veremez */
   flyT = 0;
   private flyMark = new WeakMap<Enemy, number>();
@@ -914,6 +918,7 @@ export class Game {
     if (this.gateAnim) { this.gateAnim.t -= dt; if (this.gateAnim.t <= 0) this.gateAnim = null; }
     this.movePlayer(dt);
     this.updatePuffs(dt);
+    this.updateZoom(dt);
     const reg0 = this.region;
     this.region = this.regionAt(this.px, this.py);
     if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); }
@@ -1098,22 +1103,43 @@ export class Game {
   }
 
   // ---- büyüler ----
+  /** en uzak kuşanılan büyünün nişan mesafesi */
+  private aimRange(): number {
+    let r = 0;
+    for (const i of this.equippedWeapons()) r = Math.max(r, WEAPONS[i].range * this.reachMul());
+    return r;
+  }
+  /** nişan mesafesi ekrana sığacak kadar kamera uzaklaşır (en fazla 0.5) */
+  private updateZoom(dt: number): void {
+    const half = Math.min(this.w, this.h) / 2;
+    const target = Math.max(0.5, Math.min(1, (half * 0.94) / (this.aimRange() + 40)));
+    this.zoom += (target - this.zoom) * Math.min(1, dt * 3);
+  }
+  /** (x,y) şu an ekranda mı (atış yalnızca ekrandaki hedeflere) */
+  private visible(x: number, y: number): boolean {
+    const hw = this.w / this.zoom / 2 - 24;
+    const hh = this.h / this.zoom / 2 - 24;
+    return Math.abs(x - this.px) < hw && Math.abs(y - this.py) < hh;
+  }
+  /** yazı boyu telafisi: kamera uzaklaşınca etiketler küçülmesin */
+  private lk(): number { return 1 / Math.sqrt(this.zoom); }
+
   private nearestTarget(range: number): { x: number; y: number } | null {
     let best: { x: number; y: number } | null = null;
     let bd = range;
     for (const e of this.enemies) {
       const d = Math.hypot(e.x - this.px, e.y - this.py);
-      if (d < bd) { bd = d; best = { x: e.x, y: e.y }; }
+      if (d < bd && this.visible(e.x, e.y)) { bd = d; best = { x: e.x, y: e.y }; }
     }
     for (const s of this.bossHouses()) {
       const d = Math.hypot(s.x - this.px, s.y - this.py);
-      if (d < bd) { bd = d; best = { x: s.x, y: s.y }; }
+      if (d < bd && this.visible(s.x, s.y)) { bd = d; best = { x: s.x, y: s.y }; }
     }
     if (best) return best;
     for (const t of this.treesNear(this.px, this.py, range)) {
       if (this.isCleared('t' + t.id)) continue;
       const d = Math.hypot(t.x - this.px, t.y - this.py);
-      if (d < Math.min(bd, range * 0.8)) { bd = d; best = { x: t.x, y: t.y }; }
+      if (d < Math.min(bd, range * 0.8) && this.visible(t.x, t.y)) { bd = d; best = { x: t.x, y: t.y }; }
     }
     return best;
   }
@@ -1602,8 +1628,8 @@ export class Game {
     for (let i = 0; i < ZONES.length - 1; i++) {
       if (!this.masterOpen(i)) continue;
       const m = this.masterPos(i);
-      const sx = this.w / 2 + (m.x - this.px);
-      const sy = this.h / 2 + (m.y - this.py);
+      const sx = this.w / 2 + (m.x - this.px) * this.zoom;
+      const sy = this.h / 2 + (m.y - this.py) * this.zoom;
       if (Math.hypot(x - sx, y - sy) < 60 && Math.hypot(m.x - this.px, m.y - this.py) < 220) { this.onMaster(i); return true; }
     }
     return false;
@@ -1613,10 +1639,14 @@ export class Game {
   // ---- çizim ----
   render(): void {
     const c = this.ctx;
-    const camX = this.px - this.w / 2;
-    const camY = this.py - this.h / 2;
+    this.vw = this.w / this.zoom;
+    this.vh = this.h / this.zoom;
+    const camX = this.px - this.vw / 2;
+    const camY = this.py - this.vh / 2;
+    c.save();
+    c.scale(this.zoom, this.zoom); // sanal ekran (vw×vh) gerçek ekrana sığdırılır
     c.fillStyle = '#0c2742';
-    c.fillRect(0, 0, this.w, this.h);
+    c.fillRect(0, 0, this.vw, this.vh);
     this.drawSeaWaves(camX, camY);
     this.drawLand(camX, camY);
     c.save();
@@ -1630,7 +1660,7 @@ export class Game {
     this.drawPlayer();
     this.drawObstacles(camX, camY, true);
     for (const p of this.projs) this.drawProj(p);
-    c.font = 'bold 13px sans-serif';
+    c.font = `bold ${Math.round(13 * this.lk())}px sans-serif`;
     c.textAlign = 'center';
     for (const f of this.floaters) {
       c.globalAlpha = Math.min(1, f.t * 2);
@@ -1638,6 +1668,7 @@ export class Game {
       c.fillText(f.text, f.x, f.y);
     }
     c.globalAlpha = 1;
+    c.restore();
     c.restore();
     this.ambient.update(0.016, this.w, this.h);
     this.ambient.draw(c, this.w, this.h, this.region, this.time);
@@ -1651,7 +1682,7 @@ export class Game {
   }
 
   private inView(x: number, y: number, m: number, camX: number, camY: number): boolean {
-    return x > camX - m && x < camX + this.w + m && y > camY - m && y < camY + this.h + m;
+    return x > camX - m && x < camX + this.vw + m && y > camY - m && y < camY + this.vh + m;
   }
 
   /** animasyonlu sprite: ayak noktasından döner/ezilir, yön çevirir, vurulunca parlar */
@@ -1674,8 +1705,8 @@ export class Game {
     const c = this.ctx;
     c.strokeStyle = 'rgba(120,180,255,0.10)'; c.lineWidth = 2;
     const s = 120;
-    for (let x = Math.floor(camX / s) * s; x < camX + this.w + s; x += s) {
-      for (let y = Math.floor(camY / s) * s; y < camY + this.h + s; y += s) {
+    for (let x = Math.floor(camX / s) * s; x < camX + this.vw + s; x += s) {
+      for (let y = Math.floor(camY / s) * s; y < camY + this.vh + s; y += s) {
         const o = Math.sin(this.time * 1.2 + x * 0.05 + y * 0.03) * 6;
         c.beginPath(); c.moveTo(x - camX, y - camY + o); c.quadraticCurveTo(x - camX + 20, y - camY + o - 8, x - camX + 40, y - camY + o); c.stroke();
       }
@@ -1687,14 +1718,14 @@ export class Game {
     ZONES.forEach((zone) => {
       const cx = zone.cx - camX;
       const cy = zone.cy - camY;
-      if (cx + zone.radius + 60 < 0 || cx - zone.radius - 60 > this.w || cy + zone.radius + 60 < 0 || cy - zone.radius - 60 > this.h) return;
+      if (cx + zone.radius + 60 < 0 || cx - zone.radius - 60 > this.vw || cy + zone.radius + 60 < 0 || cy - zone.radius - 60 > this.vh) return;
       drawShore(c, cx, cy, zone.radius, this.time, shade(zone.dot, 1.45));
     });
-    for (let i = 0; i < ZONES.length - 1; i++) drawBridge(c, this.bridge(i), i, camX, camY, this.w, this.h, this.time, this.gateLocked(i));
+    for (let i = 0; i < ZONES.length - 1; i++) drawBridge(c, this.bridge(i), i, camX, camY, this.vw, this.vh, this.time, this.gateLocked(i));
     ZONES.forEach((zone, reg) => {
       const cx = zone.cx - camX;
       const cy = zone.cy - camY;
-      if (cx + zone.radius < 0 || cx - zone.radius > this.w || cy + zone.radius < 0 || cy - zone.radius > this.h) return;
+      if (cx + zone.radius < 0 || cx - zone.radius > this.vw || cy + zone.radius < 0 || cy - zone.radius > this.vh) return;
       c.save();
       c.beginPath();
       c.arc(cx, cy, zone.radius, 0, Math.PI * 2);
@@ -1713,15 +1744,15 @@ export class Game {
     const tile = this.spr(ZONES[reg].art.ground);
     if (tile) {
       const T = 256;
-      for (let x = Math.floor(camX / T) * T; x < camX + this.w + T; x += T) {
-        for (let y = Math.floor(camY / T) * T; y < camY + this.h + T; y += T) c.drawImage(tile, x - camX, y - camY, T, T);
+      for (let x = Math.floor(camX / T) * T; x < camX + this.vw + T; x += T) {
+        for (let y = Math.floor(camY / T) * T; y < camY + this.vh + T; y += T) c.drawImage(tile, x - camX, y - camY, T, T);
       }
       return;
     }
     const s = 70;
     c.fillStyle = dot;
-    for (let x = Math.floor(camX / s) * s; x < camX + this.w + s; x += s) {
-      for (let y = Math.floor(camY / s) * s; y < camY + this.h + s; y += s) {
+    for (let x = Math.floor(camX / s) * s; x < camX + this.vw + s; x += s) {
+      for (let y = Math.floor(camY / s) * s; y < camY + this.vh + s; y += s) {
         const hsh = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
         const r = hsh - Math.floor(hsh);
         c.beginPath();
@@ -1996,7 +2027,7 @@ export class Game {
     const f = Math.max(0, Math.min(1, this.hp / this.maxHp()));
     c.fillStyle = f > 0.5 ? '#5fe07a' : f > 0.2 ? '#ffd84a' : '#ff5a5a';
     c.fillRect(this.px - bw / 2, by, bw * f, 6);
-    c.font = 'bold 12px sans-serif'; c.textAlign = 'center';
+    c.font = `bold ${Math.round(12 * this.lk())}px sans-serif`; c.textAlign = 'center';
     c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.7)';
     c.strokeText('⚔ ' + this.fmt(this.power()), this.px, by - 4);
     c.fillStyle = '#ffe36b'; c.fillText('⚔ ' + this.fmt(this.power()), this.px, by - 4);
@@ -2040,15 +2071,15 @@ export class Game {
     c.fillRect(e.x - r, e.y - r - 14, r * 2 * hf, 6);
     const ratio = this.enemyPower(e) / Math.max(1, this.power());
     const col = ratio < 0.6 ? '#7bff9a' : ratio < 1.6 ? '#ffe36b' : '#ff6b6b';
-    c.font = 'bold 13px sans-serif'; c.textAlign = 'center';
+    c.font = `bold ${Math.round(13 * this.lk())}px sans-serif`; c.textAlign = 'center';
     c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.7)';
     c.strokeText('⚔ ' + this.fmt(this.enemyPower(e)), e.x, e.y - r - 19);
     c.fillStyle = col; c.fillText('⚔ ' + this.fmt(this.enemyPower(e)), e.x, e.y - r - 19);
     if (Math.hypot(e.x - this.px, e.y - this.py) < 200) {
       const a = this.spr('ui_' + e.def.atk);
       const w = this.spr('ui_' + this.weakness(e));
-      if (a && w) { c.drawImage(a, e.x - 26, e.y + r + 4, 18, 18); c.drawImage(w, e.x + 8, e.y + r + 4, 18, 18); c.fillStyle = '#e9e4ff'; c.font = '11px sans-serif'; c.fillText('›', e.x, e.y + r + 17); }
-      else { c.font = '11px sans-serif'; c.fillStyle = '#e9e4ff'; c.fillText(DTYPE_NAMES[e.def.atk] + ' vurur · ' + DTYPE_NAMES[this.weakness(e)] + ' zayıf', e.x, e.y + r + 14); }
+      if (a && w) { c.drawImage(a, e.x - 26, e.y + r + 4, 18, 18); c.drawImage(w, e.x + 8, e.y + r + 4, 18, 18); c.fillStyle = '#e9e4ff'; c.font = `${Math.round(11 * this.lk())}px sans-serif`; c.fillText('›', e.x, e.y + r + 17); }
+      else { c.font = `${Math.round(11 * this.lk())}px sans-serif`; c.fillStyle = '#e9e4ff'; c.fillText(DTYPE_NAMES[e.def.atk] + ' vurur · ' + DTYPE_NAMES[this.weakness(e)] + ' zayıf', e.x, e.y + r + 14); }
     }
   }
 

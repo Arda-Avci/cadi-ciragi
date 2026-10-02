@@ -53,3 +53,4 @@ python -m http.server 8765 --bind ::
 ## Sürüm
 
 `src/version.ts` içindeki `VERSION` / `BUILD`, açılış ekranında ve Stat/Ayarlar sayfalarında görünür.
+- **Kamera:** nişan mesafesi arttıkça kadraj uzaklaşır (en fazla ×0.5); atış yalnızca ekrandaki hedeflere yapılır, hedef kadrajda kalır.
