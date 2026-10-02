@@ -56,7 +56,7 @@ interface Spawner { id: number; reg: number; x: number; y: number; tier: Tier; k
 interface ResTree { id: number; reg: number; x: number; y: number; s: number; big: boolean }
 interface Chest { id: number; reg: number; x: number; y: number }
 /** kaya ya da bina: üzerinden geçilemez */
-interface Obstacle { id: number; x: number; y: number; r: number; kind: 'rock' | 'bld'; art: string; size: number; flip: number }
+interface Obstacle { id: number; x: number; y: number; r: number; kind: 'rock' | 'bld'; art: string; size: number; flip: number; /** can bölen: 1 = boss kadar, 2–5 = boss/2…5 */ div: number }
 interface World { spawners: Spawner[]; trees: ResTree[]; chests: Chest[]; obstacles: Obstacle[] }
 type ZoneWorld = World;
 /** adaya özel görseller (bellekte yalnızca yüklü adaların görselleri tutulur) */
@@ -77,6 +77,8 @@ interface Enemy {
   sp: number;
   x: number; y: number; hx: number; hy: number;
   hp: number; maxHp: number;
+  /** eve dönerken engele takılma: süre, sayaç, son konum; ikinci takılmadan sonra iyileşme durur */
+  stuckT?: number; stuckN?: number; noHeal?: boolean; chkX?: number; chkY?: number;
   state: 'idle' | 'chase' | 'return';
   hitCd: number;
   phase: number;
@@ -571,7 +573,7 @@ export class Game {
         if (trees.some((t) => t.big && Math.hypot(t.x - x, t.y - y) < 100)) continue;
         if (obstacles.some((o) => Math.hypot(o.x - x, o.y - y) < o.r + r + 70)) continue;
         obstacles.push({
-          id: reg * 100 + obstacles.length, x, y, r, kind: bld ? 'bld' : 'rock', art: bld ? zone.art.bld[k % 3] : zone.art.rock, size: bld ? 170 : r * 3.6, flip: orng() < 0.5 ? 1 : -1,
+          id: reg * 100 + obstacles.length, div: bld ? (k - nRocks) % 5 === 0 ? 1 : 2 + ((k - nRocks) % 4) : 1, x, y, r, kind: bld ? 'bld' : 'rock', art: bld ? zone.art.bld[k % 3] : zone.art.rock, size: bld ? 170 : r * 3.6, flip: orng() < 0.5 ? 1 : -1,
         });
         break;
       }
@@ -1091,7 +1093,7 @@ export class Game {
       if (safe && e.state === 'chase') e.state = 'return';
       if (e.state === 'idle' && d < aggro && !safe) e.state = 'chase';
       else if (e.state === 'chase' && (home > leash || d > aggro * 2.2)) e.state = 'return';
-      else if (e.state === 'return' && home < 8) e.state = 'idle';
+      else if (e.state === 'return' && home < 8) { e.state = 'idle'; e.stuckN = 0; e.noHeal = false; e.stuckT = 0; }
       let sp = e.def.speed;
       if (e.def.id === 'bat') sp *= 1 + 0.5 * Math.sin(e.phase * 5);
       let vx = 0;
@@ -1105,16 +1107,32 @@ export class Game {
       } else if (e.state === 'return') {
         vx = ((e.hx - e.x) / home) * sp * 1.6;
         vy = ((e.hy - e.y) / home) * sp * 1.6;
-        e.hp = Math.min(e.maxHp, e.hp + e.maxHp * (big ? 0.03 : 0.25) * dt);
       } else {
         vx = Math.cos(e.phase * 0.8 + e.sp) * 6;
         vy = Math.sin(e.phase * 0.7 + e.sp) * 6;
       }
       const nx = e.x + vx * dt;
       const ny = e.y + vy * dt;
+      const ox0 = e.x;
+      const oy0 = e.y;
       if (this.walkable(nx, ny, true)) { e.x = nx; e.y = ny; }
       else if (this.walkable(nx, e.y, true)) e.x = nx;
       else if (this.walkable(e.x, ny, true)) e.y = ny;
+      // iyileşme yalnızca gerçekten eve doğru ilerlerken olur (takılıp iyileşme yok)
+      if (e.state === 'return' && !e.noHeal && Math.hypot(e.x - ox0, e.y - oy0) > 0.05) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * (big ? 0.03 : 0.25) * dt);
+      if (e.state === 'return') {
+        // engele takıldı mı? 1.2 sn ilerleyemezse eve ışınlanır; tekrar olursa iyileşmesi durdurulur
+        e.stuckT = (e.stuckT ?? 0) + dt;
+        if (e.stuckT > 1.2) {
+          const moved = Math.hypot(e.x - (e.chkX ?? e.x), e.y - (e.chkY ?? e.y));
+          e.stuckT = 0; e.chkX = e.x; e.chkY = e.y;
+          if (moved < 20) {
+            e.stuckN = (e.stuckN ?? 0) + 1;
+            if (e.stuckN >= 2) e.noHeal = true;
+            if (this.walkable(e.hx, e.hy, true)) { e.x = e.hx; e.y = e.hy; }
+          }
+        }
+      } else { e.stuckT = 0; e.chkX = e.x; e.chkY = e.y; }
       e.moving = Math.abs(vx) + Math.abs(vy) > 14;
       if (Math.abs(vx) > 4) e.flip = vx > 0 ? 1 : -1;
       if (d < e.def.r * TIERS[e.tier].size + 14 && this.invuln <= 0 && this.flyT <= 0) {
@@ -1456,18 +1474,18 @@ export class Game {
   private bldHp = new Map<number, number>();
   private bldFlash = new Map<number, number>();
   /** bu adadaki boss'un azami canı: binalar da bu kadar candır */
-  private bldMaxHp(reg: number): number {
+  private bldMaxHp(o: Obstacle): number {
+    const reg = Math.floor(o.id / 100);
     const sp = this.zoneWorld(reg).spawners.find((x) => x.reg === reg && x.tier === 'boss' && x.bridge === undefined);
     if (!sp) return 1e9;
-    return ENEMIES[sp.kind].hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv;
+    return (ENEMIES[sp.kind].hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv) / o.div;
   }
   bldDown(o: Obstacle): boolean { return o.kind === 'bld' && this.isCleared('o' + o.id); }
   private liveBlds(): Obstacle[] {
     return this.world ? this.world.obstacles.filter((o) => o.kind === 'bld' && !this.bldDown(o)) : [];
   }
-  private bldReg(o: Obstacle): number { return Math.floor(o.id / 100); }
   private hitBld(o: Obstacle, raw: number): void {
-    const max = this.bldMaxHp(this.bldReg(o));
+    const max = this.bldMaxHp(o);
     const hp = (this.bldHp.get(o.id) ?? max) - raw;
     this.bldFlash.set(o.id, 0.12);
     audio.play('hit');
@@ -1475,11 +1493,14 @@ export class Game {
     if (hp > 0) { this.bldHp.set(o.id, hp); return; }
     this.bldHp.delete(o.id);
     this.save.spawn['o' + o.id] = this.now() + 600 * 1000; // 10 dk sonra yeniden kurulur
+    const firstDown = !this.save.first['o' + o.id];
+    this.save.first['o' + o.id] = 1;
+    if (firstDown) this.addPerm('elite.hp', 0.02 * this.hpPool()); // ilk yıkışta kalıcı +%2 can
     const h = Math.min(this.maxHp() - this.hp, this.maxHp() * 0.02);
     this.hp += h;
     audio.play('kill');
     this.deathFx.push({ x: o.x, y: o.y, t: 0.45, name: o.art, size: o.size, flip: o.flip });
-    this.gain('+' + this.fmt(this.maxHp() * 0.02) + ' Can iyileşti (yıkılan yapı)', '#7bff9a', 'ui_heart');
+    this.gain('+' + this.fmt(this.maxHp() * 0.02) + (firstDown ? ' Can kazanıldı (kalıcı, yapı)' : ' Can iyileşti (yıkılan yapı)'), '#7bff9a', 'ui_heart');
     this.persist();
     this.onChange();
   }
@@ -1971,7 +1992,7 @@ export class Game {
       if (o.kind === 'bld') {
         const cur = this.bldHp.get(o.id);
         if (cur !== undefined) {
-          const f = Math.max(0, cur / this.bldMaxHp(this.bldReg(o)));
+          const f = Math.max(0, cur / this.bldMaxHp(o));
           const bw = 70;
           c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(o.x - bw / 2 - 1, o.y - o.size * 0.95 - 1, bw + 2, 8);
           c.fillStyle = f <= 0.2 ? '#ff5a5a' : f <= 0.5 ? '#ffd84a' : '#5fe07a';

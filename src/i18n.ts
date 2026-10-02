@@ -68,6 +68,7 @@ const RULES: [RegExp, string][] = [
   [/^(.+) kuşanıldı$/, '$1 equipped'],
   [/^(.+) birleştirildi \(sv\.(.+)\)$/, '$1 merged (lv.$2)'],
   [/^\+(.+) Can iyileşti \(yıkılan yapı\)$/, '+$1 Health restored (destroyed structure)'],
+  [/^\+(.+) Can kazanıldı \(kalıcı, yapı\)$/, '+$1 Health gained (permanent, structure)'],
   [/^(.+) bulundu!$/, '$1 found!'],
   [/^(.+) açıldı!$/, '$1 unlocked!'],
   [/^(.+) yenildi! (.+)$/, '$1 defeated! $2'],
