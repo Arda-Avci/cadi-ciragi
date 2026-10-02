@@ -25,7 +25,7 @@ const EN: Record<string, string> = {
   'İngilizce': 'English', 'Titreşim yalnızca destekleyen cihazlarda çalışır.': 'Vibration only works on supported devices.',
   'Ana menü': 'Main menu', 'Oyuna dön': 'Back to game',
   // oyun içi metinler
-  'KİLİTLİ': 'LOCKED', 'Kapı açık': 'Gate open', 'KAPI AÇILDI!': 'GATE OPENED!', 'yolu açık': 'path is open', 'YENİLDİ': 'DEFEATED',
+  'Boss evinin mührü kalktı!': 'The boss house seal is broken!', 'KİLİTLİ': 'LOCKED', 'Kapı açık': 'Gate open', 'KAPI AÇILDI!': 'GATE OPENED!', 'yolu açık': 'path is open', 'YENİLDİ': 'DEFEATED',
   'BOSS EVİ · vur / iyileş': 'BOSS HOUSE · hit / heal', 'EV · hızlı iyileşme': 'HOME · fast healing', 'KAMP · hızlı iyileşme': 'CAMP · fast healing',
   'Eğitim için dokun!': 'Tap to train!', 'ENGEL': 'BLOCK', 'KAÇTI': 'DODGE', 'Süpürge uçuşu! 5 sn dokunulmazsın': 'Broom flight! Invulnerable for 5s',
   'Bayıldın… düşmanlar kamplarına döndü.': 'You fainted… the enemies returned to their camps.', 'Bayıldın… evde uyanıyorsun': 'You fainted… waking up at camp',
@@ -34,10 +34,20 @@ const EN: Record<string, string> = {
   'Bugünlük hakkın bitti, yarın gel': 'No attempts left today, come back tomorrow',
   'Büyü Zamanlaması': 'Spell Timing', 'İksir Karışımı': 'Potion Mix', 'Yıldız Yakalama': 'Star Catch', 'Eğitim bitti': 'Training complete',
   'Harika!': 'Great!', 'İyi iş!': 'Nice work!', 'Biraz daha çalışmalısın.': 'You need a bit more practice.',
+  'Sivri Şapka': 'Pointy Hat', 'Mantar Külahı': 'Mushroom Cap', 'Yarasa Başlığı': 'Bat Hood', 'Ay Tacı': 'Moon Crown', 'Yıldız Taçlı Şapka': 'Star-Crowned Hat',
+  'Tencere Kapağı': 'Pot Lid', 'Büyü Kitabı': 'Spellbook', 'Tılsımlı Kalkan': 'Charmed Shield', 'Ay Kalkanı': 'Moon Shield', 'Kozmik Kalkan': 'Cosmic Shield',
+  'Miğfer': 'Helmet', 'Kalkan': 'Shield', 'Can': 'Health', 'Hasar': 'Damage', 'Menzil': 'Reach', 'Hız': 'Speed', 'Ruh': 'Soul', 'Kritik': 'Crit',
+  'Can Çalma': 'Life Steal', 'Kaçınma': 'Evasion', 'kopya': 'copies', 'hasarı': 'damage',
+  'Yıldız Oku (delip geçer)': 'Star Bolt (pierces)', 'Bumerang Süpürge (gidip gelir)': 'Boomerang Broom (returns)',
+  'Patlayan İksir (alan hasarı)': 'Exploding Potion (area damage)', 'Kepçe Darbesi (yakın menzil)': 'Ladle Strike (close range)',
+  'Kolay': 'Easy', 'Orta': 'Medium', 'Zor': 'Hard', 'Elit': 'Elite', 'Muhafız': 'Guardian', 'Boss': 'Boss',
+  'Kritik / Can çalma / Kaçınma': 'Crit / Life steal / Evasion', 'savunması': 'defense', 'can': 'health', 'hasar': 'damage', 'yenilenme': 'regen',
+  'Yuva': 'Slots', 'yuva': 'slots', '(boss yendikçe artar).': '(grows as you defeat bosses).', 'Düşmanın zayıf olduğu türden büyü kuşan!': 'Equip spells of the type the enemy is weak to!',
+  'Kopyalar kamplardan düşer.': 'Copies drop from camps.', 'Boş yuva yok.': 'No free slot.', 'Başarılı!': 'Success!', 'Başarısız, toz gitti.': 'Failed, dust lost.',
   'Henüz karşılaşmadın': 'Not encountered yet',
   'Mevcut kahraman Şeref Salonu\'nda kalır. Yeni oyun başlatılsın mı?': 'Your current hero stays in the Hall of Fame. Start a new game?',
   'Mini oyunlarla eğitilip kalıcı güç kazan. Bu seviye için günde 2 eğitim hakkın var.': 'Train with mini-games to gain permanent power. You get 2 training sessions per island per day.',
-  'Bugün': 'Today', 'Düşmanın zayıf olduğu türden büyü kuşan!': 'Equip spells of the type the enemy is weak to!',
+  'Bugün': 'Today',
   'Henüz ekipmanın yok': 'You have no gear yet', 'Kristalin yok': 'You have no crystals',
 };
 
@@ -63,6 +73,9 @@ const RULES: [RegExp, string][] = [
   [/^Usta Cadı (.+)$/, 'Master Witch $1'],
   [/^(.+) yolu açık$/, '$1 path is open'],
   [/^kamp (.+) · sandık (.+)$/, 'camps $1 · chests $2'],
+  [/^MÜHÜRLÜ · kamp (.+)$/, 'SEALED · camps $1'],
+  [/^\+(.+) can\/sn$/, '+$1 health/s'],
+  [/^%(.+) ihtimalle darbeyi engeller$/, 'blocks hits with $1% chance'],
   [/^Ada (.+) · (.+) · aşılan: (.+)$/, 'Island $1 · $2 · cleared: $3'],
 ];
 

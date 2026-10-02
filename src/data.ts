@@ -208,7 +208,7 @@ function islandPath(count: number): { q: number; r: number }[] {
 function buildZones(): ZoneDef[] {
   const path = islandPath(ISLAND_COUNT);
   const rnd = lcg(7742);
-  const D = 5400;
+  const D = 4400;
   let power = 1;
   const zones: ZoneDef[] = [];
   for (let i = 0; i < ISLAND_COUNT; i++) {
@@ -217,13 +217,13 @@ function buildZones(): ZoneDef[] {
     const step = i === 0 ? 1 : 1.2 + 0.6 * rnd(); // önceki adaya göre 1.2–1.8 kat
     power *= step;
     const { q, r } = path[i];
-    const jx = (rnd() - 0.5) * 700;
-    const jy = (rnd() - 0.5) * 700;
+    const jx = (rnd() - 0.5) * 500;
+    const jy = (rnd() - 0.5) * 500;
     const tint = v.hue ? '@' + v.hue : '';
     zones.push({
       name: v.pre + b.name, bg: b.bg, dot: b.dot, enemies: b.enemies,
       scale: Math.pow(power, 1.5), dmgScale: Math.sqrt(power), step, power,
-      cx: Math.round(D * (q + r / 2) + (i === 0 ? 0 : jx)), cy: Math.round(D * r * 0.866 + (i === 0 ? 0 : jy)), radius: 1100 + 22 * i,
+      cx: Math.round(D * (q + r / 2) + (i === 0 ? 0 : jx)), cy: Math.round(D * r * 0.866 + (i === 0 ? 0 : jy)), radius: 1100 + 15 * i,
       layout: {
         easy: 6, medium: 4 + Math.floor(i / 10), hard: 3 + Math.floor(i / 8), elite: 2 + Math.floor(i / 14), knight: 2 + Math.floor(i / 14), boss: 1,
       },

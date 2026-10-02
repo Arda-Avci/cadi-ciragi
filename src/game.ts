@@ -46,6 +46,8 @@ export interface SaveData {
   perm: Record<string, number>; // haritadan kazanılan kalıcı statlar
   hero: HeroInfo;
   playSec: number;
+  first: Record<string, number>; // ilk kez temizlenen kamp/ağaçlar (kalıcı kazanç yalnızca ilkinde)
+  gw: Record<string, number>; // ada başına dağıtılmış kazanç ağırlığı
 }
 
 interface Spawner { id: number; reg: number; x: number; y: number; tier: Tier; kind: EnemyId; tag?: SlotType; lv: number }
@@ -98,6 +100,7 @@ interface Proj {
 
 const SAVE_KEY = 'cadi-ciragi-v6'; // v6: 40 adalık yeni dünya
 const TREE_RESPAWN = 120;
+const CAMP_WEIGHT: Record<Tier, number> = { easy: 1, medium: 2, hard: 3, elite: 5, knight: 5, boss: 15 };
 const GATE_GAP = 160; // kapı, bölge kıyısından bu kadar ileride
 
 function rng(seed: number): () => number {
@@ -241,7 +244,7 @@ export class Game {
   private fresh(): SaveData {
     return {
       essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
-      bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
+      bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
       chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, nextItem: 1, spawn: {}, perm: {},
     };
   }
@@ -482,9 +485,30 @@ export class Game {
       }
     });
     this.world = { spawners, trees, chests };
+    for (const t of trees) {
+      const k = this.cellKey(t.x, t.y);
+      const a = this.treeCells.get(k);
+      if (a) a.push(t); else this.treeCells.set(k, [t]);
+    }
     return this.world;
   }
 
+  private treeCells = new Map<number, ResTree[]>();
+  private cellKey(x: number, y: number): number { return Math.floor(x / 300) * 4096 + Math.floor(y / 300); }
+  /** (x,y) çevresindeki ağaçlar (ızgara ile hızlı arama; 40 adalık dünyada binlerce ağaç var) */
+  private treesNear(x: number, y: number, r: number): ResTree[] {
+    this.getWorld();
+    const out: ResTree[] = [];
+    const x0 = Math.floor((x - r) / 300);
+    const x1 = Math.floor((x + r) / 300);
+    const y0 = Math.floor((y - r) / 300);
+    const y1 = Math.floor((y + r) / 300);
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) {
+      const a = this.treeCells.get(cx * 4096 + cy);
+      if (a) for (const t of a) out.push(t);
+    }
+    return out;
+  }
   isCleared(key: string): boolean { return (this.save.spawn[key] ?? 0) > this.now(); }
   /** kamp temiz mi: yenilen boss bir daha çıkmaz */
   spCleared(sp: Spawner): boolean { return this.isCleared('s' + sp.id) || (sp.tier === 'boss' && this.save.bossDown[sp.reg]); }
@@ -529,7 +553,7 @@ export class Game {
   lifesteal(): number { return Math.min(0.5, this.cb('lifesteal') / 100); }
   evasion(): number { return Math.min(0.6, this.cb('evasion') / 100); }
   weaponDmg(i: number): number {
-    return (WEAPONS[i].baseDmg * (1 + 0.15 * (this.save.weapons[i] - 1)) + this.perm('normal.dmg')) * this.dmgMul();
+    return (WEAPONS[i].baseDmg * (1 + 0.15 * (this.save.weapons[i] - 1)) + this.perm('normal.dmg') + this.perm('elite.dmg')) * this.dmgMul();
   }
   weaponCopies(i: number): number { return 1 + Math.min(3, Math.floor((this.save.weapons[i] - 1) / 5)); }
   zone() { return ZONES[this.region]; }
@@ -576,15 +600,15 @@ export class Game {
     const out: { label: string; value: string }[] = [
       { label: 'Güç', value: this.fmt(this.power()) },
       { label: 'Azami can', value: f(this.maxHp()) },
-      { label: 'Kritik / Can çalma / Kaçınma', value: `%${(this.critChance() * 100).toFixed(1)} / %${(this.lifesteal() * 100).toFixed(1)} / %${(this.evasion() * 100).toFixed(1)}` },
+      { label: T('Kritik / Can çalma / Kaçınma'), value: `%${(this.critChance() * 100).toFixed(1)} / %${(this.lifesteal() * 100).toFixed(1)} / %${(this.evasion() * 100).toFixed(1)}` },
       { label: 'Yenilenme', value: f(this.regen()) + '/sn' },
       { label: 'Hasar çarpanı', value: '×' + this.dmgMul().toFixed(2) },
       { label: 'Alınan hasar çarpanı', value: '×' + this.armor().toFixed(2) },
     ];
-    for (const t of DTYPES) out.push({ label: DTYPE_NAMES[t] + ' savunması', value: '%' + this.typedReduction(t).toFixed(1) });
-    out.push({ label: 'map.normal_mob', value: `+${f(this.perm('normal.hp'))} can, +${f(this.perm('normal.dmg'))} hasar` });
-    out.push({ label: 'map.elite', value: `+${f(this.perm('elite.hp'))} can, +%${this.perm('elite.hpPct').toFixed(1)} can, +%${this.perm('elite.dmgPct').toFixed(1)} hasar` });
-    out.push({ label: 'map.tree', value: `+${f(this.perm('tree.hp'))} can, +${this.perm('tree.regen').toFixed(2)} yenilenme` });
+    for (const t of DTYPES) out.push({ label: T(DTYPE_NAMES[t]) + ' ' + T('savunması'), value: '%' + this.typedReduction(t).toFixed(1) });
+    out.push({ label: 'map.normal_mob', value: `+${f(this.perm('normal.hp'))} ${T('can')}, +${f(this.perm('normal.dmg'))} ${T('hasar')}` });
+    out.push({ label: 'map.elite', value: `+${f(this.perm('elite.hp'))} ${T('can')}, +${f(this.perm('elite.dmg'))} ${T('hasar')}` });
+    out.push({ label: 'map.tree', value: `+${f(this.perm('tree.hp'))} ${T('can')}, +${f(this.perm('tree.regen'))} ${T('yenilenme')}` });
     return out;
   }
 
@@ -851,7 +875,7 @@ export class Game {
     const live = new Set<number>();
     for (const e of this.enemies) live.add(e.sp);
     for (const sp of this.getWorld().spawners) {
-      if (live.has(sp.id) || this.spCleared(sp)) continue;
+      if (live.has(sp.id) || this.spCleared(sp) || this.bossSealed(sp)) continue;
       if (Math.abs(sp.x - this.px) > NEAR || Math.abs(sp.y - this.py) > NEAR || Math.hypot(sp.x - this.px, sp.y - this.py) > NEAR) continue;
       this.spawnGroup(sp);
     }
@@ -885,7 +909,7 @@ export class Game {
       e.phase += dt;
       const big = e.tier === 'boss';
       const aggro = big ? 400 : 250 + (e.tier === 'elite' || e.tier === 'knight' ? 40 : 0);
-      const leash = big ? 700 : 480;
+      const leash = big ? 1000 : 480;
       const home = Math.hypot(e.hx - e.x, e.hy - e.y);
       if (d < 320 && !this.save.seen[e.def.id + (big ? '_boss' + e.reg : '')]) {
         this.save.seen[e.def.id + (big ? '_boss' + e.reg : '')] = 1;
@@ -909,7 +933,7 @@ export class Game {
       } else if (e.state === 'return') {
         vx = ((e.hx - e.x) / home) * sp * 1.6;
         vy = ((e.hy - e.y) / home) * sp * 1.6;
-        e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.25 * dt);
+        e.hp = Math.min(e.maxHp, e.hp + e.maxHp * (big ? 0.03 : 0.25) * dt);
       } else {
         vx = Math.cos(e.phase * 0.8 + e.sp) * 6;
         vy = Math.sin(e.phase * 0.7 + e.sp) * 6;
@@ -956,7 +980,7 @@ export class Game {
       if (d < bd) { bd = d; best = { x: s.x, y: s.y }; }
     }
     if (best) return best;
-    for (const t of this.getWorld().trees) {
+    for (const t of this.treesNear(this.px, this.py, range)) {
       if (this.isCleared('t' + t.id)) continue;
       const d = Math.hypot(t.x - this.px, t.y - this.py);
       if (d < Math.min(bd, range * 0.8)) { bd = d; best = { x: t.x, y: t.y }; }
@@ -1018,6 +1042,19 @@ export class Game {
     }
   }
 
+  private campsOf = new Map<number, Spawner[]>();
+  /** boss evinin mührü: o adadaki diğer kampların %60'ı (ilk kez) temizlenmeden boss ortaya çıkmaz */
+  sealProgress(reg: number): { done: number; need: number } {
+    let list = this.campsOf.get(reg);
+    if (!list) { list = this.getWorld().spawners.filter((x) => x.reg === reg && x.tier !== 'boss'); this.campsOf.set(reg, list); }
+    return { done: list.filter((x) => this.save.first['s' + x.id]).length, need: Math.ceil(list.length * 0.6) };
+  }
+  bossSealed(sp: Spawner): boolean {
+    if (sp.tier !== 'boss' || this.save.bossDown[sp.reg]) return false;
+    const p = this.sealProgress(sp.reg);
+    return p.done < p.need;
+  }
+
   /** canlı boss'un evi (kampı): vurulabilir, vuruşlar boss'a zarar verir */
   bossHouses(): Spawner[] {
     return this.getWorld().spawners.filter((s) => s.tier === 'boss' && !this.spCleared(s) && this.enemies.some((e) => e.sp === s.id));
@@ -1049,7 +1086,7 @@ export class Game {
     for (const e of this.enemies) {
       if (apply(e.x, e.y, e.def.r * TIERS[e.tier].size)) this.hitEnemy(e, p.dmg, p.dtype);
     }
-    for (const t of this.getWorld().trees) {
+    for (const t of this.treesNear(p.x, p.y, p.r + 40)) {
       if (!this.isCleared('t' + t.id) && apply(t.x, t.y, 24)) this.hitTree(t, p.dmg);
     }
     for (const s of this.bossHouses()) if (apply(s.x, s.y, 56)) this.hitHouse(s, p.dmg, p.dtype);
@@ -1103,7 +1140,7 @@ export class Game {
         if (!once) { p.pierce--; if (p.pierce < 0) return; }
       }
     }
-    for (const t of trees) {
+    for (const t of this.treesNear(p.x, p.y, r + 40)) {
       if (p.hit.has(t) || this.isCleared('t' + t.id)) continue;
       if (Math.hypot(t.x - p.x, t.y - p.y) < 26 + r) {
         p.hit.add(t);
@@ -1175,14 +1212,62 @@ export class Game {
 
   private addPerm(k: string, v: number): void { this.save.perm[k] = (this.save.perm[k] ?? 0) + v; }
 
+  /** can havuzu: yüzde kazançlar bunun üzerine eklenir */
+  private hpPool(): number { return 100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp'); }
+  /** hasar havuzu: kuşanılan büyülerin (seviyeli) taban hasarı + kalıcı hasar ortalaması */
+  private dmgPool(): number {
+    const eq = this.equippedWeapons();
+    if (!eq.length) return 40;
+    let t = 0;
+    for (const i of eq) t += WEAPONS[i].baseDmg * (1 + 0.15 * (this.save.weapons[i] - 1)) + this.perm('normal.dmg') + this.perm('elite.dmg');
+    return t / eq.length;
+  }
+  private weightCache = new Map<number, number>();
+  /** bir adadaki bütün kalıcı kazanç kaynaklarının (kamp + ağaç) toplam ağırlığı */
+  private regionWeight(reg: number): number {
+    const hit = this.weightCache.get(reg);
+    if (hit !== undefined) return hit;
+    const L = ZONES[reg].layout;
+    const camps = (Object.keys(L) as Tier[]).reduce((a, t) => a + CAMP_WEIGHT[t] * L[t], 0);
+    const total = camps + ZONES[reg].resTrees * 0.3 + (80 + Math.min(reg, 10) * 6) * 0.02;
+    this.weightCache.set(reg, total);
+    return total;
+  }
+  /** bir adanın boss'unun gücü (kalıcı kazancın hedefi bunun MARGIN katıdır) */
+  private bossPower(reg: number): number {
+    const sp = this.getWorld().spawners.find((x) => x.reg === reg && x.tier === 'boss');
+    if (!sp) return 1e9;
+    const def = ENEMIES[sp.kind];
+    const maxHp = def.hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv;
+    const dmg = def.dmg * TIERS.boss.dmg * ZONES[reg].dmgScale * Math.sqrt(sp.lv);
+    return Math.sqrt(maxHp * (dmg / 0.6)) * 10;
+  }
+  /**
+   * Kalıcı harita kazancı: adadaki kalan kazanç kaynakları arasında, güç o adanın boss gücünün MARGIN katına ulaşacak
+   * şekilde paylaştırılır. Oyuncu zaten güçlüyse (yetenek/silah/kristal yüzünden) kazanç 0'dır; bu yüzden hiçbir yol
+   * oyuncuyu adanın zorluğundan fazla ileri taşımaz ve her ada 1.2–1.8 kat daha zordur.
+   */
+  private grantFraction(reg: number, w: number): number {
+    const total = this.regionWeight(reg);
+    const done = this.save.gw[reg] ?? 0;
+    const rem = Math.max(w, total - done);
+    this.save.gw[reg] = done + w;
+    const cap = this.bossPower(reg) * Game.MARGIN;
+    const P = Math.max(1, this.fullPower());
+    if (P >= cap) return 0;
+    return Math.pow(cap / P, Math.min(1, w / rem)) - 1;
+  }
+
   private chopTree(t: ResTree): void {
-    const z = ZONES[t.reg].scale;
     this.save.spawn['t' + t.id] = this.now() + (t.big ? TREE_RESPAWN * 2 : TREE_RESPAWN) * 1000;
     this.treeHp.delete(t.id);
-    const k = t.big ? 2.5 : 0.5 * t.s;
     const before = this.maxHp();
-    this.addPerm('tree.hp', k * z);
-    this.addPerm('tree.regen', (t.big ? 0.02 : 0.004) * Math.sqrt(z));
+    const first = !this.save.first['t' + t.id];
+    this.save.first['t' + t.id] = 1;
+    // ağaç yalnızca can ve yenilenme verir: ilk kesim tam, tekrarlar çok az (sonsuz çiftlik yok)
+    const f = first ? this.grantFraction(t.reg, t.big ? 0.3 : 0.02) : 0;
+    this.addPerm('tree.hp', f * this.hpPool());
+    this.addPerm('tree.regen', (t.big ? 0.0004 : 0.00008) * this.maxHp() * (first ? 1 : 0.2));
     const dh = this.maxHp() - before;
     this.gain('+' + this.fmt(dh) + ' Can kazanıldı', '#7bff9a', 'ui_heart', { key: 'hp', amount: dh, fmt: (n) => '+' + this.fmt(n) + ' Can kazanıldı' });
     this.persist();
@@ -1193,7 +1278,7 @@ export class Game {
     this.save.kills++;
     audio.play(e.tier === 'boss' ? 'boss' : 'kill');
     if (e.tier === 'boss') vibrate([60, 40, 120]);
-    const value = Math.max(1, Math.round(e.def.drop * TIERS[e.tier].soul * Math.pow(ZONES[e.reg].scale, 0.7) * Math.sqrt(e.lv) * this.yieldMul()));
+    const value = Math.max(1, Math.round(e.def.drop * TIERS[e.tier].soul * Math.pow(ZONES[e.reg].scale, 0.7) * Math.sqrt(e.lv) * this.yieldMul() * Game.YIELD));
     // ganimet otomatik toplanır, etkisi yazıyla gösterilir
     this.save.essence += value;
     this.gain('+' + this.fmt(value) + ' Ruh', '#8fdcff', 'ui_soul', { key: 'soul', amount: value, fmt: (n) => '+' + this.fmt(n) + ' Ruh' });
@@ -1206,23 +1291,23 @@ export class Game {
     const sp = this.getWorld().spawners[id];
     if (!sp) return;
     const tier = TIERS[sp.tier];
-    const z = ZONES[sp.reg].scale;
     this.save.spawn['s' + id] = this.now() + (sp.tier === 'boss' ? 1e12 : tier.respawn * 1000); // boss bir daha çıkmaz
     const lvK = Math.sqrt(sp.lv);
-    const FAST = 0.9; // kalıcı kazanç çarpanı (orijinale göre yine hızlı: haritada boss'a kadar ~10 dk)
     const hp0 = this.maxHp();
     const eq0 = this.equippedWeapons();
     const dmg0 = eq0.length ? this.weaponDmg(eq0[0]) : 0;
-    if (tier.permanent === 'normal') {
-      const rank = sp.tier === 'easy' ? 1 : sp.tier === 'medium' ? 2 : 3;
-      this.addPerm('normal.hp', 4 * z * rank * lvK * FAST);
-      this.addPerm('normal.dmg', 0.5 * z * rank * lvK * FAST);
-    } else {
-      const k = (sp.tier === 'boss' ? 5 : 1) * lvK * FAST;
-      this.addPerm('elite.hp', 15 * z * k);
-      this.addPerm('elite.hpPct', 0.4 * k);
-      this.addPerm('elite.dmgPct', 0.4 * k);
+    // kalıcı güç: bir adanın bütün kampları temizlenince güç, sonraki adanın zorluk artışını (×1.2–1.8) karşılayacak kadar artar.
+    // İlk temizleme tam kazanç verir; kampın tekrar temizlenmesi çok az (çiftlik yapılamaz). Kazanç, mevcut canın/hasarın yüzdesidir.
+    const first = !this.save.first['s' + id];
+    const wasSealed = this.getWorld().spawners.some((x) => x.reg === sp.reg && this.bossSealed(x));
+    this.save.first['s' + id] = 1;
+    if (wasSealed && !this.getWorld().spawners.some((x) => x.reg === sp.reg && this.bossSealed(x))) {
+      this.say('Boss evinin mührü kalktı!');
+      audio.play('gate');
     }
+    const f = first ? this.grantFraction(sp.reg, CAMP_WEIGHT[sp.tier]) : 0;
+    this.addPerm(sp.tier === 'boss' || tier.permanent === 'elite' ? 'elite.hp' : 'normal.hp', f * this.hpPool());
+    this.addPerm(sp.tier === 'boss' || tier.permanent === 'elite' ? 'elite.dmg' : 'normal.dmg', f * this.dmgPool());
     if (this.maxHp() > hp0) {
       const dh = this.maxHp() - hp0;
       this.gain('+' + this.fmt(dh) + ' Can kazanıldı', '#7bff9a', 'ui_heart', { key: 'hp', amount: dh, fmt: (n) => '+' + this.fmt(n) + ' Can kazanıldı' });
@@ -1334,6 +1419,10 @@ export class Game {
   /** usta cadı yalnızca o seviyenin boss'u yenilince ortaya çıkar */
   masterOpen(i: number): boolean { return !!this.save.bossDown[i] && this.trainPlaysLeft(i) > 0; }
   static readonly TRAIN_PER_DAY = 2;
+  /** denge: kalıcı kazanç ve ruh çarpanları (tools/bot.js ile ölçülür) */
+  static YIELD = 1;
+  /** bir adayı bitirince oyuncunun gücü, o adanın boss gücünün kaç katı olsun */
+  static MARGIN = 1.3;
   private dayNo(): number { return Math.floor((this.now() - new Date().getTimezoneOffset() * -60000) / 86400000); }
   /** bugün bu usta için kalan eğitim hakkı (her seviye için günde 2) */
   trainPlaysLeft(master: number): number {
@@ -1351,7 +1440,7 @@ export class Game {
   }
   /** mini oyun bitti: puana göre kalıcı güç kazanılır (0..1) */
   finishTraining(master: number, kind: 'timing' | 'memory' | 'stars', score: number): void {
-    const k = Math.max(0, Math.min(1, score)) * (1 + master * 0.8);
+    const k = Math.max(0, Math.min(1, score)) * (1 + master * 0.1);
     if (kind === 'timing') {
       const eq = this.equippedWeapons();
       const d0 = eq.length ? this.weaponDmg(eq[0]) : 0;
@@ -1534,7 +1623,13 @@ export class Game {
         c.globalAlpha = 0.18; c.setLineDash([10, 10]);
         c.beginPath(); c.arc(sp.x, sp.y, sp.tier === 'boss' ? 400 : 250, 0, Math.PI * 2); c.stroke();
         c.restore();
-        if (sp.tier === 'boss') {
+        if (sp.tier === 'boss' && this.bossSealed(sp)) {
+          const pr = this.sealProgress(sp.reg);
+          c.fillStyle = 'rgba(255,80,80,0.18)'; c.beginPath(); c.arc(sp.x, sp.y, 130, 0, Math.PI * 2); c.fill();
+          this.drawSpr('ui_lock', sp.x, sp.y - 46, 38);
+          c.font = 'bold 12px sans-serif'; c.textAlign = 'center'; c.fillStyle = '#ffb0b0';
+          c.fillText(`MÜHÜRLÜ · kamp ${pr.done}/${pr.need}`, sp.x, sp.y + 78);
+        } else if (sp.tier === 'boss') {
           // boss evi: içi iyileştirir (yeşil alan), vurulabilir
           const pulse = 0.5 + 0.5 * Math.sin(this.time * 2.2);
           const gr = c.createRadialGradient(sp.x, sp.y, 10, sp.x, sp.y, 130);

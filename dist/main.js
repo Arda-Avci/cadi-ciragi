@@ -87,7 +87,7 @@ function renderPanel() {
         setPanelTitle('Büyüler', 'ui_spells');
         const n = document.createElement('div');
         n.className = 'row';
-        n.innerHTML = `<small>${ico('ui_spells', 14)} Yuva: ${game.equippedWeapons().length}/${game.weaponSlots()} (boss yendikçe artar). Düşmanın zayıf olduğu türden büyü kuşan! Kopyalar kamplardan düşer.</small>`;
+        n.innerHTML = `<small>${ico('ui_spells', 14)} ${L('Yuva')}: ${game.equippedWeapons().length}/${game.weaponSlots()} ${L('(boss yendikçe artar).')} ${L('Düşmanın zayıf olduğu türden büyü kuşan!')} ${L('Kopyalar kamplardan düşer.')}</small>`;
         panel.append(n);
         const order = WEAPONS.map((_, i) => i).sort((a, b) => Number(game.save.loadout.includes(b)) - Number(game.save.loadout.includes(a)) || a - b);
         order.forEach((i) => {
@@ -97,14 +97,14 @@ function renderPanel() {
             const have = game.save.copies[i];
             const maxed = lvl >= MAX_WEAPON_LEVEL;
             const on = game.save.loadout.includes(i);
-            panel.append(row(ico('icon_' + w.id, 38), `${w.name} ${lvl > 0 ? 'sv.' + lvl : ''} ${ico('ui_' + w.dtype, 16)}`, `${w.spell}<br>${ico('ui_power', 13)} ${lvl > 0 ? fmt(game.weaponDmg(i)) : '—'} · kopya ${have}/${need}${on ? ' · <span class="on">KUŞANILDI</span>' : ''}`, btns(btn(on ? 'Çıkar' : 'Kuşan', '', lvl > 0, () => game.toggleWeapon(i)), btn(maxed ? 'MAX' : lvl === 0 ? 'Aç' : '▲ Yükselt', '', !maxed && have >= need, () => game.upgradeWeapon(i)))));
+            panel.append(row(ico('icon_' + w.id, 38), `${L(w.name)} ${lvl > 0 ? 'sv.' + lvl : ''} ${ico('ui_' + w.dtype, 16)}`, `${L(w.spell)}<br>${ico('ui_power', 13)} ${lvl > 0 ? fmt(game.weaponDmg(i)) : '—'} · ${L('kopya')} ${have}/${need}${on ? ' · <span class="on">' + L('KUŞANILDI') + '</span>' : ''}`, btns(btn(on ? 'Çıkar' : 'Kuşan', '', lvl > 0, () => game.toggleWeapon(i)), btn(maxed ? 'MAX' : lvl === 0 ? 'Aç' : '▲ Yükselt', '', !maxed && have >= need, () => game.upgradeWeapon(i)))));
         });
     }
     else if (open === 'gear') {
         setPanelTitle('Ekipman', 'ui_gear');
         const slot = (t) => {
             const it = game.item(t);
-            return it ? `<span style="color:${RARITIES[it.rarity].color}">${EQUIP_NAMES[t][it.rarity]} sv.${it.level}</span> ${ico('ui_' + it.dtype, 14)}` : '<i>boş</i>';
+            return it ? `<span style="color:${RARITIES[it.rarity].color}">${L(EQUIP_NAMES[t][it.rarity])} sv.${it.level}</span> ${ico('ui_' + it.dtype, 14)}` : '<i>boş</i>';
         };
         const top = document.createElement('div');
         top.className = 'row';
@@ -118,7 +118,7 @@ function renderPanel() {
             const val = itemValue(it.type, it.rarity, it.level);
             const ab = itemAbility(it.type, it.rarity);
             const cost = itemUpgradeCost(it.level, it.rarity);
-            panel.append(row(`<span class="rar" style="border-color:${RARITIES[it.rarity].color}">${ico('icon_' + it.type, 34)}</span>`, `<span style="color:${RARITIES[it.rarity].color}">${EQUIP_NAMES[it.type][it.rarity]} sv.${it.level}</span> ${ico('ui_' + it.dtype, 15)}`, `${SLOT_NAMES[it.type]}: ${it.type === 'helmet' ? '+%' + val.toFixed(1) + ' ' + ico('ui_heart', 12) : '-%' + val.toFixed(1) + ' ' + DTYPE_NAMES[it.dtype] + ' hasarı'}${ab ? ' · ' + ab : ''}`, btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => game.toggleItem(it.id)), btn(it.level >= MAX_ITEM_LEVEL ? 'MAX' : '▲ ' + ico('ui_soul', 14) + fmt(cost), '', it.level < MAX_ITEM_LEVEL && game.save.essence >= cost, () => game.upgradeItem(it.id)), btn('Sat', 'danger', true, () => game.sellItem(it.id)))));
+            panel.append(row(`<span class="rar" style="border-color:${RARITIES[it.rarity].color}">${ico('icon_' + it.type, 34)}</span>`, `<span style="color:${RARITIES[it.rarity].color}">${L(EQUIP_NAMES[it.type][it.rarity])} sv.${it.level}</span> ${ico('ui_' + it.dtype, 15)}`, `${L(SLOT_NAMES[it.type])}: ${it.type === 'helmet' ? '+%' + val.toFixed(1) + ' ' + ico('ui_heart', 12) : '-%' + val.toFixed(1) + ' ' + L(DTYPE_NAMES[it.dtype]) + ' ' + L('hasarı')}${ab ? ' · ' + L(ab) : ''}`, btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => game.toggleItem(it.id)), btn(it.level >= MAX_ITEM_LEVEL ? 'MAX' : '▲ ' + ico('ui_soul', 14) + fmt(cost), '', it.level < MAX_ITEM_LEVEL && game.save.essence >= cost, () => game.upgradeItem(it.id)), btn('Sat', 'danger', true, () => game.sellItem(it.id)))));
         }
         if (!list.length)
             panel.append(row(ico('icon_helmet', 30), 'Henüz ekipmanın yok', 'Muhafız kamplarından ve boss\'lardan düşer.', null));
@@ -128,11 +128,11 @@ function renderPanel() {
         const info = document.createElement('div');
         info.className = 'row';
         info.innerHTML = `<div class="rtxt">${ico('icon_geode', 26)} <b>${game.save.geodes}</b> &nbsp; ${ico('ui_dust', 26)} <b>${Math.floor(game.save.dust)}</b>`
-            + ` &nbsp; <small>yuva ${game.save.equipped.length}/${game.slots()} · ${note}</small></div>`;
+            + ` &nbsp; <small>${L('yuva')} ${game.save.equipped.length}/${game.slots()} · ${note}</small></div>`;
         info.append(btn('Jeod aç', '', game.save.geodes >= 1, () => {
             const c = game.openGeode();
             if (c)
-                note = RARITIES[c.rarity].name + ' ' + CRYSTAL_STATS[c.stat].name + '!';
+                note = L(RARITIES[c.rarity].name) + ' ' + L(CRYSTAL_STATS[c.stat].name) + '!';
             renderPanel();
         }));
         panel.append(info);
@@ -142,8 +142,8 @@ function renderPanel() {
             const st = CRYSTAL_STATS[c.stat];
             const val = crystalValue(c.stat, c.rarity, c.enchant);
             const cost = enchantCost(c.enchant);
-            panel.append(row(`<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico('ui_' + c.stat, 34)}</span>`, `<span style="color:${RARITIES[c.rarity].color}">${RARITIES[c.rarity].name} ${st.name}</span> +${c.enchant}`, `+${val.toFixed(st.unit === '/sn' ? 2 : 1)}${st.unit} ${st.name}`, btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => { if (!game.toggleCrystal(c.id))
-                note = 'Boş yuva yok.'; renderPanel(); }), btn(c.enchant >= MAX_ENCHANT ? 'MAX' : `✦ ${cost} · %${Math.round(enchantChance(c.enchant) * 100)}`, '', c.enchant < MAX_ENCHANT && game.save.dust >= cost, () => {
+            panel.append(row(`<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico('ui_' + c.stat, 34)}</span>`, `<span style="color:${RARITIES[c.rarity].color}">${L(RARITIES[c.rarity].name)} ${L(st.name)}</span> +${c.enchant}`, `+${val.toFixed(st.unit === '/sn' ? 2 : 1)}${st.unit} ${L(st.name)}`, btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => { if (!game.toggleCrystal(c.id))
+                note = L('Boş yuva yok.'); renderPanel(); }), btn(c.enchant >= MAX_ENCHANT ? 'MAX' : `✦ ${cost} · %${Math.round(enchantChance(c.enchant) * 100)}`, '', c.enchant < MAX_ENCHANT && game.save.dust >= cost, () => {
                 const r = game.enchantCrystal(c.id);
                 note = r === 'ok' ? 'Başarılı!' : r === 'fail' ? 'Başarısız, toz gitti.' : '';
                 renderPanel();
