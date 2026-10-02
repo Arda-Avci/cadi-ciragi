@@ -2447,7 +2447,7 @@ export class Game {
             frame = 'witch_cast';
         else if (this.moving && has('witch_walk4'))
             frame = 'witch_walk' + (1 + (Math.floor(t * 9) % 4));
-        const drawn = this.drawSprX(frame, this.px, this.py - 8, flying ? 86 : 74, {
+        const drawn = this.drawSprX(frame, this.px, this.py - 8, flying ? 90.3 : 77.7, {
             flip, rot: o.rot + cast * 0.12 * flip, sx: o.sx * sc, sy: o.sy * sc, bob: o.bob + lift, flash: this.hurtFlash > 0,
         });
         if (!drawn) {
@@ -2487,7 +2487,7 @@ export class Game {
         c.globalAlpha = 1;
         // karakterin üstünde can ve güç
         const bw = 62;
-        const by = this.py - 66 + (flying ? -30 : 0);
+        const by = this.py - 70 + (flying ? -30 : 0);
         if (flying) {
             c.fillStyle = 'rgba(0,0,0,0.55)';
             c.fillRect(this.px - bw / 2 - 1, by + 9, bw + 2, 6);
