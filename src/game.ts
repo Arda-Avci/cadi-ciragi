@@ -965,6 +965,7 @@ export class Game {
     this.flyT = Math.max(0, this.flyT - dt);
     if (this.gateAnim) { this.gateAnim.t -= dt; if (this.gateAnim.t <= 0) this.gateAnim = null; }
     this.movePlayer(dt);
+    if (!this.walkable(this.px, this.py)) this.snapToLand();
     this.updatePuffs(dt);
     this.updateZoom(dt);
     const reg0 = this.region;
@@ -1021,6 +1022,20 @@ export class Game {
       const by = -Math.sin(this.face);
       this.puffs.push({ x: this.px + bx * 12 + (Math.random() - 0.5) * 8, y: this.py + (fly ? 22 : 16) + by * 6 + (Math.random() - 0.5) * 4, t: fly ? 0.5 : 0.45, fly });
     }
+  }
+
+  /** karakter asla oyun alanının dışında kalmaz: denizde, kilitli kapının ötesinde ya da engelin içindeyse en yakın yürünebilir noktaya alınır */
+  private snapToLand(): void {
+    for (let r = 20; r <= 1200; r += 20) {
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        const x = this.px + Math.cos(a) * r;
+        const y = this.py + Math.sin(a) * r;
+        if (this.walkable(x, y)) { this.px = x; this.py = y; return; }
+      }
+    }
+    const rp = this.restPoints()[this.regionAt(this.px, this.py)];
+    this.px = rp.x; this.py = rp.y + 70;
   }
 
   private movePlayer(dt: number): void {

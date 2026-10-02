@@ -59,3 +59,4 @@ python -m http.server 8765 --bind ::
 - Yapıların %20'si boss canında, kalanı boss canının 1/2–1/5'i kadardır; ilk yıkışta kalıcı +%2 can verir (tekrarlarda yalnızca %2 iyileştirir). Eve dönerken engele takılan düşman iyileşmez; 1.2 sn takılırsa eve ışınlanır, ikinci takılmada iyileşmesi durur.
 - **Yönlendirme oku:** boss evi açılınca boss evini, boss yenilince kapıyı, aksi halde en yakın temizlenmemiş kampı gösterir (ekran dışındaysa kenarda ok + mesafe). Ayarlardan kapatılabilir.
 - **Sandıklar:** her adada 2 açıkta, 2 gizli (yalnızca yaklaşınca görünür, haritada yok), 2 tanesi güçlü bir kamp ilk kez temizlenince belirir. Kapıya yaklaşırken eğitim hakkın varsa ok usta cadıyı gösterir.
+- Karakter oyun alanının dışına çıkamaz: denizde, kilitli kapının ötesinde ya da engelin içinde bulunursa (eski kayıt, yeniden kurulan yapı vb.) en yakın yürünebilir noktaya alınır.
