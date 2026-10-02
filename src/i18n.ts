@@ -46,7 +46,7 @@ const EN: Record<string, string> = {
   'Kopyalar kamplardan düşer.': 'Copies drop from camps.', 'Boş yuva yok.': 'No free slot.', 'Başarılı!': 'Success!', 'Başarısız, toz gitti.': 'Failed, dust lost.',
   'Yeni kristal yuvası kazanıldı!': 'New crystal slot unlocked!', 'Yeni ekipman yuvası kazanıldı!': 'New gear slot unlocked!',
   'Ek yuva': 'Extra slots', 'her 10 adada +1 ekipman ve +1 kristal yuvası': '+1 gear and +1 crystal slot every 10 islands',
-  'Bir sandık belirdi!': 'A chest appeared!', 'Usta Cadı': 'Master Witch', 'Yönlendirme okları': 'Guide arrows', 'Boss evi': 'Boss house', 'Sıradaki kamp': 'Next camp', 'Kapı': 'Gate',
+  'Bir sandık belirdi!': 'A chest appeared!', 'Usta Cadı': 'Master Witch', 'Yönlendirme okları': 'Guide arrows', 'Boss evi': 'Boss house', 'Sıradaki düşman': 'Next enemy', 'Sıradaki kamp': 'Next camp', 'Kapı': 'Gate',
   'Yükleniyor…': 'Loading…', 'Köprü bekçisi yenildi!': 'Bridge guardian defeated!', 'Henüz karşılaşmadın': 'Not encountered yet',
   'Mevcut kahraman Şeref Salonu\'nda kalır. Yeni oyun başlatılsın mı?': 'Your current hero stays in the Hall of Fame. Start a new game?',
   'Mini oyunlarla eğitilip kalıcı güç kazan. Bu seviye için günde 2 eğitim hakkın var.': 'Train with mini-games to gain permanent power. You get 2 training sessions per island per day.',

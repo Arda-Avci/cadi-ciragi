@@ -350,6 +350,8 @@ export class Game {
     this.gains = [];
     this.deathFx = [];
     this.px = this.save.x; this.py = this.save.y;
+    this.region = this.regionAt(this.px, this.py);
+    this.ensureLoaded(this.region);
     this.hp = this.maxHp();
     this.onChange();
   }
@@ -2046,6 +2048,16 @@ export class Game {
     }
   }
 
+  /** bir kampın düşman gücü (güç = √(can × hasar), ekrandaki ⚔ sayısıyla aynı formül) */
+  spawnerPower(sp: Spawner): number {
+    const def = ENEMIES[sp.kind];
+    const t = TIERS[sp.tier];
+    const z = ZONES[sp.reg];
+    const maxHp = def.hp * t.hp * z.scale * sp.lv;
+    const dmg = def.dmg * t.dmg * z.dmgScale * Math.sqrt(sp.lv);
+    return Math.floor(Math.sqrt(maxHp * (dmg / 0.6)) * 10);
+  }
+
   /** oyuncuya sıradaki hedefi gösterir: boss açıldıysa boss evi, boss yenildiyse kapı, değilse en yakın temizlenmemiş kamp */
   guideTarget(): { x: number; y: number; label: string; color: string } | null {
     const reg = this.region;
@@ -2053,14 +2065,22 @@ export class Game {
     const boss = this.getWorld().spawners.find((s) => s.reg === reg && s.tier === 'boss' && s.bridge === undefined);
     if (!this.save.bossDown[reg]) {
       if (boss && !this.bossSealed(boss) && !this.spCleared(boss)) return { x: boss.x, y: boss.y, label: 'Boss evi', color: '#ff8a5a' };
+      // sıradaki düşman: ilk kez temizlenmemiş kamplardan, gücüne göre rahatça yenilebilecek (≤ %60) en yakın olanı; yoksa en zayıfı
+      const pw = Math.max(1, this.fullPower());
       let best: Spawner | null = null;
       let bd = Infinity;
+      let weak: Spawner | null = null;
+      let wp = Infinity;
       for (const s of this.getWorld().spawners) {
-        if (s.reg !== reg || s.tier === 'boss' || this.save.first['s' + s.id]) continue;
+        if (s.reg !== reg || s.tier === 'boss' || this.save.first['s' + s.id] || this.spCleared(s)) continue;
+        const sp = this.spawnerPower(s);
+        if (sp < wp) { wp = sp; weak = s; }
+        if (sp > pw * 0.6) continue;
         const d = Math.hypot(s.x - this.px, s.y - this.py);
         if (d < bd) { bd = d; best = s; }
       }
-      return best ? { x: best.x, y: best.y, label: 'Sıradaki kamp', color: '#ffe36b' } : null;
+      const pick = best ?? weak;
+      return pick ? { x: pick.x, y: pick.y, label: 'Sıradaki düşman', color: best ? '#7bff9a' : '#ffb36b' } : null;
     }
     if (reg < last) {
       const g = this.gatePos(reg);
