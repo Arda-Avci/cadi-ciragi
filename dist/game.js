@@ -12,6 +12,8 @@ export const HOME = { x: 0, y: 40, r: 150 };
 const HOME_HEAL = 0.28; // saniyede azami canın oranı
 const SAVE_KEY = 'cadi-ciragi-v6'; // v6: 40 adalık yeni dünya
 const TREE_RESPAWN = 120;
+/** canavar: boss'a göre can ve hasar ×2 → güç ×2 */
+const BEAST_MUL = 2;
 const CAMP_WEIGHT = { easy: 1, medium: 2, hard: 3, elite: 5, knight: 5, boss: 15 };
 const GATE_GAP = 160; // kapı, bölge kıyısından bu kadar ileride
 function rng(seed) {
@@ -559,6 +561,28 @@ export class Game {
                 break;
             }
         }
+        // canavar: her 3 adada bir (3., 6., 9. …), boss'un 2 katı güçte; boss yenilmeden de çıkar
+        if ((reg + 1) % 3 === 0) {
+            const bossSp = spawners.find((s) => s.tier === 'boss' && s.bridge === undefined);
+            const brng = rng(reg * 15485863 + 11);
+            // en uygun noktayı seç: kamplardan, sandıklardan, engellerden ve köprü yollarından uzak; uygun nokta yoksa en az kötü olan
+            let best = { x: zone.cx + R * 0.35, y: zone.cy, score: -1e9 };
+            for (let tries = 0; tries < 400; tries++) {
+                const a = brng() * Math.PI * 2;
+                const d = R * (0.15 + brng() * 0.6);
+                const x = zone.cx + Math.cos(a) * d;
+                const y = zone.cy + Math.sin(a) * d;
+                let score = Math.min(...spawners.map((s) => Math.hypot(s.x - x, s.y - y) - 320));
+                score = Math.min(score, Math.hypot(x - rest.x, y - rest.y) - 400, ...chests.map((c) => Math.hypot(c.x - x, c.y - y) - 120), ...obstacles.map((o) => Math.hypot(o.x - x, o.y - y) - o.r - 140));
+                if (nearSeg(x, y, 230))
+                    score = Math.min(score, -1);
+                if (score > best.score)
+                    best = { x, y, score };
+                if (score >= 0)
+                    break;
+            }
+            spawners.push({ id: 200000 + reg, reg, x: best.x, y: best.y, tier: 'boss', kind: bossSp ? bossSp.kind : zone.enemies[0], lv: bossSp ? bossSp.lv : 4, bridge: reg, beast: true });
+        }
         return { spawners, trees, chests, obstacles };
     }
     /** bir adanın dünyası (yüklü değilse geçici üretilir, saklanmaz) */
@@ -750,7 +774,7 @@ export class Game {
         const effHp = Math.max(1, Math.min(hpNow, this.maxHp())) / (this.armor() * (1 - Math.min(0.9, red)));
         return Math.floor(Math.sqrt(effHp * Math.max(1, dps)) * 10);
     }
-    enemyDmg(e) { return e.def.dmg * TIERS[e.tier].dmg * ZONES[e.reg].dmgScale * Math.sqrt(e.lv); }
+    enemyDmg(e) { return e.def.dmg * TIERS[e.tier].dmg * ZONES[e.reg].dmgScale * Math.sqrt(e.lv) * (e.beast ? BEAST_MUL : 1); }
     enemyPower(e) { return Math.floor(Math.sqrt(Math.max(1, e.hp) * (this.enemyDmg(e) / 0.6)) * 10); }
     weakness(e) { return DTYPES.reduce((b, t) => (e.def.resist[t] > e.def.resist[b] ? t : b), DTYPES[0]); }
     statLines() {
@@ -812,10 +836,11 @@ export class Game {
             const l = this.lv(u.id);
             return l < u.max && (!u.requires || this.lv(u.requires) >= 1) && s.essence >= upgradeCost(u, l);
         });
-        const weapons = WEAPONS.some((_, i) => s.weapons[i] < MAX_WEAPON_LEVEL && s.copies[i] >= this.weaponNeed(i));
-        const gear = s.items.some((it) => it.level < MAX_ITEM_LEVEL && s.essence >= itemUpgradeCost(it.level, it.rarity));
+        // yalnızca kullanılan (takılı) eşyalar için öneri: takılı olmayan büyü/ekipman/kristal geliştirme ipucu vermez; yeni büyü açmak serbest
+        const weapons = WEAPONS.some((_, i) => s.weapons[i] < MAX_WEAPON_LEVEL && s.copies[i] >= this.weaponNeed(i) && (s.weapons[i] === 0 || s.loadout.includes(i)));
+        const gear = s.items.some((it) => this.isWorn(it.id) && it.level < MAX_ITEM_LEVEL && s.essence >= itemUpgradeCost(it.level, it.rarity));
         const crystals = s.geodes >= 1 || (s.crystals.length > s.equipped.length && s.equipped.length < this.slots())
-            || s.crystals.some((c) => c.enchant < MAX_ENCHANT && s.dust >= enchantCost(c.enchant));
+            || s.crystals.some((c) => s.equipped.includes(c.id) && c.enchant < MAX_ENCHANT && s.dust >= enchantCost(c.enchant));
         return { tree, weapons, gear, crystals };
     }
     // ---- kristaller ----
@@ -1168,8 +1193,8 @@ export class Game {
             const a = (i / tier.count) * Math.PI * 2 + sp.id;
             const x = sp.x + (tier.count > 1 ? Math.cos(a) * 46 : 0);
             const y = sp.y + (tier.count > 1 ? Math.sin(a) * 46 : 0);
-            const maxHp = def.hp * tier.hp * zone.scale * sp.lv;
-            this.enemies.push({
+            const maxHp = def.hp * tier.hp * zone.scale * sp.lv * (sp.beast ? BEAST_MUL : 1);
+            this.enemies.push({ beast: sp.beast,
                 def, tier: sp.tier, lv: sp.lv, reg: sp.reg, sp: sp.id, x, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'idle', hitCd: 0,
                 phase: Math.random() * 6, dashT: 3, dvx: 0, dvy: 0, flip: Math.random() < 0.5 ? 1 : -1, flash: 0, lunge: 0, moving: false,
             });
@@ -1844,7 +1869,14 @@ export class Game {
             this.save.geodes++;
             this.gain('+1 Jeod', '#7dffb0', 'icon_geode');
         }
-        if (sp.tier === 'boss' && sp.bridge !== undefined) {
+        if (sp.beast) {
+            this.save.geodes += 3;
+            this.gain('+3 Jeod', '#7dffb0', 'icon_geode');
+            this.gainItem('helmet', Math.min(4, 3));
+            this.gainItem('shield', Math.min(4, 3));
+            this.say('Canavar yenildi!');
+        }
+        else if (sp.tier === 'boss' && sp.bridge !== undefined) {
             // köprü bossu: ganimet verir, kapıyı etkilemez
             this.save.geodes += 2;
             this.gain('+2 Jeod', '#7dffb0', 'icon_geode');
@@ -2752,12 +2784,28 @@ export class Game {
         c.ellipse(e.x, e.y + r * 0.7, r * 0.9, r * 0.32, 0, 0, Math.PI * 2);
         c.fill();
         const sprName = boss ? ZONES[e.reg].art.boss : e.def.id;
-        if (!this.drawSprX(sprName, e.x, e.y, size, o)) {
+        if (e.beast) {
+            const pr = 0.5 + 0.5 * Math.sin(this.time * 4);
+            const gr = c.createRadialGradient(e.x, e.y, 10, e.x, e.y, r * 3);
+            gr.addColorStop(0, `rgba(255,60,60,${0.35 + 0.2 * pr})`);
+            gr.addColorStop(1, 'rgba(255,60,60,0)');
+            c.fillStyle = gr;
+            c.beginPath();
+            c.arc(e.x, e.y, r * 3, 0, Math.PI * 2);
+            c.fill();
+        }
+        if (!this.drawSprX(sprName, e.x, e.y, e.beast ? size * 1.25 : size, o)) {
             const fallback = { ghost: '#e8e8ff', mushroom: '#e0576a', pumpkin: '#ff9a3c', bat: '#8a6bd1', scorpion: '#d9a24a', golem: '#8a7a74', wisp: '#7be0ff' };
             c.fillStyle = boss ? '#7a4fd0' : fallback[e.def.id];
             c.beginPath();
             c.arc(e.x, e.y, r, 0, Math.PI * 2);
             c.fill();
+        }
+        if (e.beast) {
+            c.font = `bold ${Math.round(12 * this.lk())}px sans-serif`;
+            c.textAlign = 'center';
+            c.fillStyle = '#ff7a7a';
+            c.fillText('CANAVAR', e.x, e.y - r - 60);
         }
         const sp = this.spawnerMap.get(e.sp);
         if (sp && sp.tag)

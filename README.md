@@ -61,3 +61,4 @@ python -m http.server 8765 --bind ::
 - **Sandıklar:** her adada 2 açıkta, 2 gizli (yalnızca yaklaşınca görünür, haritada yok), 2 tanesi güçlü bir kamp ilk kez temizlenince belirir. Kapıya yaklaşırken eğitim hakkın varsa ok usta cadıyı gösterir.
 - Karakter oyun alanının dışına çıkamaz: denizde, kilitli kapının ötesinde ya da engelin içinde bulunursa (eski kayıt, yeniden kurulan yapı vb.) en yakın yürünebilir noktaya alınır.
 - **Boss gücü ×2** (can ve hasar ×2); kalıcı güç kazancı hedefi eski boss gücüne göre kaldığı için bosslar oyuncuya göre gerçekten 2 kat zorlaşır. Kapıyı geçince "Kapı" oku kalkar.
+- **Canavar:** her 3 adada bir (3., 6., 9. …) o adanın boss'unun 2 katı güçte bir canavar durur; boss yenilmeden de çıkar, bir kez yenilir ve büyük ganimet verir. Geliştirme ipuçları yalnızca takılı büyü/ekipman/kristal için çıkar.
