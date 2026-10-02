@@ -43,7 +43,7 @@ const EN = {
     'Kritik / Can çalma / Kaçınma': 'Crit / Life steal / Evasion', 'savunması': 'defense', 'can': 'health', 'hasar': 'damage', 'yenilenme': 'regen',
     'Yuva': 'Slots', 'yuva': 'slots', '(boss yendikçe artar).': '(grows as you defeat bosses).', 'Düşmanın zayıf olduğu türden büyü kuşan!': 'Equip spells of the type the enemy is weak to!',
     'Kopyalar kamplardan düşer.': 'Copies drop from camps.', 'Boş yuva yok.': 'No free slot.', 'Başarılı!': 'Success!', 'Başarısız, toz gitti.': 'Failed, dust lost.',
-    'Henüz karşılaşmadın': 'Not encountered yet',
+    'Yükleniyor…': 'Loading…', 'Köprü bekçisi yenildi!': 'Bridge guardian defeated!', 'Henüz karşılaşmadın': 'Not encountered yet',
     'Mevcut kahraman Şeref Salonu\'nda kalır. Yeni oyun başlatılsın mı?': 'Your current hero stays in the Hall of Fame. Start a new game?',
     'Mini oyunlarla eğitilip kalıcı güç kazan. Bu seviye için günde 2 eğitim hakkın var.': 'Train with mini-games to gain permanent power. You get 2 training sessions per island per day.',
     'Bugün': 'Today',

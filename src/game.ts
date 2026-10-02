@@ -50,10 +50,15 @@ export interface SaveData {
   gw: Record<string, number>; // ada başına dağıtılmış kazanç ağırlığı
 }
 
-interface Spawner { id: number; reg: number; x: number; y: number; tier: Tier; kind: EnemyId; tag?: SlotType; lv: number }
+interface Spawner { id: number; reg: number; x: number; y: number; tier: Tier; kind: EnemyId; tag?: SlotType; lv: number; bridge?: number }
 interface ResTree { id: number; reg: number; x: number; y: number; s: number; big: boolean }
 interface Chest { id: number; reg: number; x: number; y: number }
-interface World { spawners: Spawner[]; trees: ResTree[]; chests: Chest[] }
+/** kaya ya da bina: üzerinden geçilemez */
+interface Obstacle { x: number; y: number; r: number; kind: 'rock' | 'bld'; art: string; size: number; flip: number }
+interface World { spawners: Spawner[]; trees: ResTree[]; chests: Chest[]; obstacles: Obstacle[] }
+type ZoneWorld = World;
+/** adaya özel görseller (bellekte yalnızca yüklü adaların görselleri tutulur) */
+const BIOME_ART = /^(ground|tree|boss|rock|bld)_/;
 
 /** Evimiz: doğduğumuz yer ve hızlı iyileşme alanı */
 export const HOME = { x: 0, y: 40, r: 150 };
@@ -185,13 +190,19 @@ export class Game {
     fetch('assets/manifest.json')
       .then((r) => (r.ok ? (r.json() as Promise<string[]>) : []))
       .then((names) => {
-        for (const n of names) {
-          const img = new Image();
-          img.onload = () => this.sprites.set(n, img);
-          img.src = 'assets/' + n + '.png';
-        }
+        // çekirdek görseller hemen; adaya özel görseller ensureLoaded ile, kartlar panelde kendi <img> ile yüklenir
+        for (const n of names) if (!BIOME_ART.test(n) && !n.startsWith('card_') && n !== 'logo_title') this.loadSprite(n);
       })
       .catch(() => { /* görsel yok: kodla çizilir */ });
+  }
+  private loadSprite(n: string): void {
+    if (this.sprites.has(n) || this.loadingNames.has(n)) return;
+    this.loadingNames.add(n);
+    this.pendingLoads++;
+    const img = new Image();
+    img.onload = () => { this.sprites.set(n, img); this.loadingNames.delete(n); this.pendingLoads--; };
+    img.onerror = () => { this.loadingNames.delete(n); this.pendingLoads--; };
+    img.src = 'assets/' + n + '.png';
   }
   private tinted = new Map<string, HTMLCanvasElement>();
   /** 'ad' ya da 'ad@renk' (renk = ton döndürme derecesi; her çeşit ada farklı renkte görünür) */
@@ -402,7 +413,15 @@ export class Game {
   }
 
   /** (x,y) yürünebilir mi (kilitli kapının ötesi hariç) */
+  /** kaya/bina engeli mi (oyuncu ve düşmanlar üzerinden geçemez) */
+  blocked(x: number, y: number, pad = 12): boolean {
+    if (!this.world) return false;
+    for (const o of this.world.obstacles) if (Math.hypot(o.x - x, o.y - y) < o.r + pad) return true;
+    return false;
+  }
+
   walkable(x: number, y: number, ignoreGates = false): boolean {
+    if (this.blocked(x, y)) return false;
     for (let i = 0; i < ZONES.length; i++) {
       const c = this.regionCenter(i);
       if (Math.hypot(x - c.x, y - c.y) <= c.r - 18) return true;
@@ -432,65 +451,173 @@ export class Game {
     return best;
   }
 
-  getWorld(): World {
-    if (this.world) return this.world;
+  // ---- dünya: yalnızca önceki, şimdiki ve sonraki ada yüklüdür ----
+  private zoneCache = new Map<number, ZoneWorld>();
+  private loaded: number[] = [];
+  private spawnerMap = new Map<number, Spawner>();
+  /** "Yükleniyor…" yazısının kalan süresi */
+  loadT = 0;
+  private pendingLoads = 0;
+  private loadingNames = new Set<string>();
+
+  /** adadaki kamp sayısı toplamı: kamp kimlikleri ada sırasına göre sabittir (kayıtla uyumlu) */
+  private spawnOffset(reg: number): number {
+    let n = 0;
+    for (let i = 0; i < reg; i++) n += Object.values(ZONES[i].layout).reduce((a, b) => a + b, 0);
+    return n;
+  }
+
+  /** bir adanın dünyasını üretir: kamplar, ağaçlar, sandıklar, engeller (kaya/bina) ve köprü bossları. Kimlikler adadan bağımsızdır. */
+  private genZone(reg: number): ZoneWorld {
+    const zone = ZONES[reg];
     const spawners: Spawner[] = [];
     const trees: ResTree[] = [];
     const chests: Chest[] = [];
     const lvRange: Record<Tier, [number, number]> = {
       easy: [0.35, 1.8], medium: [0.5, 3.5], hard: [0.8, 6], elite: [1.2, 9], knight: [1.2, 5], boss: [3, 6],
     };
-    ZONES.forEach((zone, reg) => {
-      const R = zone.radius;
-      const rnd = rng(reg * 7919 + 13);
-      const placed: { x: number; y: number }[] = [];
-      const rest = this.restPoints()[reg];
-      const clearOfHome = (p: { x: number; y: number }): boolean => Math.hypot(p.x - rest.x, p.y - rest.y) > 330;
-      const place = (minD: number, maxD: number, sep: number): { x: number; y: number } => {
-        for (let tries = 0; tries < 60; tries++) {
-          const a = rnd() * Math.PI * 2;
-          const d = minD + rnd() * (maxD - minD);
-          const p = { x: zone.cx + Math.cos(a) * d, y: zone.cy + Math.sin(a) * d };
-          if (clearOfHome(p) && placed.every((q) => Math.hypot(q.x - p.x, q.y - p.y) > sep)) { placed.push(p); return p; }
-        }
+    const base = this.spawnOffset(reg);
+    const R = zone.radius;
+    const rnd = rng(reg * 7919 + 13);
+    const placed: { x: number; y: number }[] = [];
+    const rest = this.restPoints()[reg];
+    const clearOfHome = (p: { x: number; y: number }): boolean => Math.hypot(p.x - rest.x, p.y - rest.y) > 330;
+    const place = (minD: number, maxD: number, sep: number): { x: number; y: number } => {
+      for (let tries = 0; tries < 60; tries++) {
         const a = rnd() * Math.PI * 2;
-        const p = { x: zone.cx + Math.cos(a) * maxD, y: zone.cy + Math.sin(a) * maxD };
-        placed.push(p);
-        return p;
-      };
-      const band: Record<Tier, [number, number]> = {
-        easy: [240, R * 0.5], medium: [R * 0.3, R * 0.65], hard: [R * 0.5, R * 0.78],
-        elite: [R * 0.55, R - 160], knight: [R * 0.4, R - 140], boss: [R * 0.7, R * 0.8],
-      };
-      (Object.keys(zone.layout) as Tier[]).forEach((tier) => {
-        for (let i = 0; i < zone.layout[tier]; i++) {
-          const p = place(band[tier][0], band[tier][1], 190);
-          const kind = zone.enemies[Math.floor(rnd() * zone.enemies.length)];
-          const [lo, hi] = lvRange[tier];
-          spawners.push({
-            id: spawners.length, reg, x: p.x, y: p.y, tier, kind, lv: lo * Math.pow(hi / lo, rnd()),
-            tag: tier === 'knight' ? (i % 2 === 0 ? 'helmet' : 'shield') : undefined,
-          });
-        }
-      });
-      for (let i = 0; i < zone.resTrees; i++) { const p = place(160, R - 100, 120); trees.push({ id: trees.length, reg, x: p.x, y: p.y, s: 1.4, big: true }); }
-      for (let i = 0; i < 6; i++) { const p = place(200, R - 80, 160); chests.push({ id: chests.length, reg, x: p.x, y: p.y }); }
-      // diğer bütün ağaçlar da kesilebilir (küçük ödül)
-      for (let i = 0; i < 80 + Math.min(reg, 10) * 6; i++) {
-        const a = rnd() * Math.PI * 2;
-        const d = 60 + rnd() * (R - 100);
+        const d = minD + rnd() * (maxD - minD);
         const p = { x: zone.cx + Math.cos(a) * d, y: zone.cy + Math.sin(a) * d };
-        if (!clearOfHome(p)) continue;
-        trees.push({ id: trees.length, reg, x: p.x, y: p.y, s: 0.7 + rnd() * 0.7, big: false });
+        if (clearOfHome(p) && placed.every((q) => Math.hypot(q.x - p.x, q.y - p.y) > sep)) { placed.push(p); return p; }
+      }
+      const a = rnd() * Math.PI * 2;
+      const p = { x: zone.cx + Math.cos(a) * maxD, y: zone.cy + Math.sin(a) * maxD };
+      placed.push(p);
+      return p;
+    };
+    const band: Record<Tier, [number, number]> = {
+      easy: [240, R * 0.5], medium: [R * 0.3, R * 0.65], hard: [R * 0.5, R * 0.78],
+      elite: [R * 0.55, R - 160], knight: [R * 0.4, R - 140], boss: [R * 0.7, R * 0.8],
+    };
+    (Object.keys(zone.layout) as Tier[]).forEach((tier) => {
+      for (let i = 0; i < zone.layout[tier]; i++) {
+        const p = place(band[tier][0], band[tier][1], 190);
+        const kind = zone.enemies[Math.floor(rnd() * zone.enemies.length)];
+        const [lo, hi] = lvRange[tier];
+        spawners.push({
+          id: base + spawners.length, reg, x: p.x, y: p.y, tier, kind, lv: lo * Math.pow(hi / lo, rnd()),
+          tag: tier === 'knight' ? (i % 2 === 0 ? 'helmet' : 'shield') : undefined,
+        });
       }
     });
-    this.world = { spawners, trees, chests };
+    for (let i = 0; i < zone.resTrees; i++) { const p = place(160, R - 100, 120); trees.push({ id: reg * 1000 + trees.length, reg, x: p.x, y: p.y, s: 1.4, big: true }); }
+    for (let i = 0; i < 6; i++) { const p = place(200, R - 80, 160); chests.push({ id: reg * 6 + chests.length, reg, x: p.x, y: p.y }); }
+    // diğer bütün ağaçlar da kesilebilir (küçük ödül)
+    for (let i = 0; i < 80 + Math.min(reg, 10) * 6; i++) {
+      const a = rnd() * Math.PI * 2;
+      const d = 60 + rnd() * (R - 100);
+      const p = { x: zone.cx + Math.cos(a) * d, y: zone.cy + Math.sin(a) * d };
+      if (!clearOfHome(p)) continue;
+      trees.push({ id: reg * 1000 + trees.length, reg, x: p.x, y: p.y, s: 0.7 + rnd() * 0.7, big: false });
+    }
+    // köprü bossları: bu adanın boss'u gibi, köprüde 2–3 tane (bir kez yenilir)
+    if (reg < ZONES.length - 1) {
+      const b = this.bridge(reg);
+      const ux = (b.bx - b.ax) / b.len;
+      const uy = (b.by - b.ay) / b.len;
+      const s0 = zone.radius + 260;
+      const s1 = b.len - ZONES[reg + 1].radius - 260;
+      const n = s1 - s0 < 2200 ? 2 : 3;
+      for (let k = 0; k < n; k++) {
+        const sd = s0 + ((s1 - s0) * (k + 1)) / (n + 1);
+        spawners.push({
+          id: 100000 + reg * 3 + k, reg, x: b.ax + ux * sd, y: b.ay + uy * sd, tier: 'boss', kind: zone.enemies[k % zone.enemies.length],
+          lv: 3 + k * 0.4, bridge: reg,
+        });
+      }
+    }
+    // engeller: kayalar ve binalar (üzerinden geçilemez, etrafından dolaşılır)
+    const orng = rng(reg * 104729 + 7);
+    const obstacles: Obstacle[] = [];
+    const segs: { ax: number; ay: number; bx: number; by: number }[] = [];
+    if (reg > 0) segs.push({ ax: zone.cx, ay: zone.cy, bx: ZONES[reg - 1].cx, by: ZONES[reg - 1].cy });
+    if (reg < ZONES.length - 1) segs.push({ ax: zone.cx, ay: zone.cy, bx: ZONES[reg + 1].cx, by: ZONES[reg + 1].cy });
+    const nearSeg = (x: number, y: number, w: number): boolean => segs.some((sg) => {
+      const dx = sg.bx - sg.ax;
+      const dy = sg.by - sg.ay;
+      const t = Math.max(0, Math.min(1, ((x - sg.ax) * dx + (y - sg.ay) * dy) / (dx * dx + dy * dy)));
+      return Math.hypot(x - (sg.ax + dx * t), y - (sg.ay + dy * t)) < w;
+    });
+    const nRocks = 16 + Math.floor(reg / 6);
+    const nBld = 4 + Math.floor(reg / 10);
+    for (let k = 0; k < nRocks + nBld; k++) {
+      const bld = k >= nRocks;
+      const r = bld ? 58 : 30 + orng() * 14;
+      for (let tries = 0; tries < 80; tries++) {
+        const a = orng() * Math.PI * 2;
+        const d = 120 + orng() * (R - 260);
+        const x = zone.cx + Math.cos(a) * d;
+        const y = zone.cy + Math.sin(a) * d;
+        if (Math.hypot(x - rest.x, y - rest.y) < 380) continue;
+        if (nearSeg(x, y, 210)) continue;
+        if (spawners.some((s) => Math.hypot(s.x - x, s.y - y) < (s.tier === 'boss' ? 300 : 230))) continue;
+        if (chests.some((c) => Math.hypot(c.x - x, c.y - y) < 110)) continue;
+        if (trees.some((t) => t.big && Math.hypot(t.x - x, t.y - y) < 100)) continue;
+        if (obstacles.some((o) => Math.hypot(o.x - x, o.y - y) < o.r + r + 70)) continue;
+        obstacles.push({
+          x, y, r, kind: bld ? 'bld' : 'rock', art: bld ? zone.art.bld[k % 3] : zone.art.rock, size: bld ? 170 : r * 3.6, flip: orng() < 0.5 ? 1 : -1,
+        });
+        break;
+      }
+    }
+    return { spawners, trees, chests, obstacles };
+  }
+
+  /** bir adanın dünyası (yüklü değilse geçici üretilir, saklanmaz) */
+  private zoneWorld(reg: number): ZoneWorld { return this.zoneCache.get(reg) ?? this.genZone(reg); }
+
+  /** merkez adayla birlikte önceki ve sonraki adayı yükler, diğerlerini boşaltır */
+  ensureLoaded(center: number): void {
+    const want = [center - 1, center, center + 1].filter((r) => r >= 0 && r < ZONES.length);
+    if (want.length === this.loaded.length && want.every((r, i) => r === this.loaded[i])) return;
+    const first = this.loaded.length === 0;
+    for (const r of want) if (!this.zoneCache.has(r)) this.zoneCache.set(r, this.genZone(r));
+    for (const r of [...this.zoneCache.keys()]) {
+      if (!want.includes(r)) { this.zoneCache.delete(r); this.campsOf.delete(r); }
+    }
+    this.loaded = want;
+    this.enemies = this.enemies.filter((e) => want.includes(e.reg));
+    this.projs = [];
+    const spawners: Spawner[] = [];
+    const trees: ResTree[] = [];
+    const chests: Chest[] = [];
+    const obstacles: Obstacle[] = [];
+    for (const r of want) {
+      const z = this.zoneCache.get(r) as ZoneWorld;
+      spawners.push(...z.spawners); trees.push(...z.trees); chests.push(...z.chests); obstacles.push(...z.obstacles);
+    }
+    this.world = { spawners, trees, chests, obstacles };
+    this.spawnerMap = new Map(spawners.map((s) => [s.id, s]));
+    this.treeCells.clear();
     for (const t of trees) {
       const k = this.cellKey(t.x, t.y);
       const a = this.treeCells.get(k);
       if (a) a.push(t); else this.treeCells.set(k, [t]);
     }
-    return this.world;
+    // görseller: yalnızca yüklü adaların biyom görselleri bellekte tutulur
+    const needed = new Set<string>();
+    for (const r of want) {
+      const art = ZONES[r].art;
+      for (const n of [art.ground, art.tree, art.boss, art.rock, ...art.bld]) needed.add(n.split('@')[0]);
+    }
+    for (const n of needed) this.loadSprite(n);
+    for (const n of [...this.sprites.keys()]) if (BIOME_ART.test(n) && !needed.has(n)) this.sprites.delete(n);
+    for (const n of [...this.tinted.keys()]) if (!needed.has(n.split('@')[0])) this.tinted.delete(n);
+    if (!first) this.loadT = 1.1;
+  }
+
+  getWorld(): World {
+    if (!this.world) this.ensureLoaded(this.regionAt(this.px, this.py));
+    return this.world as World;
   }
 
   private treeCells = new Map<number, ResTree[]>();
@@ -511,7 +638,7 @@ export class Game {
   }
   isCleared(key: string): boolean { return (this.save.spawn[key] ?? 0) > this.now(); }
   /** kamp temiz mi: yenilen boss bir daha çıkmaz */
-  spCleared(sp: Spawner): boolean { return this.isCleared('s' + sp.id) || (sp.tier === 'boss' && this.save.bossDown[sp.reg]); }
+  spCleared(sp: Spawner): boolean { return this.isCleared('s' + sp.id) || (sp.tier === 'boss' && sp.bridge === undefined && this.save.bossDown[sp.reg]); }
 
   // ---- statlar ----
   lv(id: string): number { return this.save.upgrades[id] ?? 0; }
@@ -772,6 +899,7 @@ export class Game {
     this.bannerT = Math.max(0, this.bannerT - dt);
     this.castPulse = Math.max(0, this.castPulse - dt);
     this.hurtFlash = Math.max(0, this.hurtFlash - dt);
+    this.loadT = Math.max(0, this.loadT - dt);
     for (const g of this.gains) { if (g.delay > 0) g.delay -= dt; else g.t -= dt; }
     this.gains = this.gains.filter((g) => g.t > 0);
     for (const d of this.deathFx) d.t -= dt;
@@ -788,7 +916,7 @@ export class Game {
     this.updatePuffs(dt);
     const reg0 = this.region;
     this.region = this.regionAt(this.px, this.py);
-    if (this.region !== reg0) audio.setMood(this.region);
+    if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); }
     const calm = !this.enemies.some((e) => e.state === 'chase');
     const atHome = this.inHome();
     const before = this.hp;
@@ -941,6 +1069,8 @@ export class Game {
       const nx = e.x + vx * dt;
       const ny = e.y + vy * dt;
       if (this.walkable(nx, ny, true)) { e.x = nx; e.y = ny; }
+      else if (this.walkable(nx, e.y, true)) e.x = nx;
+      else if (this.walkable(e.x, ny, true)) e.y = ny;
       e.moving = Math.abs(vx) + Math.abs(vy) > 14;
       if (Math.abs(vx) > 4) e.flip = vx > 0 ? 1 : -1;
       if (d < e.def.r * TIERS[e.tier].size + 14 && this.invuln <= 0 && this.flyT <= 0) {
@@ -1050,14 +1180,14 @@ export class Game {
     return { done: list.filter((x) => this.save.first['s' + x.id]).length, need: Math.ceil(list.length * 0.6) };
   }
   bossSealed(sp: Spawner): boolean {
-    if (sp.tier !== 'boss' || this.save.bossDown[sp.reg]) return false;
+    if (sp.tier !== 'boss' || sp.bridge !== undefined || this.save.bossDown[sp.reg]) return false;
     const p = this.sealProgress(sp.reg);
     return p.done < p.need;
   }
 
   /** canlı boss'un evi (kampı): vurulabilir, vuruşlar boss'a zarar verir */
   bossHouses(): Spawner[] {
-    return this.getWorld().spawners.filter((s) => s.tier === 'boss' && !this.spCleared(s) && this.enemies.some((e) => e.sp === s.id));
+    return this.getWorld().spawners.filter((s) => s.tier === 'boss' && s.bridge === undefined && !this.spCleared(s) && this.enemies.some((e) => e.sp === s.id));
   }
   private houseFlash = new Map<number, number>();
   private hitHouse(sp: Spawner, raw: number, dtype: DType): void {
@@ -1235,7 +1365,7 @@ export class Game {
   }
   /** bir adanın boss'unun gücü (kalıcı kazancın hedefi bunun MARGIN katıdır) */
   private bossPower(reg: number): number {
-    const sp = this.getWorld().spawners.find((x) => x.reg === reg && x.tier === 'boss');
+    const sp = this.zoneWorld(reg).spawners.find((x) => x.reg === reg && x.tier === 'boss' && x.bridge === undefined);
     if (!sp) return 1e9;
     const def = ENEMIES[sp.kind];
     const maxHp = def.hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv;
@@ -1288,7 +1418,8 @@ export class Game {
   }
 
   private completeSpawner(id: number): void {
-    const sp = this.getWorld().spawners[id];
+    this.getWorld();
+    const sp = this.spawnerMap.get(id);
     if (!sp) return;
     const tier = TIERS[sp.tier];
     this.save.spawn['s' + id] = this.now() + (sp.tier === 'boss' ? 1e12 : tier.respawn * 1000); // boss bir daha çıkmaz
@@ -1305,7 +1436,7 @@ export class Game {
       this.say('Boss evinin mührü kalktı!');
       audio.play('gate');
     }
-    const f = first ? this.grantFraction(sp.reg, CAMP_WEIGHT[sp.tier]) : 0;
+    const f = first && sp.bridge === undefined ? this.grantFraction(sp.reg, CAMP_WEIGHT[sp.tier]) : 0;
     this.addPerm(sp.tier === 'boss' || tier.permanent === 'elite' ? 'elite.hp' : 'normal.hp', f * this.hpPool());
     this.addPerm(sp.tier === 'boss' || tier.permanent === 'elite' ? 'elite.dmg' : 'normal.dmg', f * this.dmgPool());
     if (this.maxHp() > hp0) {
@@ -1334,7 +1465,13 @@ export class Game {
     }
     if (sp.tag) this.gainItem(sp.tag, Math.min(4, 1 + sp.reg));
     if (sp.tier === 'elite') { this.save.geodes++; this.gain('+1 Jeod', '#7dffb0', 'icon_geode'); }
-    if (sp.tier === 'boss') {
+    if (sp.tier === 'boss' && sp.bridge !== undefined) {
+      // köprü bossu: ganimet verir, kapıyı etkilemez
+      this.save.geodes += 2;
+      this.gain('+2 Jeod', '#7dffb0', 'icon_geode');
+      this.gainItem(sp.reg % 2 === 0 ? 'helmet' : 'shield', Math.min(4, 2 + Math.floor(sp.reg / 12)));
+      this.say('Köprü bekçisi yenildi!');
+    } else if (sp.tier === 'boss') {
       this.save.geodes += 3;
       this.gain('+3 Jeod', '#7dffb0', 'icon_geode');
       this.gainItem('helmet', 2);
@@ -1486,10 +1623,12 @@ export class Game {
     c.translate(-camX, -camY);
     this.drawWorldObjects(camX, camY);
     this.drawHome(camX, camY);
+    this.drawObstacles(camX, camY, false);
     for (let i = 0; i < ZONES.length - 1; i++) this.drawMaster(i, camX, camY);
     for (const d of this.deathFx) this.drawDeath(d);
     for (const e of this.enemies) if (this.inView(e.x, e.y, 140, camX, camY)) this.drawEnemy(e);
     this.drawPlayer();
+    this.drawObstacles(camX, camY, true);
     for (const p of this.projs) this.drawProj(p);
     c.font = 'bold 13px sans-serif';
     c.textAlign = 'center';
@@ -1507,6 +1646,7 @@ export class Game {
     this.drawGateBanner();
     this.drawHud();
     this.drawMinimap();
+    this.drawLoading();
     if (this.mapOpen) this.drawFullMap();
   }
 
@@ -1548,7 +1688,7 @@ export class Game {
       const cx = zone.cx - camX;
       const cy = zone.cy - camY;
       if (cx + zone.radius + 60 < 0 || cx - zone.radius - 60 > this.w || cy + zone.radius + 60 < 0 || cy - zone.radius - 60 > this.h) return;
-      drawShore(c, cx, cy, zone.radius, this.time, shade(zone.dot, 1.9));
+      drawShore(c, cx, cy, zone.radius, this.time, shade(zone.dot, 1.45));
     });
     for (let i = 0; i < ZONES.length - 1; i++) drawBridge(c, this.bridge(i), i, camX, camY, this.w, this.h, this.time, this.gateLocked(i));
     ZONES.forEach((zone, reg) => {
@@ -1629,7 +1769,7 @@ export class Game {
           this.drawSpr('ui_lock', sp.x, sp.y - 46, 38);
           c.font = 'bold 12px sans-serif'; c.textAlign = 'center'; c.fillStyle = '#ffb0b0';
           c.fillText(`MÜHÜRLÜ · kamp ${pr.done}/${pr.need}`, sp.x, sp.y + 78);
-        } else if (sp.tier === 'boss') {
+        } else if (sp.tier === 'boss' && sp.bridge === undefined) {
           // boss evi: içi iyileştirir (yeşil alan), vurulabilir
           const pulse = 0.5 + 0.5 * Math.sin(this.time * 2.2);
           const gr = c.createRadialGradient(sp.x, sp.y, 10, sp.x, sp.y, 130);
@@ -1640,7 +1780,7 @@ export class Game {
         }
       }
       c.globalAlpha = cleared ? 0.45 : 1;
-      if (!this.drawSpr('camp', sp.x, sp.y, 120)) {
+      if (sp.bridge === undefined && !this.drawSpr('camp', sp.x, sp.y, 120)) {
         c.strokeStyle = 'rgba(0,0,0,0.4)'; c.lineWidth = 5;
         c.beginPath(); c.arc(sp.x, sp.y, 50, 0, Math.PI * 2); c.stroke();
       }
@@ -1693,6 +1833,39 @@ export class Game {
   }
 
   /** Evimiz: doğduğumuz yer ve hızlı iyileşme alanı */
+  /** kaya ve binalar; oyuncunun arkasında kalanlar önce, önünde kalanlar sonra çizilir */
+  private drawObstacles(camX: number, camY: number, front: boolean): void {
+    if (!this.world) return;
+    const c = this.ctx;
+    for (const o of this.world.obstacles) {
+      if ((o.y > this.py) !== front) continue;
+      if (!this.inView(o.x, o.y, o.size, camX, camY)) continue;
+      c.fillStyle = 'rgba(0,0,0,0.3)';
+      c.beginPath(); c.ellipse(o.x + 4, o.y + o.r * 0.5, o.r * 1.15, o.r * 0.42, 0, 0, Math.PI * 2); c.fill();
+      if (!this.drawSprX(o.art, o.x, o.y - o.size * 0.3, o.size, { flip: o.flip })) {
+        c.fillStyle = o.kind === 'bld' ? '#7a5a3a' : '#6e7480';
+        c.beginPath(); c.arc(o.x, o.y - o.r * 0.3, o.r, 0, Math.PI * 2); c.fill();
+      }
+    }
+  }
+
+  /** köprüde yeni ada yüklenirken küçük bir "Yükleniyor…" rozeti */
+  private drawLoading(): void {
+    if (this.loadT <= 0 && this.pendingLoads <= 0) return;
+    const c = this.ctx;
+    const w = 150;
+    const x = this.w / 2 - w / 2;
+    const y = 58;
+    c.fillStyle = 'rgba(10,6,30,0.78)';
+    c.beginPath(); c.roundRect(x, y, w, 30, 15); c.fill();
+    c.strokeStyle = 'rgba(190,160,255,0.5)'; c.lineWidth = 1.5; c.stroke();
+    c.strokeStyle = '#ffe36b'; c.lineWidth = 3; c.lineCap = 'round';
+    c.beginPath(); c.arc(x + 20, y + 15, 7, this.time * 6, this.time * 6 + 4.2); c.stroke();
+    c.font = 'bold 13px sans-serif'; c.textAlign = 'left'; c.fillStyle = '#fff';
+    c.fillText('Yükleniyor…', x + 36, y + 20);
+    c.textAlign = 'center';
+  }
+
   private drawHome(camX: number, camY: number): void {
     const c = this.ctx;
     const pulse = 0.5 + 0.5 * Math.sin(this.time * 2);
@@ -1859,7 +2032,7 @@ export class Game {
       c.fillStyle = boss ? '#7a4fd0' : fallback[e.def.id];
       c.beginPath(); c.arc(e.x, e.y, r, 0, Math.PI * 2); c.fill();
     }
-    const sp = this.getWorld().spawners[e.sp];
+    const sp = this.spawnerMap.get(e.sp);
     if (sp && sp.tag) this.drawSpr('icon_' + sp.tag, e.x, e.y - r - 44, 22);
     c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(e.x - r - 1, e.y - r - 15, r * 2 + 2, 8);
     const hf = Math.max(0, e.hp) / e.maxHp;
