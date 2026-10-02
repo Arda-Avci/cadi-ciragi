@@ -125,7 +125,7 @@ export interface ZoneDef {
   resTrees: number;
   bossName: string;
   /** görsel adları (assets/<ad>.png) */
-  art: { ground: string; tree: string; boss: string; rock: string; bld: string[] };
+  art: { ground: string; tree: string; boss: string; beast: string; rock: string; bld: string[] };
   /** bu bölgenin kapısındaki usta cadı */
   master: string;
   /** güç çarpanı: önceki bölgeye göre 1.2–1.8 kat daha zor */
@@ -237,7 +237,7 @@ function buildZones(): ZoneDef[] {
       },
       resTrees: b.trees + Math.floor(i / 4), bossName: v.pre + b.boss,
       art: {
-        ground: 'ground_' + b.art + tint, tree: 'tree_' + b.art + tint, boss: 'boss_' + b.bossArt + tint,
+        ground: 'ground_' + b.art + tint, tree: 'tree_' + b.art + tint, boss: 'boss_' + b.bossArt + tint, beast: 'beast_' + b.art + tint,
         rock: 'rock_' + ['mossy', 'mossy', 'ice', 'sand', 'ice', 'dark', 'ice', 'dark'][i % 8] + tint,
         bld: ['bld_hut', 'bld_ruin', 'bld_tower'].map((n) => n + tint),
       },

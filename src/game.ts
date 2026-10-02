@@ -61,7 +61,7 @@ interface Obstacle { id: number; x: number; y: number; r: number; kind: 'rock' |
 interface World { spawners: Spawner[]; trees: ResTree[]; chests: Chest[]; obstacles: Obstacle[] }
 type ZoneWorld = World;
 /** adaya özel görseller (bellekte yalnızca yüklü adaların görselleri tutulur) */
-const BIOME_ART = /^(ground|tree|boss|rock|bld)_/;
+const BIOME_ART = /^(ground|tree|boss|beast|rock|bld)_/;
 
 /** Evimiz: doğduğumuz yer ve hızlı iyileşme alanı */
 export const HOME = { x: 0, y: 40, r: 150 };
@@ -648,7 +648,7 @@ export class Game {
     const needed = new Set<string>();
     for (const r of want) {
       const art = ZONES[r].art;
-      for (const n of [art.ground, art.tree, art.boss, art.rock, ...art.bld]) needed.add(n.split('@')[0]);
+      for (const n of [art.ground, art.tree, art.boss, art.beast, art.rock, ...art.bld]) needed.add(n.split('@')[0]);
     }
     for (const n of needed) this.loadSprite(n);
     for (const n of [...this.sprites.keys()]) if (BIOME_ART.test(n) && !needed.has(n)) this.sprites.delete(n);
@@ -1592,7 +1592,7 @@ export class Game {
     // ganimet otomatik toplanır, etkisi yazıyla gösterilir
     this.save.essence += value;
     this.gain('+' + this.fmt(value) + ' Ruh', '#8fdcff', 'ui_soul', { key: 'soul', amount: value, fmt: (n) => '+' + this.fmt(n) + ' Ruh' });
-    this.deathFx.push({ x: e.x, y: e.y, t: 0.45, name: e.tier === 'boss' ? ZONES[e.reg].art.boss : e.def.id,
+    this.deathFx.push({ x: e.x, y: e.y, t: 0.45, name: e.beast && this.spr(ZONES[e.reg].art.beast) ? ZONES[e.reg].art.beast : e.tier === 'boss' ? ZONES[e.reg].art.boss : e.def.id,
       size: e.def.r * TIERS[e.tier].size * 3.3, flip: e.flip });
     this.onChange();
   }
@@ -2358,14 +2358,15 @@ export class Game {
     if (e.lunge > 0) { const k = e.lunge / 0.25; o.sx *= 1 + 0.18 * k; o.sy *= 1 - 0.1 * k; }
     c.fillStyle = 'rgba(0,0,0,0.22)';
     c.beginPath(); c.ellipse(e.x, e.y + r * 0.7, r * 0.9, r * 0.32, 0, 0, Math.PI * 2); c.fill();
-    const sprName = boss ? ZONES[e.reg].art.boss : e.def.id;
+    // canavarın kendi görseli vardır; yüklenmediyse boss görseline düşer
+    const sprName = e.beast && this.spr(ZONES[e.reg].art.beast) ? ZONES[e.reg].art.beast : boss ? ZONES[e.reg].art.boss : e.def.id;
     if (e.beast) {
       const pr = 0.5 + 0.5 * Math.sin(this.time * 4);
       const gr = c.createRadialGradient(e.x, e.y, 10, e.x, e.y, r * 3);
       gr.addColorStop(0, `rgba(255,60,60,${0.35 + 0.2 * pr})`); gr.addColorStop(1, 'rgba(255,60,60,0)');
       c.fillStyle = gr; c.beginPath(); c.arc(e.x, e.y, r * 3, 0, Math.PI * 2); c.fill();
     }
-    if (!this.drawSprX(sprName, e.x, e.y, e.beast ? size * 1.25 : size, o)) {
+    if (!this.drawSprX(sprName, e.x, e.y, e.beast ? size * 1.7 : size, o)) {
       const fallback: Record<EnemyId, string> = { ghost: '#e8e8ff', mushroom: '#e0576a', pumpkin: '#ff9a3c', bat: '#8a6bd1', scorpion: '#d9a24a', golem: '#8a7a74', wisp: '#7be0ff' };
       c.fillStyle = boss ? '#7a4fd0' : fallback[e.def.id];
       c.beginPath(); c.arc(e.x, e.y, r, 0, Math.PI * 2); c.fill();
