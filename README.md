@@ -63,3 +63,4 @@ python -m http.server 8765 --bind ::
 - **Boss gücü ×2** (can ve hasar ×2); kalıcı güç kazancı hedefi eski boss gücüne göre kaldığı için bosslar oyuncuya göre gerçekten 2 kat zorlaşır. Kapıyı geçince "Kapı" oku kalkar.
 - **Canavar:** her 3 adada bir (3., 6., 9. …) o adanın boss'unun 2 katı güçte bir canavar durur; boss yenilmeden de çıkar, bir kez yenilir ve büyük ganimet verir. Geliştirme ipuçları yalnızca takılı büyü/ekipman/kristal için çıkar.
 - Canavarların her biyom için kendi görseli vardır (`beast_*`, `tools/fix_pockets.py` iç arka plan deliklerini temizler).
+- Canavarın kendi sesleri var: yaklaşınca kükreme (+titreşim), ölünce gürleme ve zafer akoru.

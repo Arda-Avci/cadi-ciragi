@@ -1,7 +1,7 @@
 /** Ses: dosyasız, WebAudio ile üretilen arka plan müziği ve efektler (çevrimdışı çalışır). */
 import { onSettingsChange, settings } from './settings.js';
 
-type Sfx = 'cast' | 'hit' | 'kill' | 'hurt' | 'gain' | 'chest' | 'gate' | 'fly' | 'heal' | 'click' | 'boss' | 'chop';
+type Sfx = 'cast' | 'hit' | 'kill' | 'hurt' | 'gain' | 'chest' | 'gate' | 'fly' | 'heal' | 'click' | 'boss' | 'chop' | 'roar' | 'beastdie';
 
 // biyom ruh halleri: kök nota (Hz), gam (yarım ses adımları), tempo
 const MOODS: { root: number; scale: number[]; bpm: number; pad: OscillatorType }[] = [
@@ -146,7 +146,7 @@ class AudioEngine {
     const c = this.ctx;
     if (!c || settings.sfx <= 0.001) return;
     const now = c.currentTime;
-    const gap: Record<Sfx, number> = { cast: 0.06, hit: 0.05, kill: 0.08, hurt: 0.15, gain: 0.12, chest: 0.3, gate: 1, fly: 0.5, heal: 0.9, click: 0.04, boss: 1, chop: 0.08 };
+    const gap: Record<Sfx, number> = { cast: 0.06, hit: 0.05, kill: 0.08, hurt: 0.15, gain: 0.12, chest: 0.3, gate: 1, fly: 0.5, heal: 0.9, click: 0.04, boss: 1, chop: 0.08, roar: 5, beastdie: 1 };
     if (now - (this.last.get(name) ?? -9) < gap[name]) return;
     this.last.set(name, now);
     const b = this.sfxBus;
@@ -162,6 +162,20 @@ class AudioEngine {
         this.tone(70, now, 1.4, 'sawtooth', 0.12, b, false, 45);
         [262, 330, 392, 523].forEach((f, i) => this.tone(f, now + 0.2 + i * 0.12, 0.9, 'triangle', 0.1, b));
         this.burst(now, 0.9, 0.08, 200, 1200, 0.7);
+        break;
+      case 'roar':
+        // canavar kükremesi: alçak, titreşimli testere dişi + gürültü süpürmesi
+        this.tone(70, now, 1.5, 'sawtooth', 0.2, b, false, 38);
+        this.tone(105, now + 0.05, 1.4, 'square', 0.1, b, false, 55);
+        this.tone(52, now, 1.6, 'sine', 0.22, b, false, 30);
+        this.burst(now, 1.3, 0.16, 140, 900, 0.7);
+        this.burst(now + 0.45, 0.8, 0.1, 900, 200, 0.9);
+        break;
+      case 'beastdie':
+        // canavar ölümü: inen gürleme + yükselen zafer akoru
+        this.tone(140, now, 1.8, 'sawtooth', 0.2, b, false, 28);
+        this.burst(now, 1.6, 0.18, 1200, 80, 0.6);
+        [147, 185, 220, 294, 370].forEach((f, i) => this.tone(f, now + 0.7 + i * 0.12, 1.4, 'triangle', 0.12, b));
         break;
       case 'boss': [196, 247, 294, 392, 494].forEach((f, i) => this.tone(f, now + i * 0.09, 1.1, 'triangle', 0.12, b)); this.tone(98, now, 1.3, 'sine', 0.2, b); break;
       case 'fly': this.burst(now, 0.6, 0.12, 300, 2600, 0.9); this.tone(330, now, 0.5, 'sine', 0.07, b, false, 660); break;

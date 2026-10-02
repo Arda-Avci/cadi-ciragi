@@ -1139,7 +1139,7 @@ export class Game {
       }
       const safe = this.inHome(); // ev güvenli bölge: düşmanlar içeri girmez
       if (safe && e.state === 'chase') e.state = 'return';
-      if (e.state === 'idle' && d < aggro && !safe) e.state = 'chase';
+      if (e.state === 'idle' && d < aggro && !safe) { e.state = 'chase'; if (e.beast) { audio.play('roar'); vibrate([90, 40, 160]); } }
       else if (e.state === 'chase' && (home > leash || d > aggro * 2.2)) e.state = 'return';
       else if (e.state === 'return' && home < 8) { e.state = 'idle'; e.stuckN = 0; e.noHeal = false; e.stuckT = 0; }
       let sp = e.def.speed;
@@ -1586,7 +1586,7 @@ export class Game {
 
   private killEnemy(e: Enemy): void {
     this.save.kills++;
-    audio.play(e.tier === 'boss' ? 'boss' : 'kill');
+    audio.play(e.beast ? 'beastdie' : e.tier === 'boss' ? 'boss' : 'kill');
     if (e.tier === 'boss') vibrate([60, 40, 120]);
     const value = Math.max(1, Math.round(e.def.drop * TIERS[e.tier].soul * Math.pow(ZONES[e.reg].scale, 0.7) * Math.sqrt(e.lv) * this.yieldMul() * Game.YIELD));
     // ganimet otomatik toplanır, etkisi yazıyla gösterilir
