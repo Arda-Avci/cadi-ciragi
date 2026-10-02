@@ -41,6 +41,8 @@ export interface SaveData {
   chestBonus: Record<string, number>;
   items: Item[];
   eq: { helmet: number; shield: number };
+  /** ek ekipman yuvaları (her 10 adada bir yenisi): eşya kimlikleri */
+  extra: number[];
   nextItem: number;
   spawn: Record<string, number>; // 's<id>' / 't<id>' -> yeniden doğma zamanı (ms)
   perm: Record<string, number>; // haritadan kazanılan kalıcı statlar
@@ -260,7 +262,7 @@ export class Game {
     return {
       essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
       bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
-      chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, nextItem: 1, spawn: {}, perm: {},
+      chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {},
     };
   }
 
@@ -270,6 +272,7 @@ export class Game {
       if (raw) {
         const s = { ...this.fresh(), ...(JSON.parse(raw) as Partial<SaveData>) };
         while (s.bossDown.length < ZONES.length) s.bossDown.push(false);
+        if (!Array.isArray(s.extra)) s.extra = [];
         return s;
       }
     } catch (e) {
@@ -659,14 +662,27 @@ export class Game {
     const id = this.save.eq[type];
     return id ? this.save.items.find((x) => x.id === id) : undefined;
   }
-  private helmetHp(): number { const h = this.item('helmet'); return h ? itemValue('helmet', h.rarity, h.level) : 0; }
-  private helmetRegen(): number { const h = this.item('helmet'); return h && h.rarity >= 3 ? 1.5 * (h.rarity - 2) : 0; }
-  private blockChance(): number { const s = this.item('shield'); return s && s.rarity >= 3 ? 0.08 * (s.rarity - 2) : 0; }
+  /** takılı eşyalar: ana yuva + ek yuvalardaki aynı türden eşyalar */
+  worn(type: SlotType): Item[] {
+    const out: Item[] = [];
+    const main = this.item(type);
+    if (main) out.push(main);
+    for (const id of this.save.extra) {
+      const it = this.save.items.find((x) => x.id === id);
+      if (it && it.type === type) out.push(it);
+    }
+    return out;
+  }
+  isWorn(id: number): boolean { return this.save.eq.helmet === id || this.save.eq.shield === id || this.save.extra.includes(id); }
+  /** ekipman ek yuvası: her 10 aşılan adada bir */
+  extraSlots(): number { return Math.floor(this.bossesDown() / 10); }
+  private helmetHp(): number { return this.worn('helmet').reduce((a, h) => a + itemValue('helmet', h.rarity, h.level), 0); }
+  private helmetRegen(): number { return this.worn('helmet').reduce((a, h) => a + (h.rarity >= 3 ? 1.5 * (h.rarity - 2) : 0), 0); }
+  private blockChance(): number { return Math.min(0.6, this.worn('shield').reduce((a, s) => a + (s.rarity >= 3 ? 0.08 * (s.rarity - 2) : 0), 0)); }
   typedReduction(t: DType): number {
-    const s = this.item('shield');
-    if (!s) return 0;
-    const v = itemValue('shield', s.rarity, s.level);
-    return s.dtype === t ? v : v * 0.5;
+    let v = 0;
+    for (const s of this.worn('shield')) v += s.dtype === t ? itemValue('shield', s.rarity, s.level) : itemValue('shield', s.rarity, s.level) * 0.5;
+    return v;
   }
   maxHp(): number {
     return (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
@@ -689,7 +705,8 @@ export class Game {
   weaponCopies(i: number): number { return 1 + Math.min(3, Math.floor((this.save.weapons[i] - 1) / 5)); }
   zone() { return ZONES[this.region]; }
   bossesDown(): number { return this.save.bossDown.filter(Boolean).length; }
-  slots(): number { return Math.min(4, 2 + this.bossesDown()); }
+  /** kristal yuvası: 2'den başlar, boss'larla 4'e çıkar, her 10 adada bir yenisi eklenir */
+  slots(): number { return Math.min(4, 2 + this.bossesDown()) + Math.floor(this.bossesDown() / 10); }
   weaponSlots(): number { return Math.min(4, 1 + this.bossesDown() + (this.save.kills >= 25 ? 1 : 0)); }
   chestsOpened(reg: number = this.region): number {
     return this.getWorld().chests.filter((c) => c.reg === reg && this.save.chests.includes(c.id)).length;
@@ -855,9 +872,14 @@ export class Game {
     this.gain(RARITIES[it.rarity].name + ' ' + EQUIP_NAMES[type][it.rarity] + ' (' + DTYPE_NAMES[it.dtype] + ') bulundu!', RARITIES[it.rarity].color, 'icon_' + type);
     // hemen kullanılabilir: yuva boşsa ya da yeni eşya daha güçlüyse anında kuşanılır
     const cur = this.save.items.find((x) => x.id === this.save.eq[type]);
+    const freeExtra = this.save.extra.length < this.extraSlots();
     if (!cur || it.rarity * 100 + it.level > cur.rarity * 100 + cur.level) {
+      if (cur && freeExtra) this.save.extra.push(cur.id); // eski ana eşya ek yuvaya geçer
       this.save.eq[type] = it.id;
       this.gain(EQUIP_NAMES[type][it.rarity] + ' kuşanıldı', '#ffe36b', 'icon_' + type);
+    } else if (freeExtra) {
+      this.save.extra.push(it.id);
+      this.gain(EQUIP_NAMES[type][it.rarity] + ' kuşanıldı (ek yuva)', '#ffe36b', 'icon_' + type);
     }
     this.persist();
     this.onChange();
@@ -867,7 +889,11 @@ export class Game {
   toggleItem(id: number): void {
     const it = this.save.items.find((x) => x.id === id);
     if (!it) return;
-    this.save.eq[it.type] = this.save.eq[it.type] === id ? 0 : id;
+    if (this.save.eq[it.type] === id) this.save.eq[it.type] = 0;
+    else if (this.save.extra.includes(id)) this.save.extra = this.save.extra.filter((x) => x !== id);
+    else if (!this.save.eq[it.type]) this.save.eq[it.type] = id;
+    else if (this.save.extra.length < this.extraSlots()) this.save.extra.push(id);
+    else this.save.eq[it.type] = id;
     this.hp = Math.min(this.hp, this.maxHp());
     this.persist();
     this.onChange();
@@ -891,6 +917,7 @@ export class Game {
     this.save.dust += 8 * (1 + it.rarity) * it.level;
     this.save.items = this.save.items.filter((x) => x.id !== id);
     if (this.save.eq[it.type] === id) this.save.eq[it.type] = 0;
+    this.save.extra = this.save.extra.filter((x) => x !== id);
     this.persist();
     this.onChange();
   }
@@ -1504,6 +1531,10 @@ export class Game {
       this.gainItem('shield', 2);
       if (!this.save.bossDown[sp.reg]) {
         this.save.bossDown[sp.reg] = true;
+        if (this.bossesDown() % 10 === 0) {
+          this.gain('Yeni kristal yuvası kazanıldı!', '#c8b6ff', 'ui_crystal');
+          this.gain('Yeni ekipman yuvası kazanıldı!', '#ffe36b', 'ui_gear');
+        }
         if (sp.reg < ZONES.length - 1) { this.gateAnim = { i: sp.reg, t: 3.6 }; audio.play('gate'); vibrate([80, 60, 200]); }
         this.say(ZONES[sp.reg].bossName + ' yenildi! ' + (sp.reg < ZONES.length - 1 ? 'Sonraki bölgenin kapısı açıldı.' : 'Dünyayı tamamladın!'));
       } else this.say(ZONES[sp.reg].bossName + ' yenildi!');

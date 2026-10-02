@@ -54,3 +54,4 @@ python -m http.server 8765 --bind ::
 
 `src/version.ts` içindeki `VERSION` / `BUILD`, açılış ekranında ve Stat/Ayarlar sayfalarında görünür.
 - **Kamera:** nişan mesafesi arttıkça kadraj uzaklaşır (en fazla ×0.5); atış yalnızca ekrandaki hedeflere yapılır, hedef kadrajda kalır.
+- **Yuvalar:** her 10 aşılan adada (10, 20, 30, 40) bir kristal yuvası ve bir ekipman ek yuvası (herhangi bir miğfer/kalkan) açılır; ek yuvalardaki eşyaların etkileri toplanır.

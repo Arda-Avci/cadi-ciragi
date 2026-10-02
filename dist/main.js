@@ -111,10 +111,14 @@ function renderPanel() {
         top.innerHTML = `<div class="rtxt">${ico('icon_helmet', 30)} ${slot('helmet')} &nbsp; ${ico('icon_shield', 30)} ${slot('shield')}</div>`
             + `<div>${ico('ui_dust', 20)} ${Math.floor(game.save.dust)}</div>`;
         panel.append(top);
-        const worn = (id) => (game.save.eq.helmet === id || game.save.eq.shield === id ? 1 : 0);
+        const ex = document.createElement('div');
+        ex.className = 'row';
+        ex.innerHTML = `<small>${L('Ek yuva')}: ${game.save.extra.length}/${game.extraSlots()} · ${L('her 10 adada +1 ekipman ve +1 kristal yuvası')}</small>`;
+        panel.append(ex);
+        const worn = (id) => (game.isWorn(id) ? 1 : 0);
         const list = [...game.save.items].sort((a, b) => worn(b.id) - worn(a.id) || b.rarity - a.rarity || b.level - a.level);
         for (const it of list.slice(0, 40)) {
-            const eq = game.save.eq[it.type] === it.id;
+            const eq = game.isWorn(it.id);
             const val = itemValue(it.type, it.rarity, it.level);
             const ab = itemAbility(it.type, it.rarity);
             const cost = itemUpgradeCost(it.level, it.rarity);
