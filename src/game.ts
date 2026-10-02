@@ -1510,7 +1510,7 @@ export class Game {
     this.addPerm('tree.hp', f * this.hpPool());
     this.addPerm('tree.regen', (t.big ? 0.0004 : 0.00008) * this.maxHp() * (first ? 1 : 0.2));
     const dh = this.maxHp() - before;
-    this.gain('+' + this.fmt(dh) + ' Can kazanıldı', '#7bff9a', 'ui_heart', { key: 'hp', amount: dh, fmt: (n) => '+' + this.fmt(n) + ' Can kazanıldı' });
+    if (dh > 0) this.gain('+' + this.fmt(dh) + ' Can kazanıldı', '#7bff9a', 'ui_heart', { key: 'hp', amount: dh, fmt: (n) => '+' + this.fmt(n) + ' Can kazanıldı' });
     this.persist();
     this.onChange();
   }
