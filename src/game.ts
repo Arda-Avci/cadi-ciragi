@@ -7,7 +7,7 @@ import { VERSION } from './version.js';
 import { audio } from './audio.js';
 import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
 import { N, T } from './i18n.js';
-import { vibrate } from './settings.js';
+import { settings, vibrate } from './settings.js';
 
 export interface HeroInfo { id: string; name: string; born: number }
 /** Şeref Salonu kaydı (bu cihazdaki kahramanlar) */
@@ -1787,6 +1787,7 @@ export class Game {
     this.drawGateBanner();
     this.drawHud();
     this.drawMinimap();
+    this.drawGuide();
     this.drawLoading();
     if (this.mapOpen) this.drawFullMap();
   }
@@ -2000,6 +2001,75 @@ export class Game {
         }
       }
     }
+  }
+
+  /** oyuncuya sıradaki hedefi gösterir: boss açıldıysa boss evi, boss yenildiyse kapı, değilse en yakın temizlenmemiş kamp */
+  guideTarget(): { x: number; y: number; label: string; color: string } | null {
+    const reg = this.region;
+    const last = ZONES.length - 1;
+    const boss = this.getWorld().spawners.find((s) => s.reg === reg && s.tier === 'boss' && s.bridge === undefined);
+    if (!this.save.bossDown[reg]) {
+      if (boss && !this.bossSealed(boss) && !this.spCleared(boss)) return { x: boss.x, y: boss.y, label: 'Boss evi', color: '#ff8a5a' };
+      let best: Spawner | null = null;
+      let bd = Infinity;
+      for (const s of this.getWorld().spawners) {
+        if (s.reg !== reg || s.tier === 'boss' || this.save.first['s' + s.id]) continue;
+        const d = Math.hypot(s.x - this.px, s.y - this.py);
+        if (d < bd) { bd = d; best = s; }
+      }
+      return best ? { x: best.x, y: best.y, label: 'Sıradaki kamp', color: '#ffe36b' } : null;
+    }
+    if (reg < last) { const g = this.gatePos(reg); return { x: g.x, y: g.y, label: 'Kapı', color: '#7bff9a' }; }
+    return null;
+  }
+
+  /** hedef ekrandaysa üstünde zıplayan ok, ekran dışındaysa kenarda hedefe dönük ok + mesafe */
+  private drawGuide(): void {
+    if (!settings.guide || this.dead > 0 || this.mapOpen) return;
+    const t = this.guideTarget();
+    if (!t) return;
+    const c = this.ctx;
+    const sx = this.w / 2 + (t.x - this.px) * this.zoom;
+    const sy = this.h / 2 + (t.y - this.py) * this.zoom;
+    const dist = Math.hypot(t.x - this.px, t.y - this.py);
+    const bob = Math.sin(this.time * 6) * 5;
+    const pulse = 0.6 + 0.4 * Math.sin(this.time * 4);
+    c.save();
+    c.textAlign = 'center';
+    c.font = 'bold 13px sans-serif';
+    c.lineWidth = 4; c.strokeStyle = 'rgba(0,0,0,0.75)';
+    const label = T(t.label) + ' · ' + Math.round(dist / 10) + ' m';
+    const onScreen = sx > 40 && sx < this.w - 40 && sy > 130 && sy < this.h - 110;
+    if (onScreen) {
+      const ay = sy - 70 + bob;
+      c.fillStyle = t.color;
+      c.beginPath(); c.moveTo(sx, ay + 22); c.lineTo(sx - 15, ay); c.lineTo(sx + 15, ay); c.closePath(); c.fill();
+      c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 2; c.stroke();
+      c.lineWidth = 4; c.strokeStyle = 'rgba(0,0,0,0.75)';
+      c.strokeText(label, sx, ay - 8); c.fillStyle = '#fff'; c.fillText(label, sx, ay - 8);
+    } else {
+      // ekran kenarına yaslı ok
+      const cx = this.w / 2;
+      const cy = this.h / 2;
+      const dx = sx - cx;
+      const dy = sy - cy;
+      const k = Math.min((cx - 44) / Math.max(1, Math.abs(dx)), (cy - 130) / Math.max(1, Math.abs(dy)), (cy - 110) / Math.max(1, Math.abs(dy)));
+      const ex = cx + dx * k;
+      const ey = cy + dy * k;
+      const ang = Math.atan2(dy, dx);
+      c.translate(ex, ey);
+      c.rotate(ang);
+      c.fillStyle = `rgba(0,0,0,${0.35 * pulse})`;
+      c.beginPath(); c.arc(0, 0, 26, 0, Math.PI * 2); c.fill();
+      c.fillStyle = t.color;
+      c.beginPath(); c.moveTo(20 + bob * 0.5, 0); c.lineTo(-10, -16); c.lineTo(-4, 0); c.lineTo(-10, 16); c.closePath(); c.fill();
+      c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 2; c.stroke();
+      c.rotate(-ang);
+      c.lineWidth = 4; c.strokeStyle = 'rgba(0,0,0,0.75)';
+      const ty = ey < cy ? 44 : -34;
+      c.strokeText(label, 0, ty); c.fillStyle = '#fff'; c.fillText(label, 0, ty);
+    }
+    c.restore();
   }
 
   /** köprüde yeni ada yüklenirken küçük bir "Yükleniyor…" rozeti */

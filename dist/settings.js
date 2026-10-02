@@ -8,7 +8,7 @@ function defaultLang() {
         return 'tr';
     }
 }
-export const settings = { music: 0.5, sfx: 0.7, vibrate: true, lang: defaultLang() };
+export const settings = { music: 0.5, sfx: 0.7, vibrate: true, lang: defaultLang(), guide: true };
 export function loadSettings() {
     try {
         const raw = localStorage.getItem(KEY);

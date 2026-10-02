@@ -253,6 +253,7 @@ function renderPanel(): void {
       return d;
     };
     panel.append(seg('Titreşim', 'ui_speed', [['Açık', true], ['Kapalı', false]], settings.vibrate, (v) => { settings.vibrate = v; if (v) vibrate(40); }));
+    panel.append(seg('Yönlendirme okları', 'ui_map', [['Açık', true], ['Kapalı', false]], settings.guide, (v) => { settings.guide = v; }));
     const hint = document.createElement('div');
     hint.className = 'row';
     hint.innerHTML = `<small>${L('Titreşim yalnızca destekleyen cihazlarda çalışır.')}</small>`;
