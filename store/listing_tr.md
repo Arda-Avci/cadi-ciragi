@@ -27,7 +27,7 @@ MACERA
 • Kuleleri yık, ama dikkat: 3. adadan itibaren bazı kulelerden yılan sürüsü, 6. adadan sonra bazılarından çok bölümlü dev yılan çıkar. Dev yılan seni sarar, her bölümünün gücü farklıdır; hepsini vurunca ölür ve büyük ödül bırakır.
 • Karakter kartlarını topla: her düşmanın vurduğu ve zayıf olduğu hasar türünü öğren, koleksiyon ödülleri kazan.
 • Yönlendirme oku seni sıradaki düşmana götürür; 8 adımlık başlangıç görevleri ilk dakikalarda elinden tutar.
-• Günlük: her boss kırık aynanın bir sayfasını açar, önemli anlarda animasyonlu hikâye sahneleri izlersin. 69 sayfalık gizem sonunda rakip cadının kim olduğunu ortaya çıkarır.
+• Günlük: her boss kırık aynanın bir sayfasını açar, önemli anlarda animasyonlu hikâye sahneleri izlersin. 250 sayfalık gizem sonunda rakip cadının kim olduğunu ortaya çıkarır.
 
 CADI EVİ
 • Kediyi sev, kedi maması al ve düzenli besle, bahçeni sula, iksir demle: evde yaptığın işler kalıcı güç kazandırır.
@@ -46,7 +46,7 @@ DÖVÜŞ ARENASI
 • Kazandıkça cadı kıyafetlerini aç; her kıyafet küçük bir bonus verir (ruh kazancı, hız, menzil, kritik, can çalma, kaçınma).
 
 FİNAL
-• Devam paketleriyle 69. adaya kadar ilerle: her yeni ada öncekinden 3 kat zor. Sonunda seninle aynı güçte, farklı renkli rakip cadıyla düello.
+• Devam paketleriyle 250. adaya kadar ilerle: her yeni ada öncekinden 3 kat zor. Sonunda seninle aynı güçte, farklı renkli rakip cadıyla düello.
 
 Şeref Salonu, 5 dil (Türkçe, English, Deutsch, Français, Español), ayarlanabilir ses ve titreşim.
 

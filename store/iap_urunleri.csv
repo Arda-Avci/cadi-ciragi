@@ -6,5 +6,7 @@ hexling.power.xl,Efsane Güç Paketi,Tüketilebilir (consumable),Gücü x5,6.99
 hexling.levels.5,Devam Paketi +5 Seviye,Tüketilemez (non-consumable),Açık ada sayısı +5 (41-45),1.99
 hexling.levels.10,Devam Paketi +10 Seviye,Tüketilemez (non-consumable),Açık ada sayısı +10 (41-50),3.49
 hexling.levels.20,Devam Paketi +20 Seviye,Tüketilemez (non-consumable),Açık ada sayısı +20 (41-60),5.99
-hexling.levels.30,Devam Paketi +30 Seviye,Tüketilemez (non-consumable),Açık ada sayısı +30 (41-69 ve düello; 29 ada yeter),7.99
+hexling.levels.30,Devam Paketi +30 Seviye,Tüketilemez (non-consumable),Açık ada sayısı +30 (41-70),7.99
+hexling.levels.50,Devam Paketi +50 Seviye,Tüketilemez (non-consumable),Açık ada sayısı +50,11.99
+hexling.levels.100,Devam Paketi +100 Seviye,Tüketilemez (non-consumable),Açık ada sayısı +100 (hepsi alınınca 250. adaya ve final düellosuna kadar),19.99
 hexling.archer,Okçu,Tüketilemez (non-consumable),Elle nişan alınan okçu; 3 isabetle kara deliği 30 sn kapatır (ayarlardan açılıp kapatılır),2.99

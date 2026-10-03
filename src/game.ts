@@ -1,5 +1,5 @@
 import {
-  BASE_ISLANDS, BOSS_MUL, BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, statIcon, CStat, DType, DTYPES, DTYPE_NAMES, ENEMIES, EnemyDef, EnemyId, EQUIP_NAMES,
+  BASE_ISLANDS, BOSS_MUL, SOFT_CAP_FROM, softCap, BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, statIcon, CStat, DType, DTYPES, DTYPE_NAMES, ENEMIES, EnemyDef, EnemyId, EQUIP_NAMES,
   MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SlotType, TIERS, Tier, UPGRADES, WEAPONS, ZONES, crystalValue,
   enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies,
 } from './data.js';
@@ -111,8 +111,6 @@ const BIOME_ART = /^(ground|tree|boss|beast|rock|bld)_/;
 export const HOME = { x: 0, y: 40, r: 150 };
 const HOME_HEAL = 0.28; // saniyede azami canın oranı
 
-/** test parametresi güç çarpanı: gerçek oyunda 44. seviyede ~180Q güce ulaşılır (formül 423B veriyordu); hem can hem hasara uygulanır, güç ∝ √(can×hasar) olduğundan güç de bu kadar katlanır */
-function testBoost(level: number): number { return Math.pow(1.734e5, Math.max(0, level - 1) / 43); }
 
 /** bonus tur düşmanlarının kamp kimliği (gerçek kamplarla çakışmaz) */
 const BONUS_SP = -777;
@@ -367,7 +365,7 @@ export class Game {
   private calibrateTest(): void {
     if (!TEST_LEVEL) return;
     const z = ZONES[TEST_LEVEL - 1];
-    const target = (ENEMIES.mushroom.hp * TIERS.easy.hp * z.scale * 3) / 100 * testBoost(TEST_LEVEL);
+    const target = (ENEMIES.mushroom.hp * TIERS.easy.hp * z.scale * 3) / 100;
     // güç adanın eğrisinde kalsın (44. seviyede ~180Q): en yüksek ekipmanın ve güç paketlerinin can katkısı elit canından düşülür
     const sv = this.save;
     const full = this.maxHp();
@@ -388,6 +386,17 @@ export class Game {
     const need = target / this.dmgMul();
     if (need >= s0) this.save.perm['elite.dmg'] = (need - s0) / s1;
     else this.testDmgF = need / s0;
+    // güç hedefi: seviyeden bağımsız olarak o adanın boss gücünün 1840 katı (44. seviyede ≈180Q); can ve hasar birlikte ölçeklenir
+    const goal = 1840 * this.bossPower(TEST_LEVEL - 1);
+    for (let it = 0; it < 6 && TEST_LEVEL >= 40; it++) { // 40. seviyeden önce eski kamp süresi kalibrasyonu geçerli
+      const P = this.fullPower();
+      if (!(P > 0) || !isFinite(P)) break;
+      const r = goal / P;
+      if (Math.abs(r - 1) < 0.01) break;
+      this.save.perm['elite.hp'] = Math.max(0, (100 + (this.save.perm['elite.hp'] ?? 0)) * r - 100);
+      if ((this.save.perm['elite.dmg'] ?? 0) > 0) this.save.perm['elite.dmg'] = (this.save.perm['elite.dmg'] ?? 0) * r;
+      else this.testDmgF *= r;
+    }
     this.hp = this.maxHp();
   }
 
@@ -430,7 +439,7 @@ export class Game {
     t.nextItem = 4;
     // güç: adanın ölçeğine göre (düşman canı ∝ scale, hasarı ∝ dmgScale)
     const z = ZONES[idx];
-    s.perm['elite.hp'] = 100 * z.dmgScale * 2 * testBoost(level);
+    s.perm['elite.hp'] = 100 * z.dmgScale * 2;
     s.perm['elite.dmg'] = 0; // gerçek değer calibrateTest() ile kamp süresine göre hesaplanır
     const rp = this.restPoints()[idx];
     s.x = rp.x; s.y = rp.y + 70;
@@ -648,7 +657,7 @@ export class Game {
     return null;
   }
   inHome(): boolean { return this.restAt() !== null; }
-  /** erişilebilir son ada sayısı: 40 ücretsiz + satın alınan devam paketleri (en fazla 69) */
+  /** erişilebilir son ada sayısı: 40 ücretsiz + satın alınan devam paketleri (en fazla ZONES.length = 250) */
   levelCap(): number {
     let n = BASE_ISLANDS;
     for (const p of LEVEL_PACKS) if (this.save.lvPacks[p.id]) n += p.levels;
@@ -670,14 +679,32 @@ export class Game {
     return false;
   }
 
+  /** 101. adadan sonra ücretsiz güç boss gücünün gerisinde kalır: bir adaya ilk girişte ekipman yetmiyorsa güç paketleri hatırlatılır */
+  private softCapHint(): void {
+    const r = this.region;
+    if (r < SOFT_CAP_FROM || this.save.first['hint' + r]) return;
+    if (this.fullPower() < this.bossPower(r) * 0.8) {
+      this.save.first['hint' + r] = 1;
+      this.say('Ekipmanların bu adaya yetmiyor: Güç paketleri güçlenmeni sağlar (mağaza)');
+    }
+  }
+
+  /** çevredeki 10 ada: büyük harita, çizim ve fizik döngüleri yalnızca bunlara bakar (250 adalık dünyada hız için) */
+  winRange(): [number, number] {
+    const n = ZONES.length;
+    const a = Math.max(0, Math.min(n - 10, this.region - 3));
+    return [a, Math.min(n - 1, a + 9)];
+  }
+
   /** ignoreObstacles: kaya/bina engelleri yok sayılır (yalnız kara ve köprü şartı kalır; kaplan engellere takılmasın diye) */
   walkable(x: number, y: number, ignoreGates = false, ignoreObstacles = false): boolean {
     if (!ignoreObstacles && this.blocked(x, y)) return false;
-    for (let i = 0; i < ZONES.length; i++) {
+    const [w0, w1] = this.winRange();
+    for (let i = w0; i <= w1; i++) {
       const c = this.regionCenter(i);
       if (Math.hypot(x - c.x, y - c.y) <= c.r - 18) return true;
     }
-    for (let i = 0; i < ZONES.length - 1; i++) {
+    for (let i = w0; i <= w1 && i < ZONES.length - 1; i++) {
       const b = this.bridge(i);
       const dx = b.bx - b.ax;
       const dy = b.by - b.ay;
@@ -695,11 +722,16 @@ export class Game {
   private regionAt(x: number, y: number): number {
     let best = 0;
     let bd = Infinity;
-    for (let i = 0; i < ZONES.length; i++) {
-      const c = this.regionCenter(i);
-      const d = Math.hypot(x - c.x, y - c.y) / c.r;
-      if (d < bd) { bd = d; best = i; }
-    }
+    const scan = (a: number, b: number): void => {
+      for (let i = a; i <= b; i++) {
+        const c = this.regionCenter(i);
+        const d = Math.hypot(x - c.x, y - c.y) / c.r;
+        if (d < bd) { bd = d; best = i; }
+      }
+    };
+    const [w0, w1] = this.winRange();
+    scan(w0, w1);
+    if (bd > 1.4) { bd = Infinity; scan(0, ZONES.length - 1); } // ışınlanma gibi pencere dışı konumlarda tam tarama
     return best;
   }
 
@@ -2783,7 +2815,7 @@ export class Game {
     this.updateZoom(dt);
     const reg0 = this.region;
     this.region = this.regionAt(this.px, this.py);
-    if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); this.tigerEnterRegion(this.region); }
+    if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); this.tigerEnterRegion(this.region); this.softCapHint(); }
     const calm = !this.enemies.some((e) => e.state === 'chase');
     const atHome = this.inHome();
     const before = this.hp;
@@ -3697,7 +3729,7 @@ export class Game {
     const done = this.save.gw[reg] ?? 0;
     const rem = Math.max(w, total - done);
     this.save.gw[reg] = done + w;
-    const cap = this.bossPower(reg) * Game.MARGIN;
+    const cap = this.bossPower(reg) * Game.MARGIN * softCap(reg); // 101. adadan sonra tavan düşer: fark güç paketleriyle kapanır
     const P = Math.max(1, this.fullPower() / this.shopMul()); // satın alınan güç, ücretsiz ilerleme kazancını etkilemez
     if (P >= cap) return 0;
     return Math.pow(cap / P, Math.min(1, w / rem)) - 1;
@@ -3933,7 +3965,8 @@ export class Game {
   }
   /** yakındaki usta cadının numarası, yoksa -1 */
   nearMaster(): number {
-    for (let i = 0; i < ZONES.length - 1; i++) {
+    const [m0, m1] = this.winRange();
+    for (let i = m0; i <= m1 && i < ZONES.length - 1; i++) {
       if (!this.masterOpen(i)) continue;
       const m = this.masterPos(i);
       if (Math.hypot(m.x - this.px, m.y - this.py) < 130) return i;
@@ -3986,7 +4019,8 @@ export class Game {
   handleTap(x: number, y: number): boolean {
     if (this.mapOpen) { this.mapOpen = false; return true; }
     if (Math.hypot(x - this.mini.x, y - this.mini.y) <= this.mini.r) { this.mapOpen = true; return true; }
-    for (let i = 0; i < ZONES.length - 1; i++) {
+    const [m0, m1] = this.winRange();
+    for (let i = m0; i <= m1 && i < ZONES.length - 1; i++) {
       if (!this.masterOpen(i)) continue;
       const m = this.masterPos(i);
       const sx = this.w / 2 + (m.x - this.px) * this.zoom;
@@ -4029,7 +4063,7 @@ export class Game {
     this.drawWorldObjects(camX, camY);
     this.drawHome(camX, camY);
     this.drawObstacles(camX, camY, false);
-    for (let i = 0; i < ZONES.length - 1; i++) this.drawMaster(i, camX, camY);
+    { const [m0, m1] = this.winRange(); for (let i = m0; i <= m1 && i < ZONES.length - 1; i++) this.drawMaster(i, camX, camY); }
     for (const d of this.deathFx) this.drawDeath(d);
     for (const e of this.enemies) if (this.inView(e.x, e.y, 140, camX, camY)) this.drawEnemy(e);
     this.drawMines(camX, camY);
@@ -4100,14 +4134,16 @@ export class Game {
 
   private drawLand(camX: number, camY: number): void {
     const c = this.ctx;
-    ZONES.forEach((zone) => {
+    const [w0, w1] = this.winRange();
+    ZONES.slice(w0, w1 + 1).forEach((zone) => {
       const cx = zone.cx - camX;
       const cy = zone.cy - camY;
       if (cx + zone.radius + 60 < 0 || cx - zone.radius - 60 > this.vw || cy + zone.radius + 60 < 0 || cy - zone.radius - 60 > this.vh) return;
       drawShore(c, cx, cy, zone.radius, this.time, shade(zone.dot, 1.45));
     });
-    for (let i = 0; i < ZONES.length - 1; i++) drawBridge(c, this.bridge(i), i, camX, camY, this.vw, this.vh, this.time, this.gateLocked(i), !this.bridgeOpen(i));
-    ZONES.forEach((zone, reg) => {
+    for (let i = w0; i <= w1 && i < ZONES.length - 1; i++) drawBridge(c, this.bridge(i), i, camX, camY, this.vw, this.vh, this.time, this.gateLocked(i), !this.bridgeOpen(i));
+    ZONES.slice(w0, w1 + 1).forEach((zone, zi) => {
+      const reg = w0 + zi;
       const cx = zone.cx - camX;
       const cy = zone.cy - camY;
       if (cx + zone.radius < 0 || cx - zone.radius > this.vw || cy + zone.radius < 0 || cy - zone.radius > this.vh) return;
@@ -4255,7 +4291,7 @@ export class Game {
       c.fillRect(ch.x - 14, ch.y - 9, 28, 5);
       if (!open) c.fillRect(ch.x - 3, ch.y - 4, 6, 7);
     }
-    for (let i = 0; i < ZONES.length - 1; i++) { this.drawGate(i, camX, camY); this.drawExitGate(i, camX, camY); }
+    { const [g0, g1] = this.winRange(); for (let i = g0; i <= g1 && i < ZONES.length - 1; i++) { this.drawGate(i, camX, camY); this.drawExitGate(i, camX, camY); } }
   }
 
   /** Evimiz: doğduğumuz yer ve hızlı iyileşme alanı */
@@ -4856,12 +4892,13 @@ export class Game {
     c.save();
     c.beginPath(); c.arc(cx, cy, rad, 0, Math.PI * 2); c.clip();
     c.fillStyle = '#0c2742'; c.fillRect(cx - rad, cy - rad, rad * 2, rad * 2);
-    for (let i = 0; i < ZONES.length - 1; i++) {
+    const [n0, n1] = this.winRange();
+    for (let i = n0; i <= n1 && i < ZONES.length - 1; i++) {
       const b = this.bridge(i);
       c.strokeStyle = '#6b5436'; c.lineWidth = BRIDGE_HALF_WIDTH * 2 * k;
       c.beginPath(); c.moveTo(X(b.ax), Y(b.ay)); c.lineTo(X(b.bx), Y(b.by)); c.stroke();
     }
-    ZONES.forEach((z) => { c.fillStyle = z.bg; c.beginPath(); c.arc(X(z.cx), Y(z.cy), z.radius * k, 0, Math.PI * 2); c.fill(); });
+    ZONES.slice(n0, n1 + 1).forEach((z) => { c.fillStyle = z.bg; c.beginPath(); c.arc(X(z.cx), Y(z.cy), z.radius * k, 0, Math.PI * 2); c.fill(); });
     for (const sp of this.getWorld().spawners) {
       if (Math.abs(sp.x - this.px) > view || Math.abs(sp.y - this.py) > view || this.hardHidden(sp)) continue;
       c.fillStyle = this.spCleared(sp) ? 'rgba(160,160,160,0.7)' : TIERS[sp.tier].color;
@@ -4874,7 +4911,7 @@ export class Game {
       c.fillRect(X(ch.x) - 2, Y(ch.y) - 2, 4, 4);
     }
     this.drawSpr('ui_home', X(HOME.x), Y(HOME.y), 16);
-    for (let i = 0; i < ZONES.length - 1; i++) {
+    for (let i = n0; i <= n1 && i < ZONES.length - 1; i++) {
       const g = this.gatePos(i);
       c.fillStyle = this.gateLocked(i) ? '#ff8a5a' : '#7bff9a';
       c.fillRect(X(g.x) - 2, Y(g.y) - 4, 4, 8);
@@ -4894,10 +4931,12 @@ export class Game {
   private drawFullMap(): void {
     const c = this.ctx;
     c.fillStyle = 'rgba(4,12,24,0.88)'; c.fillRect(0, 0, this.w, this.h);
-    const minX = Math.min(...ZONES.map((z) => z.cx - z.radius)) - 80;
-    const maxX = Math.max(...ZONES.map((z) => z.cx + z.radius)) + 80;
-    const minY = Math.min(...ZONES.map((z) => z.cy - z.radius)) - 80;
-    const maxY = Math.max(...ZONES.map((z) => z.cy + z.radius)) + 80;
+    const [f0, f1] = this.winRange(); // büyük haritada yalnızca çevredeki 10 seviye görünür
+    const win = ZONES.slice(f0, f1 + 1);
+    const minX = Math.min(...win.map((z) => z.cx - z.radius)) - 80;
+    const maxX = Math.max(...win.map((z) => z.cx + z.radius)) + 80;
+    const minY = Math.min(...win.map((z) => z.cy - z.radius)) - 80;
+    const maxY = Math.max(...win.map((z) => z.cy + z.radius)) + 80;
     const k = Math.min((this.w * 0.94) / (maxX - minX), (this.h * 0.6) / (maxY - minY));
     const mw = (maxX - minX) * k;
     const mh = (maxY - minY) * k;
@@ -4907,12 +4946,13 @@ export class Game {
     const Y = (y: number): number => my + (y - minY) * k;
     c.fillStyle = '#0c2742'; c.fillRect(mx, my, mw, mh);
     c.strokeStyle = 'rgba(255,255,255,0.5)'; c.lineWidth = 2; c.strokeRect(mx, my, mw, mh);
-    for (let i = 0; i < ZONES.length - 1; i++) {
+    for (let i = f0; i < f1; i++) {
       const b = this.bridge(i);
       c.strokeStyle = '#6b5436'; c.lineWidth = Math.max(3, BRIDGE_HALF_WIDTH * 2 * k);
       c.beginPath(); c.moveTo(X(b.ax), Y(b.ay)); c.lineTo(X(b.bx), Y(b.by)); c.stroke();
     }
-    ZONES.forEach((z, zi) => {
+    win.forEach((z, wi) => {
+      const zi = f0 + wi;
       c.fillStyle = z.bg; c.beginPath(); c.arc(X(z.cx), Y(z.cy), z.radius * k, 0, Math.PI * 2); c.fill();
       c.strokeStyle = zi === this.region ? '#ffe36b' : this.save.bossDown[zi] ? 'rgba(120,255,160,0.7)' : 'rgba(255,255,255,0.25)';
       c.lineWidth = zi === this.region ? 3 : 2; c.stroke();
@@ -4931,7 +4971,7 @@ export class Game {
       if (Math.hypot(ch.x - this.px, ch.y - this.py) < 900) c.fillRect(X(ch.x) - 2.5, Y(ch.y) - 2.5, 5, 5);
     }
     this.drawSpr('ui_home', X(HOME.x), Y(HOME.y), 24);
-    for (let i = 0; i < ZONES.length - 1; i++) {
+    for (let i = f0; i <= f1 && i < ZONES.length - 1; i++) {
       const g = this.gatePos(i);
       if (!this.drawSpr(this.gateLocked(i) ? 'ui_lock' : 'ui_skill', X(g.x), Y(g.y), 24)) {
         c.fillStyle = this.gateLocked(i) ? '#ff8a5a' : '#7bff9a'; c.fillRect(X(g.x) - 3, Y(g.y) - 6, 6, 12);

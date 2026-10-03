@@ -30,8 +30,8 @@ Ekran görüntülerini yenilemek: `python -m http.server 8765` çalışırken `n
 
 ## 3b. Devam paketi mantığı (bilmen gerekenler)
 - 1–40. adalar ücretsiz. 40. bossu yenince oyun mağazayı açar; kapı kilitli kalır.
-- Açık ada sayısı = 40 + satın alınan paketlerin toplamı (en çok 69). 29 ada kaldığı için +5 ve +10 ve +20 birlikte yeter; +30 tek başına hepsini açar.
-- 69. adanın bossu yenilince rakip cadıyla düello (ayrı dövüş oyunu) başlar; kazanınca oyun biter.
+- Açık ada sayısı = 40 + satın alınan paketlerin toplamı (en çok 250). 210 ada için paketler: +5, +10, +20, +30, +50, +100 (hepsi = 215 ≥ 210).
+- 250. adanın bossu yenilince rakip cadıyla düello (ayrı dövüş oyunu) başlar; kazanınca oyun biter.
 - Her ada öncekinden 3 kat zor: ücretsiz ilerleme kazancı bunu karşılamaz; oyuncu güç paketi almazsa duvara çarpar. Bunu bilerek tasarladık ama etik/iade sorunu için Play'in "yanıltıcı değil" kuralına uy: fiyat ve etki açık yazılı.
 
 ## 4. İmzalı sürümler
@@ -57,4 +57,9 @@ Satın alma, geri yükleme, banner ve ödüllü reklam akışları yalnızca der
 - Düello oyunu (dövüş) ve 41–69 ada dengesi insan oynanışıyla denenmedi; yalnızca derleme + tarayıcı duman testi yapıldı.
 
 ## 9. Test parametresi
-`?level=N` (1-69) oyunu N. adadan başlatır: önceki bosslar yenik, güç/can adaya göre ayarlı, tüm yuvalar 1. seviye eşyayla dolu. Gerçek kayda dokunmaz (ayrı anahtar: cadi-ciragi-test).
+`?level=N` (1-250; 40 ve üstü: güç boss gücünün 1840 katı, ekipman max, x5 güç paketi x2) oyunu N. adadan başlatır: önceki bosslar yenik, güç/can adaya göre ayarlı, tüm yuvalar 1. seviye eşyayla dolu. Gerçek kayda dokunmaz (ayrı anahtar: cadi-ciragi-test).
+
+## 250 ada (04-10-2026)
+- `ISLAND_COUNT = 250`; 70. adadan sonra yarıçap 1505 ve kamp yoğunluğu sabit (çakışma yok), sapma ±100; çeşit adlarına sıra eki (II, III…).
+- Güç çarpanı 41. adadan sonra her adada x3: 250. adada `scale` ~6e161 (taşma yok). `fmtNum` 1e42 üstünü bilimsel yazar.
+- Yumuşak sınır: `softCap(reg)` 101. adadan itibaren ücretsiz kalıcı güç tavanını her adada 

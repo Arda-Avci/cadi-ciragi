@@ -25,7 +25,7 @@ ADVENTURE
 • Destroy towers, but beware: from island 3 some towers release a swarm of snakes, and after island 6 some release a multi-segment giant snake. It coils around you, every segment has different power; it dies when all segments are hit and drops a big reward.
 • Collect character cards: learn what damage each enemy deals and is weak to, and earn collection rewards.
 • A guide arrow leads you to the next enemy; 8 starter quests hold your hand through the first minutes.
-• Journal: every boss unlocks a page of the broken mirror, with animated story scenes at key moments. A 69-page mystery reveals who the rival witch really is.
+• Journal: every boss unlocks a page of the broken mirror, with animated story scenes at key moments. A 250-page mystery reveals who the rival witch really is.
 
 WITCH HOUSE
 • Pet the cat, buy cat food and feed it regularly, water the garden, brew potions: chores at home grant permanent power.
@@ -44,7 +44,7 @@ FIGHTING ARENA
 • Unlock witch outfits as you win; each outfit gives a small bonus (soul gain, speed, range, crit, lifesteal, evasion).
 
 FINALE
-• Continuation packs take you up to island 69: every new island is 3 times harder than the last. At the end, a duel against a rival witch of your own level, in a different color.
+• Continuation packs take you up to island 250: every new island is 3 times harder than the last. At the end, a duel against a rival witch of your own level, in a different color.
 
 Hall of Fame, 5 languages, adjustable sound and vibration.
 

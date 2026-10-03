@@ -1,6 +1,6 @@
 /**
- * Günlük: her ada bossu yenilince bir sayfa açılır (69 sayfa). Tek bir gizem ilerler:
- * Kırk Ada'yı ayıran lanet, kırık bir aynanın parçalarıdır; son sayfada rakip cadının kim olduğu ortaya çıkar.
+ * Günlük: her ada bossu yenilince bir sayfa açılır (250 sayfa). Tek bir gizem ilerler:
+ * Adaları ayıran lanet, kırık bir aynanın parçalarıdır; son sayfada rakip cadının kim olduğu ortaya çıkar.
  */
 import { ZONES } from './data.js';
 
@@ -33,7 +33,11 @@ const KEY: Record<number, Page> = {
   39: { title: 'Kırkıncı kırık', text: 'Kırk kırık tamam, ayna kapıda duruyor ama yarı saydam: öte yüzünü göremiyorum. Ustam, "Buradan sonrası bedelli," dedi. "Yol uzar, güç ister; zamanını ve sabrını." Kapı yalnız bunu hak edene açılır.' },
   49: { title: 'Öte yüz', text: 'Aynanın öte yüzünde adalar yeşile boyanmış. Her şey bizim dünyamızın tersi: cadılar saklanmıyor, hükmediyor. Bu dünyada bana ne diyorlar? "Gelen."' },
   59: { title: 'Mektup', text: 'Usta Elmira\'nın eski bir mektubunu buldum: "Çırağım güçlendikçe aynadaki yansıması da güçleniyor. Biri diğerini yenmeden ayna bütünlenmez. Üzgünüm."' },
-  68: { title: 'Son kırık', text: 'Son bossu yendim ve ayna bütünlendi. Görüntüde yeşil gözlü cadı bana baktı: yarım kalmış, kendi gücümün aynası. "Ben senim," dedi. "Ve sen de bensin. Dövüşelim; kim kalırsa tek olur."' },
+  68: { title: 'Altmış dokuzuncu kırık', text: 'Altmış dokuz kırık bende ama ayna hâlâ bütün değil. Ustam, "Adalar bitmedi," dedi. "Öte yüz sonsuza uzanıyor; her adada gölge biraz daha ağır, biraz daha uzun."' },
+  99: { title: 'Yüzüncü kırık', text: 'Yüz kırık. Artık ekipmanlarım bana yetmiyor: eski güçler yeni adaların yanında oyuncak gibi. Ustam, "Güç paketleri bu yüzden var," dedi. "Eski sihir yetmediğinde yeni sihir gerekir."' },
+  149: { title: 'Yarı yol', text: 'Yüz elli kırık. Yeşil gözlü cadının izini her adada buluyorum: bir adım önde, hep önümde. Defterimin kenarına yazdım: "Beni bekliyor."' },
+  199: { title: 'Sessiz adalar', text: 'Bu adalarda boss\'ların bile sesi kısık. Kırıklar tek tek susuyor; ayna bütünlenmeye çok yakın. Ustam Elmira mektubunda tek satır yazmış: "Korkma."' },
+  [ZONES.length - 1]: { title: 'Son kırık', text: 'Son bossu yendim ve ayna bütünlendi. Görüntüde yeşil gözlü cadı bana baktı: yarım kalmış, kendi gücümün aynası. "Ben senim," dedi. "Ve sen de bensin. Dövüşelim; kim kalırsa tek olur."' },
 };
 
 const FLAVOR: Record<string, string[]> = {
@@ -55,7 +59,7 @@ export function pageFor(i: number): Page {
   const k = KEY[i];
   if (k) return k;
   const z = ZONES[i];
-  const biome = Object.keys(FLAVOR).find((b) => z.name.endsWith(b)) ?? 'Mantar Ormanı';
+  const biome = Object.keys(FLAVOR).find((b) => z.name.includes(b)) ?? 'Mantar Ormanı'; // 72. adadan sonraki adlara sıra eki (II, III…) gelir
   const lines = FLAVOR[biome];
   const text = lines[Math.floor(i / 8) % lines.length];
   return { title: `Sayfa ${i + 1} · ${z.name}`, text: `${text} (Usta ${z.master} bu adada bana kısa bir not bıraktı.)` };

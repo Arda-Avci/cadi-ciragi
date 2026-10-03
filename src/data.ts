@@ -135,15 +135,21 @@ export interface ZoneDef {
   power: number;
 }
 
-/** ilk (ücretsiz) 40 ada; sonrasındaki 29 ada devam paketiyle açılır ve her biri öncekinden 3 kat zordur */
+/** ilk (ücretsiz) 40 ada; sonrasındaki 210 ada devam paketleriyle açılır ve her biri öncekinden 3 kat zordur (250. adada oyun biter) */
 export const BASE_ISLANDS = 40;
-export const ISLAND_COUNT = 69;
+export const MID_ISLANDS = 69; // ilk iki aşama (eski kayıtlarla aynı konumlar)
+export const ISLAND_COUNT = 250;
 export const PAID_STEP = 3;
+/** 101. adadan itibaren ekipman ve kalıcı kazançlar yetmez: ücretsiz güç tavanı her adada %6 düşer, açığı güç paketleri (×1.5/×2/×3/×5, birikir) kapatır */
+export const SOFT_CAP_FROM = 100;
+export const SOFT_CAP_DECAY = 0.94;
+export const softCap = (reg: number): number => (reg >= SOFT_CAP_FROM ? Math.pow(SOFT_CAP_DECAY, reg - SOFT_CAP_FROM + 1) : 1);
 
 /** sayıyı okunur yazar: K, M, B, T, Q, Qi... */
 export function fmtNum(n: number): string {
   if (!isFinite(n)) return '∞';
   const units = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd'];
+  if (Math.abs(n) >= 1e42) return (n < 0 ? '-' : '') + Math.abs(n).toExponential(2).replace('e+', 'e'); // Dd'nin ötesi: bilimsel yazım
   let u = 0;
   let v = Math.abs(n);
   while (v >= 1000 && u < units.length - 1) { v /= 1000; u++; }
@@ -224,30 +230,35 @@ const HARD_MUL = 2;
 
 function buildZones(): ZoneDef[] {
   // ilk 40 ada eski kayıtlarla aynı konumda kalır; sonraki 29 ada daha geniş ızgarada aynı yolun devamıdır
-  const path = islandPath(ISLAND_COUNT, 6, 20261003, islandPath(BASE_ISLANDS, 4, 20261002));
+  const path = islandPath(ISLAND_COUNT, 14, 20261004, islandPath(MID_ISLANDS, 6, 20261003, islandPath(BASE_ISLANDS, 4, 20261002)));
   const rnd = lcg(7742);
   const D = 4400;
   let power = 1;
   const zones: ZoneDef[] = [];
   for (let i = 0; i < ISLAND_COUNT; i++) {
     const b = BIOMES[i % BIOMES.length];
-    const v = VARIANTS[Math.floor(i / BIOMES.length)];
+    const vi = Math.floor(i / BIOMES.length);
+    const cyc = Math.floor(vi / VARIANTS.length); // 72. adadan sonra çeşitler yeni turda: ton kayar, ada adına sıra eki gelir
+    const v0 = VARIANTS[vi % VARIANTS.length];
+    const v = cyc === 0 ? v0 : { pre: v0.pre, hue: (v0.hue + 17 * cyc) % 360, suf: ' ' + ['', 'II', 'III', 'IV', 'V', 'VI'][Math.min(cyc, 5)] };
+    const ic = i < MID_ISLANDS ? i : 27; // 70. adadan sonra ada boyutu ve kamp yoğunluğu sabit (yarıçap 1505): 250 ada çakışmadan sığar, zorluk yalnız güç çarpanıyla artar
     const base = i === 0 ? 1 : i >= BASE_ISLANDS ? PAID_STEP : 1.2 + 0.6 * rnd(); // önceki adaya göre 1.2–1.8 kat; 41. adadan sonra tam 3 kat
     // 4. adadan itibaren bütün adalar 2 kat daha zor (güç ×2; sonraki adımlar yine 1.2–1.8 kat)
     const step = i === HARD_FROM ? base * HARD_MUL : base;
     power *= step;
     const { q, r } = path[i];
-    const jx = (rnd() - 0.5) * 500;
-    const jy = (rnd() - 0.5) * 500;
+    const jit = i >= MID_ISLANDS ? 200 : 500; // yeni adalarda sapma küçük: komşu adalar çakışmaz
+    const jx = (rnd() - 0.5) * jit;
+    const jy = (rnd() - 0.5) * jit;
     const tint = v.hue ? '@' + v.hue : '';
     zones.push({
-      name: v.pre + b.name, bg: b.bg, dot: b.dot, enemies: b.enemies,
+      name: v.pre + b.name + ('suf' in v ? v.suf : ''), bg: b.bg, dot: b.dot, enemies: b.enemies,
       scale: Math.pow(power, 1.5), dmgScale: Math.sqrt(power), step, power,
-      cx: Math.round(D * (q + r / 2) + (i === 0 ? 0 : jx)), cy: Math.round(D * r * 0.866 + (i === 0 ? 0 : jy)), radius: 1100 + 15 * i,
+      cx: Math.round(D * (q + r / 2) + (i === 0 ? 0 : jx)), cy: Math.round(D * r * 0.866 + (i === 0 ? 0 : jy)), radius: 1100 + 15 * ic,
       layout: {
-        easy: 6, medium: 4 + Math.floor(i / 10), hard: 3 + Math.floor(i / 8), elite: 2 + Math.floor(i / 14), knight: 2 + Math.floor(i / 14), boss: 1,
+        easy: 6, medium: 4 + Math.floor(ic / 10), hard: 3 + Math.floor(ic / 8), elite: 2 + Math.floor(ic / 14), knight: 2 + Math.floor(ic / 14), boss: 1,
       },
-      resTrees: b.trees + Math.floor(i / 4), bossName: v.pre + b.boss,
+      resTrees: b.trees + Math.floor(ic / 4), bossName: v.pre + b.boss + ('suf' in v ? v.suf : ''),
       art: {
         ground: 'ground_' + b.art + tint, tree: 'tree_' + b.art + tint, boss: 'boss_' + b.bossArt + tint, beast: 'beast_' + b.art + tint,
         rock: 'rock_' + ['mossy', 'mossy', 'ice', 'sand', 'ice', 'dark', 'ice', 'dark'][i % 8] + tint,

@@ -6,7 +6,7 @@ Oyna: <https://arda-avci.github.io/cadi-ciragi/>
 
 ## Oyun mantığı
 
-- **69 ada, tek dünya (40 ücretsiz + 29 devam paketiyle):** 8 biyom (Mantar Ormanı, Bataklık, Buz Mağarası, Kızıl Çöl, Kristal Vadisi, Volkan, Bulut Sarayı, Gölge Diyarı) × 5 çeşit. Adalar altıgen bir ızgarada farklı açılardan köprülerle bağlanır. Her adanın kapısı o adanın boss'u yenilince açılır; boss bir kez yenilir, bir daha çıkmaz.
+- **250 ada, tek dünya (40 ücretsiz + 210 ada devam paketleriyle; büyük haritada çevredeki 10 seviye görünür; 101. adadan sonra ekipman yetmez, açığı güç paketleri kapatır):** 8 biyom (Mantar Ormanı, Bataklık, Buz Mağarası, Kızıl Çöl, Kristal Vadisi, Volkan, Bulut Sarayı, Gölge Diyarı) × 5 çeşit. Adalar altıgen bir ızgarada farklı açılardan köprülerle bağlanır. Her adanın kapısı o adanın boss'u yenilince açılır; boss bir kez yenilir, bir daha çıkmaz.
 - **Her yeni ada öncekinden 1.2–1.8 kat daha güçlüdür, 4. adadan itibaren hepsi ayrıca 2 kat daha zordur** (güç = √(can × hasar)). Değerler `src/data.ts` içinde sabit tohumla üretilir.
 - **Güç tek başına belirleyici değil:** hasar türü eşleşmesi (kesme/delme/ezme, zayıf olduğu türden ×4), kalkanın türü, miğfer ve kristal yetenekleri (kritik, can çalma, kaçınma) önemlidir. Can azaldıkça güç de düşer.
 - **Köprü bossları:** her köprüde, bitirilen adanın boss'u gibi 2–3 bekçi durur (bir kez yenilir, ganimet verir, kapıyı etkilemez).

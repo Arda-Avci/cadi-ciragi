@@ -17,6 +17,8 @@ export const LEVEL_PACKS = [
     { id: 'hexling.levels.10', name: 'Devam Paketi +10 Seviye', levels: 10, fallbackPrice: '—' },
     { id: 'hexling.levels.20', name: 'Devam Paketi +20 Seviye', levels: 20, fallbackPrice: '—' },
     { id: 'hexling.levels.30', name: 'Devam Paketi +30 Seviye', levels: 30, fallbackPrice: '—' },
+    { id: 'hexling.levels.50', name: 'Devam Paketi +50 Seviye', levels: 50, fallbackPrice: '—' },
+    { id: 'hexling.levels.100', name: 'Devam Paketi +100 Seviye', levels: 100, fallbackPrice: '—' },
 ];
 /** okçu: tek seferlik (non-consumable) özel ürün; oyuncu elle nişan alıp atar, ayarlardan açılıp kapatılır */
 export const ARCHER = { id: 'hexling.archer', name: 'Okçu', fallbackPrice: '—' };
