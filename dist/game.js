@@ -2,7 +2,7 @@ import { BASE_ISLANDS, BOSS_MUL, BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, s
 import { VERSION } from './version.js';
 import { ARCHER, LEVEL_PACKS, PACKS } from './billing.js';
 import { FEED_GAP, HOUSE_DMG_CAP, HOUSE_HP_CAP, dayNumber, freshHouse, soupMs, tasks } from './house.js';
-import { TUTORIAL, dailyText, makeDaily } from './quests.js';
+import { TUTORIAL, dailyText, extendDaily, makeDaily } from './quests.js';
 import { scheduleHouse } from './notify.js';
 import { OUTFITS, weekly } from './meta.js';
 import { ENERGY_MAX, FEED_SECONDS, LEVEL_COST, LEVEL_GROWTH, LEVEL_KILLS, MAX_TIGER_ITEM_LEVEL, TIGER_POWER, WOUND_FLOOR, TIGER_REGEN_CAP, TIGER_SLOTS, TIGER_SLOT_LIST, freshTiger, tigerBonus } from './tiger.js';
@@ -395,6 +395,8 @@ export class Game {
                 Game.mergeCrystals(s);
                 if (!s.daily || !Array.isArray(s.daily.goals))
                     s.daily = makeDaily(Date.now());
+                else
+                    extendDaily(s.daily);
                 if (!s.ads)
                     s.ads = { day: 0, n: 0, last: {} };
                 return s;
@@ -2514,7 +2516,9 @@ export class Game {
     // ---- eğitim zinciri + günlük görevler ----
     tutorial() { return { i: this.save.tut, step: TUTORIAL[this.save.tut] ?? null }; }
     dailyRoll() { if (this.save.daily.day !== dayNumber(this.now()))
-        this.save.daily = makeDaily(this.now()); }
+        this.save.daily = makeDaily(this.now());
+    else
+        extendDaily(this.save.daily); }
     bumpDaily(t, n = 1) {
         this.dailyRoll();
         for (const g of this.save.daily.goals)
@@ -2535,7 +2539,7 @@ export class Game {
             const ess = this.soupYield(3 * 3.6e6);
             this.save.geodes += 2;
             this.save.essence += ess;
-            this.say(`Bugünün üç görevi bitti! +2 jeod, +${this.fmt(ess)} ruh`);
+            this.say(`Bugünün tüm görevleri bitti! +2 jeod, +${this.fmt(ess)} ruh`);
         }
         audio.play('chest');
         this.persist();
@@ -2767,7 +2771,7 @@ export class Game {
         const effHp = Math.max(1, Math.min(hpNow, this.maxHp())) / (this.armor() * (1 - Math.min(0.9, red)));
         return Math.floor(Math.sqrt(effHp * Math.max(1, dps)) * 10);
     }
-    enemyDmg(e) { return e.def.dmg * TIERS[e.tier].dmg * ZONES[e.reg].dmgScale * Math.sqrt(e.lv) * (e.beast ? BEAST_MUL : e.hard ? HARD_BOSS_MUL : 1); }
+    enemyDmg(e) { return e.def.dmg * TIERS[e.tier].dmg * ZONES[e.reg].dmgScale * Math.sqrt(e.lv) * (e.beast ? BEAST_MUL : e.hard ? (e.hmul ?? HARD_BOSS_MUL) : 1); }
     enemyPower(e) { return Math.floor(Math.sqrt(Math.max(1, e.hp) * (this.enemyDmg(e) / 0.6)) * 10); }
     weakness(e) { return DTYPES.reduce((b, t) => (e.def.resist[t] > e.def.resist[b] ? t : b), DTYPES[0]); }
     statLines() {
@@ -2841,6 +2845,7 @@ export class Game {
         if (this.save.geodes < 1)
             return null;
         this.save.geodes--;
+        this.bumpDaily('geodes');
         const total = RARITIES.reduce((s, r) => s + r.w, 0);
         let roll = Math.random() * total;
         let rarity = 0;
@@ -3291,16 +3296,22 @@ export class Game {
     }
     /** zor boss, ada bossu yenilene kadar yoktur */
     hardHidden(sp) { return !!sp.hard && !this.save.bossDown[sp.reg]; }
+    /** zor boss çarpanı: kahramanın gücüne göre ayarlanır (üst sınır HARD_BOSS_MUL, alt sınır 0,8); güçlenemeyen oyuncuyu çıkmaza sokmaz */
+    hardMul(sp) {
+        const r = this.fullPower() / Math.max(1, this.spawnerPower(sp));
+        return Math.min(HARD_BOSS_MUL, Math.max(0.8, 1.3 * r));
+    }
     spawnGroup(sp) {
         const zone = ZONES[sp.reg];
         const tier = TIERS[sp.tier];
         const def = ENEMIES[sp.kind];
+        const hm = sp.hard ? this.hardMul(sp) : 1;
         for (let i = 0; i < tier.count; i++) {
             const a = (i / tier.count) * Math.PI * 2 + sp.id;
             const x = sp.x + (tier.count > 1 ? Math.cos(a) * 46 : 0);
             const y = sp.y + (tier.count > 1 ? Math.sin(a) * 46 : 0);
-            const maxHp = def.hp * tier.hp * zone.scale * sp.lv * (sp.beast ? BEAST_MUL : sp.hard ? HARD_BOSS_MUL : 1);
-            this.enemies.push({ beast: sp.beast, hard: sp.hard,
+            const maxHp = def.hp * tier.hp * zone.scale * sp.lv * (sp.beast ? BEAST_MUL : sp.hard ? hm : 1);
+            this.enemies.push({ beast: sp.beast, hard: sp.hard, hmul: sp.hard ? hm : undefined,
                 def, tier: sp.tier, lv: sp.lv, reg: sp.reg, sp: sp.id, x, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'idle', hitCd: 0,
                 phase: Math.random() * 6, dashT: 3, dvx: 0, dvy: 0, flip: Math.random() < 0.5 ? 1 : -1, flash: 0, lunge: 0, moving: false,
             });
@@ -4042,6 +4053,8 @@ export class Game {
     killEnemy(e) {
         this.save.kills++;
         this.bumpDaily('kills');
+        if (e.def.id === 'snake' && !e.seg)
+            this.bumpDaily('snakes');
         if (e.seg)
             this.snakeSegDied(e);
         // kaplan yılan öldürerek daha hızlı güçlenir: küçük yılan 2, dev yılan bölümü 3 sayılır
@@ -4214,6 +4227,7 @@ export class Game {
                 continue;
             if (Math.hypot(c.x - this.px, c.y - this.py) < 28) {
                 this.save.chests.push(c.id);
+                this.bumpDaily('chests');
                 audio.play('chest');
                 vibrate(60);
                 const stat = CSTAT_KEYS[Math.floor(Math.random() * CSTAT_KEYS.length)];

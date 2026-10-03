@@ -32,7 +32,9 @@ export const TUTORIAL: TutStep[] = [
 ];
 
 // ---- günlük görevler ----
-export type DailyType = 'kills' | 'camps' | 'trees' | 'house' | 'combo' | 'duel';
+export type DailyType = 'kills' | 'camps' | 'trees' | 'house' | 'combo' | 'duel' | 'chests' | 'geodes' | 'snakes';
+/** her gün verilen görev sayısı */
+export const DAILY_COUNT = 5;
 export interface DailyGoal { t: DailyType; need: number; have: number; claimed: boolean }
 export interface DailyState { day: number; goals: DailyGoal[] }
 
@@ -43,19 +45,35 @@ const POOL: { t: DailyType; need: number; text: string }[] = [
   { t: 'house', need: 2, text: 'Evde 2 iş yap' },
   { t: 'combo', need: 8, text: '8 büyü kombosu yap' },
   { t: 'duel', need: 1, text: 'Arenada 1 düello kazan' },
+  { t: 'chests', need: 2, text: '2 sandık aç' },
+  { t: 'geodes', need: 1, text: '1 jeod aç' },
+  { t: 'snakes', need: 6, text: '6 yılan yen' },
 ];
 export const dailyText = (t: DailyType): string => POOL.find((p) => p.t === t)?.text ?? t;
 
-/** gün numarasından deterministik 3 farklı görev */
+/** gün numarasından deterministik DAILY_COUNT farklı görev */
 export function makeDaily(now: number): DailyState {
   const day = dayNumber(now);
   const idx = POOL.map((_, i) => i);
   let seed = day * 2654435761;
   const out: DailyGoal[] = [];
-  for (let k = 0; k < 3; k++) {
+  for (let k = 0; k < DAILY_COUNT; k++) {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
     const pick = idx.splice(seed % idx.length, 1)[0];
     out.push({ t: POOL[pick].t, need: POOL[pick].need, have: 0, claimed: false });
   }
   return { day, goals: out };
+}
+
+/** eski kayıtta bugünün görev sayısı DAILY_COUNT'tan azsa (3 görevli sürüm), mevcut ilerlemeyi bozmadan eksik görevler eklenir */
+export function extendDaily(d: DailyState): void {
+  if (d.goals.length >= DAILY_COUNT) return;
+  const have = new Set(d.goals.map((g) => g.t));
+  let seed = (d.day * 2654435761) >>> 0;
+  const rest = POOL.filter((p) => !have.has(p.t));
+  while (d.goals.length < DAILY_COUNT && rest.length) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    const p = rest.splice(seed % rest.length, 1)[0];
+    d.goals.push({ t: p.t, need: p.need, have: 0, claimed: false });
+  }
 }

@@ -1082,7 +1082,11 @@ function updateQuest() {
         const g = game.save.daily.goals;
         const done = g.filter((x) => x.have >= x.need).length;
         const unclaimed = g.filter((x) => x.have >= x.need && !x.claimed).length;
-        text = `📅 ${L('Günlük görevler')} ${done}/3${unclaimed ? ' · ' + L('ödül hazır') : ''}`;
+        if (g.every((x) => x.claimed)) {
+            questEl.style.display = 'none';
+            return;
+        } // hepsi bitti ve ödülleri alındı: ipucu gizlenir
+        text = `📅 ${L('Günlük görevler')} ${done}/${g.length}${unclaimed ? ' · ' + L('ödül hazır') : ''}`;
     }
     questEl.textContent = text;
     questEl.style.display = 'block';
