@@ -1,4 +1,4 @@
 /** Sürüm bilgisi: açılış sayfasında ve stat sayfasında gösterilir. Her yayında güncelle. */
-export const VERSION = '0.16.5';
+export const VERSION = '0.17.0';
 export const BUILD = '2026-10-03';
 export const CODENAME = 'Yılan Kuleleri';

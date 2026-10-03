@@ -1,6 +1,6 @@
 /** Kullanıcı ayarları (müzik, efekt sesi, titreşim, dil) — cihazda saklanır. */
 export type Lang = 'tr' | 'en';
-export interface Settings { music: number; sfx: number; vibrate: boolean; lang: Lang; guide: boolean; /** yardımcı beyaz kaplan açık mı */ companion: boolean }
+export interface Settings { music: number; sfx: number; vibrate: boolean; lang: Lang; guide: boolean; /** yardımcı beyaz kaplan açık mı */ companion: boolean; /** satın alınan okçu açık mı */ archer: boolean }
 
 const KEY = 'cadi-ciragi-settings';
 
@@ -8,7 +8,7 @@ function defaultLang(): Lang {
   try { return (navigator.language || 'tr').toLowerCase().startsWith('tr') ? 'tr' : 'en'; } catch (e) { console.error('dil okunamadı', e); return 'tr'; }
 }
 
-export const settings: Settings = { music: 0.5, sfx: 0.7, vibrate: true, lang: defaultLang(), guide: true, companion: true };
+export const settings: Settings = { music: 0.5, sfx: 0.7, vibrate: true, lang: defaultLang(), guide: true, companion: true, archer: true };
 
 export function loadSettings(): void {
   try {

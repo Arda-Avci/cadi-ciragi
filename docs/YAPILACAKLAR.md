@@ -55,3 +55,6 @@ Satın alma, geri yükleme, banner ve ödüllü reklam akışları yalnızca der
 - Sunucu tarafı makbuz doğrulaması yok (yerel kayıt kurcalanabilir; gelir riski). RevenueCat gibi bir hizmet önerilir.
 - Banner ile alt düğmeler arasında boşluk gerçek cihazda kontrol edilmeli (AdMob yanlış tıklama politikası).
 - Düello oyunu (dövüş) ve 41–69 ada dengesi insan oynanışıyla denenmedi; yalnızca derleme + tarayıcı duman testi yapıldı.
+
+## 9. Test parametresi
+`?level=N` (1-69) oyunu N. adadan başlatır: önceki bosslar yenik, güç/can adaya göre ayarlı, tüm yuvalar 1. seviye eşyayla dolu. Gerçek kayda dokunmaz (ayrı anahtar: cadi-ciragi-test).

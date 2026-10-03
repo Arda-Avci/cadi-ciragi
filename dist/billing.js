@@ -18,7 +18,9 @@ export const LEVEL_PACKS = [
     { id: 'hexling.levels.20', name: 'Devam Paketi +20 Seviye', levels: 20, fallbackPrice: '—' },
     { id: 'hexling.levels.30', name: 'Devam Paketi +30 Seviye', levels: 30, fallbackPrice: '—' },
 ];
-const ALL_IDS = [...PACKS.map((p) => p.id), ...LEVEL_PACKS.map((p) => p.id)];
+/** okçu: tek seferlik (non-consumable) özel ürün; oyuncu elle nişan alıp atar, ayarlardan açılıp kapatılır */
+export const ARCHER = { id: 'hexling.archer', name: 'Okçu', fallbackPrice: '—' };
+const ALL_IDS = [...PACKS.map((p) => p.id), ...LEVEL_PACKS.map((p) => p.id), ARCHER.id];
 const none = {
     kind: 'none',
     prices: async () => ({}),
@@ -66,6 +68,7 @@ function native(cdv, onGrant) {
         store.register([
             ...PACKS.map((p) => ({ id: p.id, type: ProductType.CONSUMABLE, platform })),
             ...LEVEL_PACKS.map((p) => ({ id: p.id, type: ProductType.NON_CONSUMABLE, platform })),
+            { id: ARCHER.id, type: ProductType.NON_CONSUMABLE, platform },
         ]);
         store.when().approved((t) => {
             for (const pr of t.products ?? [])

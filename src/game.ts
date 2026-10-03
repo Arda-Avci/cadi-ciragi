@@ -4,7 +4,7 @@ import {
   enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies,
 } from './data.js';
 import { VERSION } from './version.js';
-import { LEVEL_PACKS, PACKS } from './billing.js';
+import { ARCHER, LEVEL_PACKS, PACKS } from './billing.js';
 import { FEED_GAP, HOUSE_DMG_CAP, HOUSE_HP_CAP, HouseState, TaskId, TaskInfo, dayNumber, freshHouse, soupMs, tasks } from './house.js';
 import { DailyState, DailyType, TUTORIAL, TutStep, dailyText, makeDaily } from './quests.js';
 import { scheduleHouse } from './notify.js';
@@ -82,6 +82,10 @@ export interface SaveData {
   col: number;
   /** yardımcı karakter: beyaz kaplan */
   tiger: TigerSave;
+  /** satın alınan okçu (1 = sahip) */
+  archer: number;
+  /** sis: ada → açılmış hücre anahtarları (bulutlar oyuncu gezdikçe kalkar) */
+  fog: Record<number, number[]>;
 }
 
 interface Spawner { id: number; reg: number; x: number; y: number; tier: Tier; kind: EnemyId; tag?: SlotType; lv: number; bridge?: number; /** canavar: her 3 adada bir, boss'un 2 katı güçte, boss ölmeden de çıkar */ beast?: boolean; /** zor boss: bossu yenilmiş adada günde bir kez, ×3 güç */ hard?: boolean }
@@ -137,7 +141,7 @@ interface Floater { x: number; y: number; t: number; text: string; color: string
 
 /** Büyü mermisi / efekti */
 interface Proj {
-  kind: 'bolt' | 'broom' | 'potion' | 'ring' | 'slash';
+  kind: 'bolt' | 'broom' | 'potion' | 'ring' | 'slash' | 'arrow';
   x: number; y: number; vx: number; vy: number;
   sx: number; sy: number; tx: number; ty: number;
   dmg: number; dtype: DType;
@@ -149,7 +153,14 @@ interface Proj {
   hit: Set<object>;
 }
 
-const SAVE_KEY = 'cadi-ciragi-v6'; // v6: 40 adalık yeni dünya
+/** test parametresi: ?level=N oyunu N. adadan başlatır (gücü/canı o seviyeye göre ayarlar, tüm yuvaları 1. seviye eşyalarla doldurur); gerçek kayda dokunmaz */
+const TEST_LEVEL = ((): number => {
+  try {
+    const v = Math.floor(Number(new URLSearchParams(location.search).get('level')));
+    return v >= 1 && v <= ZONES.length ? v : 0;
+  } catch (e) { console.error('test parametresi okunamadı', e); return 0; }
+})();
+const SAVE_KEY = TEST_LEVEL ? 'cadi-ciragi-test' : 'cadi-ciragi-v6'; // v6: 40 adalık yeni dünya
 const TREE_RESPAWN = 120;
 /** canavar: boss'a göre can ve hasar ×2 → güç ×2 */
 const BEAST_MUL = 2;
@@ -328,14 +339,60 @@ export class Game {
 
   // ---- kayıt ----
   private fresh(): SaveData {
+    const s = this.freshBase();
+    return TEST_LEVEL ? this.testSave(s, TEST_LEVEL) : s;
+  }
+
+  /** test kaydı: N. adadan başlar; önceki adaların bossları yenik, her yuva 1. seviye eşyayla dolu, can ve hasar adanın ölçeğine göre ayarlı */
+  private testSave(s: SaveData, level: number): SaveData {
+    const idx = level - 1;
+    const bd = idx;
+    s.bossDown = ZONES.map((_, i) => i < idx);
+    for (const p of LEVEL_PACKS) s.lvPacks[p.id] = 1;
+    s.tut = TUTORIAL.length;
+    s.kills = 25;
+    s.geodes = 20; s.dust = 5000;
+    s.weapons = [1, 1, 1, 1];
+    const wslots = Math.min(4, 1 + bd + 1);
+    s.loadout = [0, 1, 2, 3].slice(0, wslots);
+    const dts = ['cut', 'pierce', 'smash'] as const;
+    let id = 1;
+    const mk = (type: SlotType): Item => ({ id: id++, type, rarity: 0, level: 1, dtype: dts[(id - 1) % 3] });
+    const h = mk('helmet');
+    const sh = mk('shield');
+    s.items = [h, sh];
+    s.eq = { helmet: h.id, shield: sh.id };
+    for (let k = 0; k < Math.floor(bd / 10); k++) { const it = mk(k % 2 ? 'shield' : 'helmet'); s.items.push(it); s.extra.push(it.id); }
+    s.nextItem = id;
+    const nslots = Math.min(4, 2 + bd) + Math.floor(bd / 10);
+    const stats: CStat[] = ['hp', 'dmg', 'regen', 'speed', 'crit', 'lifesteal', 'yield', 'magnet', 'evasion'];
+    s.crystals = []; s.equipped = [];
+    for (let k = 0; k < nslots; k++) { s.crystals.push({ id: k + 1, rarity: 0, stat: stats[k % stats.length], enchant: 0 }); s.equipped.push(k + 1); }
+    s.nextCrystal = nslots + 1;
+    const t = s.tiger;
+    t.asked = true; t.paid = ZONES.map((_, i) => i);
+    t.items = TIGER_SLOT_LIST.map((type, k) => ({ id: k + 1, type, rarity: 0, level: 1 }));
+    t.eq = { helm: 1, fang: 2, claw: 3 };
+    t.nextItem = 4;
+    // güç: adanın ölçeğine göre (düşman canı ∝ scale, hasarı ∝ dmgScale)
+    const z = ZONES[idx];
+    s.perm['elite.hp'] = 100 * z.dmgScale * 3;
+    s.perm['elite.dmg'] = 3 * z.scale;
+    const rp = this.restPoints()[idx];
+    s.x = rp.x; s.y = rp.y + 70;
+    return s;
+  }
+
+  private freshBase(): SaveData {
     return {
       essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
       bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, lvPacks: {}, rivalDown: 0, house: { ...freshHouse(), soupAt: Date.now() }, outfit: 0, outfits: [0], arena: {}, weekWon: -1, storyRead: 0, tut: 0, daily: makeDaily(Date.now()), col: 0, tiger: freshTiger(), ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
-      chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {},
+      chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {}, archer: 0, fog: {},
     };
   }
 
   private load(): SaveData {
+    if (TEST_LEVEL) return this.fresh();
     try {
       const raw = localStorage.getItem(SAVE_KEY);
       if (raw) {
@@ -421,6 +478,7 @@ export class Game {
   resetSave(): void {
     localStorage.removeItem(SAVE_KEY);
     this.save = this.fresh();
+    this.fogSets.clear(); this.fogFade.clear();
     this.tg = null;
     this.enemies = [];
     this.projs = [];
@@ -1030,6 +1088,93 @@ export class Game {
 
   // ---- kara delik: 3. adadan itibaren adada 20. saniyede belirir, ilk boss yenilince kaybolur ----
   hole: { x: number; y: number } | null = null;
+  /** okçu 3 isabetle deliği dondurur: kalan süre (sn); dondurulmuş delik gri durur, yutmaz */
+  private holeFreeze = 0;
+  private holeHits = 0;
+  private holeHitT = 0;
+  private archerCd = 0;
+  archerOn(): boolean { return this.save.archer === 1 && settings.archer; }
+
+  // ---- sis/bulut: ada ilk girişte bulutlarla kaplıdır; oyuncu gezdikçe çevresindeki 500 px çaplı daire açılır (haritada değil, oyun ekranında) ----
+  private static readonly FOG_CELL = 100;
+  private static readonly FOG_R = 250;
+  private fogSets = new Map<number, Set<number>>();
+  private fogFade = new Map<number, number>();
+  private cloudSpr: HTMLCanvasElement | null = null;
+  private fogKey(gx: number, gy: number): number { return (gx + 6000) * 12000 + (gy + 6000); }
+  private fogSet(reg: number): Set<number> {
+    let s = this.fogSets.get(reg);
+    if (!s) { s = new Set(this.save.fog[reg] ?? []); this.fogSets.set(reg, s); }
+    return s;
+  }
+  private fogActive(reg: number): boolean { return !this.save.bossDown[reg]; }
+  private revealFog(dt: number): void {
+    for (const [k, t] of this.fogFade) { if (t <= dt) this.fogFade.delete(k); else this.fogFade.set(k, t - dt); }
+    const reg = this.region;
+    if (!this.fogActive(reg)) return;
+    const C = Game.FOG_CELL;
+    const set = this.fogSet(reg);
+    const arr = this.save.fog[reg] ?? (this.save.fog[reg] = []);
+    const g0x = Math.floor((this.px - Game.FOG_R) / C);
+    const g1x = Math.floor((this.px + Game.FOG_R) / C);
+    const g0y = Math.floor((this.py - Game.FOG_R) / C);
+    const g1y = Math.floor((this.py + Game.FOG_R) / C);
+    for (let gx = g0x; gx <= g1x; gx++) {
+      for (let gy = g0y; gy <= g1y; gy++) {
+        if (Math.hypot((gx + 0.5) * C - this.px, (gy + 0.5) * C - this.py) > Game.FOG_R) continue;
+        const k = this.fogKey(gx, gy);
+        if (set.has(k)) continue;
+        set.add(k); arr.push(k);
+        this.fogFade.set(k, 1);
+      }
+    }
+  }
+  private cloudSprite(): HTMLCanvasElement {
+    if (this.cloudSpr) return this.cloudSpr;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 160;
+    const x = cv.getContext('2d') as CanvasRenderingContext2D;
+    const g = x.createRadialGradient(80, 80, 0, 80, 80, 80);
+    g.addColorStop(0, 'rgba(236,240,250,1)'); g.addColorStop(0.55, 'rgba(214,222,240,0.95)'); g.addColorStop(1, 'rgba(200,210,235,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 160, 160);
+    this.cloudSpr = cv;
+    return cv;
+  }
+  private drawFog(camX: number, camY: number): void {
+    const reg = this.region;
+    const C = Game.FOG_CELL;
+    const spr = this.cloudSprite();
+    const c = this.ctx;
+    for (const r of [reg - 1, reg, reg + 1]) {
+      if (r < 0 || r >= ZONES.length || !this.fogActive(r)) continue;
+      const z = ZONES[r];
+      const cx = z.cx - camX;
+      const cy = z.cy - camY;
+      if (cx + z.radius < 0 || cx - z.radius > this.vw || cy + z.radius < 0 || cy - z.radius > this.vh) continue;
+      const set = this.fogSet(r);
+      c.save();
+      c.beginPath(); c.arc(z.cx, z.cy, z.radius, 0, Math.PI * 2); c.clip(); // dünya koordinatı: çağrı zaten kamera çevirisi içinde
+      const g0x = Math.floor(camX / C) - 1;
+      const g1x = Math.floor((camX + this.vw) / C) + 1;
+      const g0y = Math.floor(camY / C) - 1;
+      const g1y = Math.floor((camY + this.vh) / C) + 1;
+      for (let gx = g0x; gx <= g1x; gx++) {
+        for (let gy = g0y; gy <= g1y; gy++) {
+          const wx = (gx + 0.5) * C;
+          const wy = (gy + 0.5) * C;
+          if (Math.hypot(wx - z.cx, wy - z.cy) > z.radius + C) continue;
+          const k = this.fogKey(gx, gy);
+          const fade = this.fogFade.get(k);
+          if (set.has(k) && fade === undefined) continue;
+          c.globalAlpha = fade !== undefined ? fade : 0.97;
+          const d = Math.sin(this.time * 0.4 + k * 0.7) * 7;
+          c.drawImage(spr, wx - 95 + d, wy - 95 + Math.cos(this.time * 0.35 + k) * 5, 190, 190);
+        }
+      }
+      c.restore();
+    }
+    c.globalAlpha = 1;
+  }
   /** delik kimi yuttu: oyun, oyuncu kurtarma ya da baştan başlama seçene kadar durur */
   holeTrap: 'hero' | 'tiger' | null = null;
   onHoleTrap: (who: 'hero' | 'tiger') => void = () => {};
@@ -1057,7 +1202,7 @@ export class Game {
     const c = this.regionCenter(this.region);
     const onIsle = Math.hypot(this.px - c.x, this.py - c.y) <= c.r - 18;
     if (this.region !== this.holeIsle) { this.holeIsle = this.region; this.holeIsleT = 0; this.hole = null; }
-    if (!onIsle || this.region < Game.HOLE_FROM || this.save.bossDown[this.region]) { this.hole = null; this.holeIsleT = 0; return; }
+    if (!onIsle || this.region < Game.HOLE_FROM || this.save.bossDown[this.region]) { this.hole = null; this.holeIsleT = 0; this.holeFreeze = 0; this.holeHits = 0; return; }
     if (this.snakeFight) { this.hole = null; return; } // yılan savaşında delik yok
     this.holeIsleT += dt;
     this.holeGrace = Math.max(0, this.holeGrace - dt);
@@ -1068,6 +1213,10 @@ export class Game {
       return;
     }
     const h = this.hole;
+    this.holeFreeze = Math.max(0, this.holeFreeze - dt);
+    this.holeHitT = Math.max(0, this.holeHitT - dt);
+    if (this.holeHitT <= 0) this.holeHits = 0;
+    if (this.holeFreeze > 0) return; // okçu dondurdu: kımıldamaz, çekmez, yutmaz
     // yavaşça en yakın hedefe (kahraman ya da kaplan) süzülür
     const tg = this.tg && settings.companion ? this.tg : null;
     let tx = this.px;
@@ -1096,6 +1245,52 @@ export class Game {
     if (this.holeGrace > 0) return;
     if (Math.hypot(h.x - this.px, h.y - this.py) < Game.HOLE_R * 0.6) this.holeSwallow('hero');
     else if (tg && Math.hypot(h.x - tg.x, h.y - tg.y) < Game.HOLE_R * 0.6) this.holeSwallow('tiger');
+  }
+
+  /** okçu seçili mi (sağ alttaki ok düğmesine dokunulunca seçilir; seçiliyken nişan alınır) */
+  archerSel = false;
+  /** nişan noktası (ekran koordinatı); parmak/fare basılıyken dolu */
+  aim: { x: number; y: number } | null = null;
+  toggleArcher(): void {
+    this.archerSel = !this.archerSel && this.archerOn();
+    this.aim = null;
+    this.say(this.archerSel ? 'Okçu seçili: basılı tuttukça arbalet seri ok atar' : 'Okçu bırakıldı');
+  }
+  private aimWorld(): { x: number; y: number } | null {
+    const a = this.aim;
+    return a ? { x: this.px + (a.x - this.w / 2) / this.zoom, y: this.py + (a.y - this.h / 2) / this.zoom } : null;
+  }
+  /** parmak/fare bırakıldı: seri atış durur */
+  aimFire(): void { this.aim = null; }
+
+  /** okçunun oku: nişan noktasına doğru atar (nişanı oyuncu alır, otomatik atış yok; cadı ve kaplan kendi kendine saldırmaya devam eder) */
+  archerShoot(wx: number, wy: number): void {
+    if (!this.archerOn() || this.archerCd > 0 || this.dead > 0 || this.holeTrap) return;
+    const ox = this.px;
+    const oy = this.py - 10;
+    const a = Math.atan2(wy - oy, wx - ox);
+    this.archerCd = 0.16;
+    const p = this.newProj('arrow', ox, oy, this.weaponDmg(0) * 1.2, 'pierce');
+    p.vx = Math.cos(a) * 760; p.vy = Math.sin(a) * 760; p.max = 1.1; p.pierce = 1; p.a = a;
+    this.projs.push(p);
+    audio.play('cast');
+  }
+
+  /** ok deliğe değdiyse true (ok söner); 3 isabet = 30 sn dondurma */
+  private arrowHitsHole(p: Proj): boolean {
+    const h = this.hole;
+    if (!h || Math.hypot(p.x - h.x, p.y - h.y) > Game.HOLE_R + 8) return false;
+    if (this.holeFreeze > 0) return true;
+    this.holeHits++;
+    this.holeHitT = 10;
+    audio.play('hit');
+    if (this.holeHits >= 3) {
+      this.holeHits = 0;
+      this.holeFreeze = 30;
+      this.say('Okçu kara deliği 30 saniyeliğine dondurdu!');
+      vibrate(80);
+    } else this.say(this.holeHits === 1 ? 'Kara delik vuruldu 1/3' : 'Kara delik vuruldu 2/3');
+    return true;
   }
 
   private holeSwallow(who: 'hero' | 'tiger'): void {
@@ -1151,20 +1346,55 @@ export class Game {
     const h = this.hole;
     if (!h) return;
     const c = this.ctx;
-    const R = Game.HOLE_R * (1 + 0.04 * Math.sin(this.time * 5));
+    const frozen = this.holeFreeze > 0;
+    const R = Game.HOLE_R * (frozen ? 1 : 1 + 0.04 * Math.sin(this.time * 5));
     const halo = c.createRadialGradient(h.x, h.y, R * 0.6, h.x, h.y, R * 3.2);
-    halo.addColorStop(0, 'rgba(150,60,255,0.45)'); halo.addColorStop(1, 'rgba(150,60,255,0)');
+    halo.addColorStop(0, frozen ? 'rgba(150,150,150,0.35)' : 'rgba(150,60,255,0.45)'); halo.addColorStop(1, frozen ? 'rgba(150,150,150,0)' : 'rgba(150,60,255,0)');
     c.fillStyle = halo; c.beginPath(); c.arc(h.x, h.y, R * 3.2, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = 'rgba(190,120,255,0.35)'; c.lineWidth = 2; c.setLineDash([8, 10]);
+    c.strokeStyle = frozen ? 'rgba(170,170,170,0.3)' : 'rgba(190,120,255,0.35)'; c.lineWidth = 2; c.setLineDash([8, 10]);
     c.beginPath(); c.arc(h.x, h.y, 180, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
     for (let k = 0; k < 3; k++) {
-      const a0 = this.time * 2.2 + (k * Math.PI * 2) / 3;
-      c.strokeStyle = 'rgba(210,150,255,0.6)'; c.lineWidth = 4;
+      const a0 = (frozen ? 0 : this.time * 2.2) + (k * Math.PI * 2) / 3;
+      c.strokeStyle = frozen ? 'rgba(170,170,170,0.55)' : 'rgba(210,150,255,0.6)'; c.lineWidth = 4;
       c.beginPath(); c.arc(h.x, h.y, R * 1.15, a0, a0 + 1.3); c.stroke();
     }
     const core = c.createRadialGradient(h.x, h.y, 2, h.x, h.y, R);
-    core.addColorStop(0, '#000'); core.addColorStop(0.75, '#0a0014'); core.addColorStop(1, 'rgba(40,0,80,0.9)');
+    if (frozen) { core.addColorStop(0, '#2a2a2a'); core.addColorStop(0.75, '#3a3a3a'); core.addColorStop(1, 'rgba(120,120,120,0.9)'); }
+    else { core.addColorStop(0, '#000'); core.addColorStop(0.75, '#0a0014'); core.addColorStop(1, 'rgba(40,0,80,0.9)'); }
     c.fillStyle = core; c.beginPath(); c.arc(h.x, h.y, R, 0, Math.PI * 2); c.fill();
+    if (frozen) {
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.font = 'bold ' + Math.round(30 * this.lk()) + 'px sans-serif';
+      c.lineWidth = 5; c.strokeStyle = '#000'; c.fillStyle = '#fff';
+      const txt = String(Math.ceil(this.holeFreeze));
+      c.strokeText(txt, h.x, h.y); c.fillText(txt, h.x, h.y);
+      c.textBaseline = 'alphabetic';
+    } else if (this.holeHits > 0) {
+      c.textAlign = 'center'; c.font = 'bold ' + Math.round(14 * this.lk()) + 'px sans-serif';
+      c.lineWidth = 4; c.strokeStyle = '#000'; c.fillStyle = '#ffe36b';
+      const txt = this.holeHits + '/3';
+      c.strokeText(txt, h.x, h.y - R - 12); c.fillText(txt, h.x, h.y - R - 12);
+    }
+  }
+
+  private drawAim(): void {
+    const t = this.aimWorld();
+    if (!t || !this.archerSel) return;
+    const c = this.ctx;
+    const a = Math.atan2(t.y - (this.py - 10), t.x - this.px);
+    // elde arbalet: gövde, yatay yay kolları ve nişan yönünde ok
+    c.save(); c.translate(this.px, this.py - 10); c.rotate(a);
+    c.strokeStyle = '#6b4423'; c.lineWidth = 5; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(-6, 0); c.lineTo(26, 0); c.stroke();
+    c.strokeStyle = '#3b2a1a'; c.lineWidth = 4;
+    c.beginPath(); c.moveTo(20, -16); c.quadraticCurveTo(30, 0, 20, 16); c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(20, -16); c.lineTo(8, 0); c.lineTo(20, 16); c.stroke();
+    c.restore();
+    c.strokeStyle = this.archerCd > 0 ? 'rgba(255,255,255,0.35)' : 'rgba(255,227,107,0.9)'; c.lineWidth = 2; c.setLineDash([10, 8]);
+    c.beginPath(); c.moveTo(this.px, this.py - 10); c.lineTo(this.px + Math.cos(a) * 520, this.py - 10 + Math.sin(a) * 520); c.stroke(); c.setLineDash([]);
+    c.beginPath(); c.arc(t.x, t.y, 14, 0, Math.PI * 2); c.stroke();
+    c.beginPath(); c.moveTo(t.x - 20, t.y); c.lineTo(t.x + 20, t.y); c.moveTo(t.x, t.y - 20); c.lineTo(t.x, t.y + 20); c.stroke();
   }
   private focus = 0;
   private updateFocus(dt: number): void {
@@ -1833,6 +2063,10 @@ export class Game {
   }
   /** mağazadan gelen herhangi bir ürün (güç ya da devam paketi) */
   grantPurchase(id: string, receipt: string): boolean {
+    if (id === ARCHER.id) {
+      if (!this.save.archer) { this.save.archer = 1; this.say('Okçu artık yanında! Sağ alttaki 🏹 ile seç'); console.info('okçu', receipt); this.persist(); this.onChange(); }
+      return true;
+    }
     return LEVEL_PACKS.some((x) => x.id === id) ? this.grantLevelPack(id, receipt) : this.grantPack(id, receipt);
   }
 
@@ -2197,7 +2431,11 @@ export class Game {
     this.checkPaywall(dt);
     this.questTick(dt);
     this.updateTiger(dt);
+    this.archerCd = Math.max(0, this.archerCd - dt);
+    if (this.archerSel && !this.archerOn()) { this.archerSel = false; this.aim = null; }
+    if (this.archerSel && this.aim) { const t = this.aimWorld(); if (t) this.archerShoot(t.x, t.y); } // basılı tutuldukça seri atış
     this.updateHole(dt);
+    this.revealFog(dt);
     this.updateSnakes(dt);
     this.castSpells(dt);
     this.updateProjs(dt);
@@ -2588,8 +2826,9 @@ export class Game {
     const trees = this.getWorld().trees;
     for (const p of this.projs) {
       p.life += dt;
-      if (p.kind === 'bolt') {
+      if (p.kind === 'bolt' || p.kind === 'arrow') {
         p.x += p.vx * dt; p.y += p.vy * dt;
+        if (p.kind === 'arrow' && this.arrowHitsHole(p)) continue;
         this.projCollide(p, enemies, trees, 12);
         if (p.life < p.max && p.pierce >= 0) keep.push(p);
       } else if (p.kind === 'broom') {
@@ -3124,8 +3363,10 @@ export class Game {
     this.drawTiger();
     this.drawVenoms();
     this.drawPlayer();
+    this.drawAim();
     this.drawObstacles(camX, camY, true);
     for (const p of this.projs) this.drawProj(p);
+    this.drawFog(camX, camY);
     c.font = `bold ${Math.round(13 * this.lk())}px sans-serif`;
     c.textAlign = 'center';
     for (const f of this.floaters) {
@@ -3213,9 +3454,11 @@ export class Game {
     const tile = this.spr(ZONES[reg].art.ground);
     if (tile) {
       const T = 256;
+      c.globalAlpha = 0.9; // ada zemini %10 daha saydam: üstündeki nesneler net seçilir
       for (let x = Math.floor(camX / T) * T; x < camX + this.vw + T; x += T) {
         for (let y = Math.floor(camY / T) * T; y < camY + this.vh + T; y += T) c.drawImage(tile, x - camX, y - camY, T, T);
       }
+      c.globalAlpha = 1;
       return;
     }
     const s = 70;
@@ -3730,7 +3973,15 @@ export class Game {
 
   private drawProj(p: Proj): void {
     const c = this.ctx;
-    if (p.kind === 'bolt') {
+    if (p.kind === 'arrow') {
+      // arbalet oku: kısa kalın ok, uçta metal, kuyrukta tüy
+      c.save(); c.translate(p.x, p.y); c.rotate(p.a);
+      c.strokeStyle = '#5b3b1e'; c.lineWidth = 3; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(-14, 0); c.lineTo(10, 0); c.stroke();
+      c.fillStyle = '#d8dde6'; c.beginPath(); c.moveTo(16, 0); c.lineTo(8, -4); c.lineTo(8, 4); c.closePath(); c.fill();
+      c.fillStyle = '#ff6a4a'; c.beginPath(); c.moveTo(-14, 0); c.lineTo(-19, -4); c.lineTo(-10, 0); c.lineTo(-19, 4); c.closePath(); c.fill();
+      c.restore();
+    } else if (p.kind === 'bolt') {
       c.strokeStyle = 'rgba(255,216,74,0.45)'; c.lineWidth = 5; c.lineCap = 'round';
       c.beginPath(); c.moveTo(p.x - Math.cos(p.a) * 26, p.y - Math.sin(p.a) * 26); c.lineTo(p.x, p.y); c.stroke();
       if (!this.drawSpr('icon_wand', p.x, p.y, 34, this.time * 12)) {

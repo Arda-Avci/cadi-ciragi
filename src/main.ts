@@ -3,7 +3,7 @@ import { audio } from './audio.js';
 import { N, T } from './i18n.js';
 import { changed, loadSettings, settings, vibrate } from './settings.js';
 import { BUILD, CODENAME, VERSION } from './version.js';
-import { LEVEL_PACKS, PACKS, createBilling } from './billing.js';
+import { ARCHER, LEVEL_PACKS, PACKS, createBilling } from './billing.js';
 import { FightGame, FightOpts } from './fight.js';
 import { catFull, fmtWait } from './house.js';
 import { TUTORIAL } from './quests.js';
@@ -24,6 +24,8 @@ const game = new Game(canvas);
 const panel = document.getElementById('panel') as HTMLDivElement;
 const essenceEl = document.getElementById('essence') as HTMLSpanElement;
 const masterBtn = document.getElementById('master-btn') as HTMLButtonElement;
+const archerBtn = document.getElementById('archer-btn') as HTMLButtonElement;
+archerBtn.addEventListener('click', () => game.toggleArcher());
 let open: 'tree' | 'weapons' | 'crystals' | 'gear' | 'stats' | 'cards' | 'train' | 'settings' | 'hof' | 'shop' | 'house' | null = null;
 let houseTab: 'home' | 'quests' | 'tiger' | 'story' | 'arena' | 'wardrobe' = 'home';
 let settingsNote = '';
@@ -481,6 +483,7 @@ function renderPanel(): void {
     panel.append(seg('Titreşim', 'ui_speed', [['Açık', true], ['Kapalı', false]], settings.vibrate, (v) => { settings.vibrate = v; if (v) vibrate(40); }));
     panel.append(seg('Yönlendirme okları', 'ui_map', [['Açık', true], ['Kapalı', false]], settings.guide, (v) => { settings.guide = v; }));
     panel.append(seg('Yardımcı kaplan', 'icon_fang', [['Açık', true], ['Kapalı', false]], settings.companion, (v) => { const r = game.setCompanion(v); settingsNote = r === 'ok' ? '' : L(r); }));
+    if (game.save.archer) panel.append(seg('Okçu (arbalet)', 'icon_wand', [['Açık', true], ['Kapalı', false]], settings.archer, (v) => { settings.archer = v; }));
     const hint = document.createElement('div');
     hint.className = 'row';
     hint.innerHTML = `<small>${L('Titreşim yalnızca destekleyen cihazlarda çalışır.')}${settingsNote ? '<br><b>' + settingsNote + '</b>' : ''}</small>`;
@@ -541,6 +544,18 @@ function renderPanel(): void {
           renderPanel();
         })));
     }
+    const ah = document.createElement('h3');
+    ah.textContent = L('Özel');
+    panel.append(ah);
+    const archerOwned = !!game.save.archer;
+    panel.append(row(ico('icon_wand', 36), L('Okçu (arbalet)'), archerOwned ? L('Alındı: ayarlardan açılıp kapatılır') : L('Sağ alttaki 🏹 ile seç, basılı tutup nişan al: seri ok. 3 isabet kara deliği 30 sn dondurur'),
+      btn(archerOwned ? '✓' : (shopPrices[ARCHER.id] ?? ARCHER.fallbackPrice), '', !archerOwned && billing.kind !== 'none', async () => {
+        const r = await billing.purchase(ARCHER.id);
+        const m = document.getElementById('shop-msg');
+        if (r.ok && billing.kind === 'dev') game.grantPurchase(ARCHER.id, r.receipt ?? 'dev');
+        else if (!r.ok && m) m.textContent = r.error ?? '';
+        renderPanel();
+      })));
     const ph = document.createElement('h3');
     ph.textContent = L('Güç paketleri');
     panel.append(ph);
@@ -726,31 +741,52 @@ masterBtn.addEventListener('click', () => { const m = game.nearMaster(); if (m >
 window.addEventListener('keydown', (e) => { game.keys.add(e.key.toLowerCase()); if (e.key.toLowerCase() === 'm') game.mapOpen = !game.mapOpen; });
 window.addEventListener('keyup', (e) => game.keys.delete(e.key.toLowerCase()));
 let touchStart: { t: number; x: number; y: number } | null = null;
+let joyId = -1;
+let aimId = -1;
 canvas.addEventListener('touchstart', (e) => {
-  const t = e.changedTouches[0];
-  game.joy = { ox: t.clientX, oy: t.clientY, x: t.clientX, y: t.clientY };
-  touchStart = { t: performance.now(), x: t.clientX, y: t.clientY };
+  for (const t of Array.from(e.changedTouches)) {
+    // okçu seçiliyken ekranın sağ tarafı nişan, sol tarafı yürüme çubuğudur
+    if (game.archerSel && t.clientX > window.innerWidth * 0.45 && aimId < 0) { aimId = t.identifier; game.aim = { x: t.clientX, y: t.clientY }; }
+    else if (joyId < 0) {
+      joyId = t.identifier;
+      game.joy = { ox: t.clientX, oy: t.clientY, x: t.clientX, y: t.clientY };
+      touchStart = { t: performance.now(), x: t.clientX, y: t.clientY };
+    }
+  }
   e.preventDefault();
 }, { passive: false });
 canvas.addEventListener('touchmove', (e) => {
-  const t = e.changedTouches[0];
-  if (game.joy) { game.joy.x = t.clientX; game.joy.y = t.clientY; }
+  for (const t of Array.from(e.changedTouches)) {
+    if (t.identifier === aimId && game.aim) { game.aim.x = t.clientX; game.aim.y = t.clientY; }
+    else if (t.identifier === joyId && game.joy) { game.joy.x = t.clientX; game.joy.y = t.clientY; }
+  }
   e.preventDefault();
 }, { passive: false });
 const endTouch = (e?: TouchEvent): void => {
-  game.joy = null;
-  if (e && touchStart) {
-    const t = e.changedTouches[0];
-    if (performance.now() - touchStart.t < 280 && Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y) < 14) game.handleTap(t.clientX, t.clientY);
+  const ended = e ? Array.from(e.changedTouches) : [];
+  if (!e || ended.some((t) => t.identifier === aimId)) { aimId = -1; game.aimFire(); }
+  if (!e || ended.some((t) => t.identifier === joyId)) {
+    joyId = -1;
+    game.joy = null;
+    if (e && touchStart) {
+      const t = ended.find((x) => x.identifier !== aimId) ?? ended[0];
+      if (t && performance.now() - touchStart.t < 280 && Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y) < 14) game.handleTap(t.clientX, t.clientY);
+    }
     touchStart = null;
   }
 };
 canvas.addEventListener('touchend', endTouch);
 canvas.addEventListener('touchcancel', () => endTouch());
-canvas.addEventListener('mousedown', (e) => { game.joy = { ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('mousedown', (e) => {
+  if (game.archerSel) game.aim = { x: e.clientX, y: e.clientY };
+  else game.joy = { ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY };
+});
 canvas.addEventListener('click', (e) => { game.handleTap(e.clientX, e.clientY); });
-window.addEventListener('mousemove', (e) => { if (game.joy) { game.joy.x = e.clientX; game.joy.y = e.clientY; } });
-window.addEventListener('mouseup', () => { game.joy = null; });
+window.addEventListener('mousemove', (e) => {
+  if (game.aim) { game.aim.x = e.clientX; game.aim.y = e.clientY; }
+  if (game.joy) { game.joy.x = e.clientX; game.joy.y = e.clientY; }
+});
+window.addEventListener('mouseup', () => { game.joy = null; game.aimFire(); });
 window.addEventListener('beforeunload', () => game.persist());
 document.addEventListener('visibilitychange', () => { if (document.hidden) game.persist(); });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -790,6 +826,8 @@ function frame(now: number): void {
   if (!fight.active) { game.update(dt); game.render(); }
   updateHints(now);
   masterBtn.style.display = !open && game.nearMaster() >= 0 && !game.mapOpen && mini.style.display !== 'flex' ? 'flex' : 'none';
+  archerBtn.style.display = game.archerOn() && !open && !landingOpen && !game.mapOpen && !fight.active ? 'flex' : 'none';
+  archerBtn.classList.toggle('sel', game.archerSel);
   requestAnimationFrame(frame);
 }
 // ---------------- mağaza ----------------

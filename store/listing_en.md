@@ -51,6 +51,9 @@ Hall of Fame, 5 languages, adjustable sound and vibration.
 The game is free to play. It contains optional in-app purchases and ads: power packs, continuation packs for islands beyond 40, and rewarded videos. Notifications are optional.
 
 ## Release notes (0.16.0)
+• v0.17.0 New: black hole on islands from level 3 (appears at 20 s, swallowing costs 2% health; rescue with an ad or restart the island; vanishes when the first boss falls).
+• v0.17.0 New: purchasable Archer (crossbow, rapid fire, 3 hits freeze the black hole for 30 s; toggle in Settings).
+• v0.17.0 New: islands start covered in clouds that lift as you explore; zoom and focus during the giant snake fight; ground 10% more transparent.
 • New: cat food, regular feeding streak, name your cat.
 • New: starter and daily quests, enemy collection, hard bosses, outfit bonuses.
 • New: story cutscenes and new artwork across all panels.
