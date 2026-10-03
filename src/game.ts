@@ -114,6 +114,8 @@ interface Enemy {
   hard?: boolean;
   /** kaplan bu düşmana vurdu (öldürme kaplanın seviyesine sayılır) */
   tg?: boolean;
+  /** kaplan bu düşmanla ilk karşılaştı: bu zamana kadar ana karakter ona yönelmez (önce kaplan mücadele eder) */
+  tgFirst?: number;
   /** eve dönerken engele takılma: süre, sayaç, son konum; ikinci takılmadan sonra iyileşme durur */
   stuckT?: number; stuckN?: number; noHeal?: boolean; chkX?: number; chkY?: number;
   state: 'idle' | 'chase' | 'return';
@@ -1098,6 +1100,7 @@ export class Game {
         if (g.cd <= 0) {
           g.cd = this.tigerInterval();
           g.atkT = 0.25;
+          if (!target.tg) target.tgFirst = this.time + 3; // ilk vuruştan sonra 3 sn kaplan yalnız mücadele eder
           target.tg = true;
           this.hitEnemy(target, this.tigerDps() * g.cd, 'cut'); // saniyelik hasar = tigerDps
         }
@@ -1972,6 +1975,7 @@ export class Game {
     let bd = range;
     for (const e of this.enemies) {
       const d = Math.hypot(e.x - this.px, e.y - this.py);
+      if (e.tgFirst && this.time < e.tgFirst && this.hp > this.maxHp() * 0.5) continue; // kaplan önce mücadele eder (can azsa yine yardım)
       if (d < bd && this.visible(e.x, e.y)) { bd = d; best = { x: e.x, y: e.y }; }
     }
     for (const s of this.bossHouses()) {
@@ -2336,7 +2340,7 @@ export class Game {
   private killEnemy(e: Enemy): void {
     this.save.kills++;
     this.bumpDaily('kills');
-    if (e.tg) this.tigerCredit();
+    if (e.tg) { audio.play('tigerroar'); this.tigerCredit(); }
     this.shake = Math.max(this.shake, e.tier === 'boss' ? 10 : 1.5);
     audio.play(e.beast ? 'beastdie' : e.tier === 'boss' ? 'boss' : 'kill');
     if (e.tier === 'boss') vibrate([60, 40, 120]);

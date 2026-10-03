@@ -1,7 +1,7 @@
 /** Ses: dosyasız, WebAudio ile üretilen arka plan müziği ve efektler (çevrimdışı çalışır). */
 import { onSettingsChange, settings } from './settings.js';
 
-type Sfx = 'cast' | 'hit' | 'kill' | 'hurt' | 'gain' | 'chest' | 'gate' | 'fly' | 'heal' | 'click' | 'boss' | 'chop' | 'roar' | 'beastdie';
+type Sfx = 'cast' | 'hit' | 'kill' | 'hurt' | 'gain' | 'chest' | 'gate' | 'fly' | 'heal' | 'click' | 'boss' | 'chop' | 'roar' | 'beastdie' | 'tigerroar';
 
 // biyom ruh halleri: kök nota (Hz), gam (yarım ses adımları), tempo
 const MOODS: { root: number; scale: number[]; bpm: number; pad: OscillatorType }[] = [
@@ -146,7 +146,7 @@ class AudioEngine {
     const c = this.ctx;
     if (!c || settings.sfx <= 0.001) return;
     const now = c.currentTime;
-    const gap: Record<Sfx, number> = { cast: 0.06, hit: 0.05, kill: 0.08, hurt: 0.15, gain: 0.12, chest: 0.3, gate: 1, fly: 0.5, heal: 0.9, click: 0.04, boss: 1, chop: 0.08, roar: 5, beastdie: 1 };
+    const gap: Record<Sfx, number> = { cast: 0.06, hit: 0.05, kill: 0.08, hurt: 0.15, gain: 0.12, chest: 0.3, gate: 1, fly: 0.5, heal: 0.9, click: 0.04, boss: 1, chop: 0.08, roar: 5, beastdie: 1, tigerroar: 0.8 };
     if (now - (this.last.get(name) ?? -9) < gap[name]) return;
     this.last.set(name, now);
     const b = this.sfxBus;
@@ -170,6 +170,13 @@ class AudioEngine {
         this.tone(52, now, 1.6, 'sine', 0.22, b, false, 30);
         this.burst(now, 1.3, 0.16, 140, 900, 0.7);
         this.burst(now + 0.45, 0.8, 0.1, 900, 200, 0.9);
+        break;
+      case 'tigerroar':
+        // kaplan "Rooaarr": yükselip alçalan hırlama + kısa gürültü
+        this.tone(110, now, 0.45, 'sawtooth', 0.18, b, false, 190);
+        this.tone(190, now + 0.4, 0.55, 'sawtooth', 0.16, b, false, 85);
+        this.tone(75, now, 1.0, 'sine', 0.2, b, false, 55);
+        this.burst(now, 0.9, 0.12, 300, 1400, 0.6);
         break;
       case 'beastdie':
         // canavar ölümü: inen gürleme + yükselen zafer akoru

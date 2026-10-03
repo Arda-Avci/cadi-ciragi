@@ -1139,6 +1139,8 @@ export class Game {
                 if (g.cd <= 0) {
                     g.cd = this.tigerInterval();
                     g.atkT = 0.25;
+                    if (!target.tg)
+                        target.tgFirst = this.time + 3; // ilk vuruştan sonra 3 sn kaplan yalnız mücadele eder
                     target.tg = true;
                     this.hitEnemy(target, this.tigerDps() * g.cd, 'cut'); // saniyelik hasar = tigerDps
                 }
@@ -2237,6 +2239,8 @@ export class Game {
         let bd = range;
         for (const e of this.enemies) {
             const d = Math.hypot(e.x - this.px, e.y - this.py);
+            if (e.tgFirst && this.time < e.tgFirst && this.hp > this.maxHp() * 0.5)
+                continue; // kaplan önce mücadele eder (can azsa yine yardım)
             if (d < bd && this.visible(e.x, e.y)) {
                 bd = d;
                 best = { x: e.x, y: e.y };
@@ -2690,8 +2694,10 @@ export class Game {
     killEnemy(e) {
         this.save.kills++;
         this.bumpDaily('kills');
-        if (e.tg)
+        if (e.tg) {
+            audio.play('tigerroar');
             this.tigerCredit();
+        }
         this.shake = Math.max(this.shake, e.tier === 'boss' ? 10 : 1.5);
         audio.play(e.beast ? 'beastdie' : e.tier === 'boss' ? 'boss' : 'kill');
         if (e.tier === 'boss')
