@@ -16,6 +16,8 @@ const BIOME_ART = /^(ground|tree|boss|beast|rock|bld)_/;
 /** Evimiz: doğduğumuz yer ve hızlı iyileşme alanı */
 export const HOME = { x: 0, y: 40, r: 150 };
 const HOME_HEAL = 0.28; // saniyede azami canın oranı
+/** test parametresi güç çarpanı: gerçek oyunda 44. seviyede ~180Q güce ulaşılır (formül 423B veriyordu); hem can hem hasara uygulanır, güç ∝ √(can×hasar) olduğundan güç de bu kadar katlanır */
+function testBoost(level) { return Math.pow(1.734e5, Math.max(0, level - 1) / 43); }
 /** bonus tur düşmanlarının kamp kimliği (gerçek kamplarla çakışmaz) */
 const BONUS_SP = -777;
 const BONUS_COUNT = 400;
@@ -296,7 +298,20 @@ export class Game {
         if (!TEST_LEVEL)
             return;
         const z = ZONES[TEST_LEVEL - 1];
-        const target = (ENEMIES.mushroom.hp * TIERS.easy.hp * z.scale * 3) / 100;
+        const target = (ENEMIES.mushroom.hp * TIERS.easy.hp * z.scale * 3) / 100 * testBoost(TEST_LEVEL);
+        // güç adanın eğrisinde kalsın (44. seviyede ~180Q): en yüksek ekipmanın ve güç paketlerinin can katkısı elit canından düşülür
+        const sv = this.save;
+        const full = this.maxHp();
+        const gear = { items: sv.items, eq: sv.eq, extra: sv.extra, crystals: sv.crystals, equipped: sv.equipped };
+        sv.items = [];
+        sv.eq = { helmet: 0, shield: 0 };
+        sv.extra = [];
+        sv.crystals = [];
+        sv.equipped = [];
+        const bare = this.maxHp() / this.shopMul();
+        Object.assign(sv, gear);
+        if (full > bare && bare > 0)
+            sv.perm['elite.hp'] = Math.max(0, (100 + (sv.perm['elite.hp'] ?? 0)) * (bare / full) - 100);
         this.testDmgF = 1;
         this.save.perm['elite.dmg'] = 0;
         let s0 = 0;
@@ -328,12 +343,13 @@ export class Game {
         s.kills = 25;
         s.geodes = 20;
         s.dust = 5000;
-        s.weapons = [1, 1, 1, 1];
+        s.weapons = [MAX_WEAPON_LEVEL, MAX_WEAPON_LEVEL, MAX_WEAPON_LEVEL, MAX_WEAPON_LEVEL]; // test: bütün ekipman en yüksek seviyede takılı
+        s.shop['hexling.power.xl'] = 2; // test: x5 güç paketinden iki tane alınmış gibi
         const wslots = Math.min(4, 1 + bd + 1);
         s.loadout = [0, 1, 2, 3].slice(0, wslots);
         const dts = ['cut', 'pierce', 'smash'];
         let id = 1;
-        const mk = (type) => ({ id: id++, type, rarity: 0, level: 1, dtype: dts[(id - 1) % 3] });
+        const mk = (type) => ({ id: id++, type, rarity: 4, level: MAX_ITEM_LEVEL, dtype: dts[(id - 1) % 3] });
         const h = mk('helmet');
         const sh = mk('shield');
         s.items = [h, sh];
@@ -349,19 +365,19 @@ export class Game {
         s.crystals = [];
         s.equipped = [];
         for (let k = 0; k < nslots; k++) {
-            s.crystals.push({ id: k + 1, rarity: 0, stat: stats[k % stats.length], enchant: 0 });
+            s.crystals.push({ id: k + 1, rarity: 0, stat: stats[k % stats.length], enchant: MAX_ENCHANT });
             s.equipped.push(k + 1);
         }
         s.nextCrystal = nslots + 1;
         const t = s.tiger;
         t.asked = true;
         t.paid = ZONES.map((_, i) => i);
-        t.items = TIGER_SLOT_LIST.map((type, k) => ({ id: k + 1, type, rarity: 0, level: 1 }));
+        t.items = TIGER_SLOT_LIST.map((type, k) => ({ id: k + 1, type, rarity: 4, level: MAX_TIGER_ITEM_LEVEL }));
         t.eq = { helm: 1, fang: 2, claw: 3 };
         t.nextItem = 4;
         // güç: adanın ölçeğine göre (düşman canı ∝ scale, hasarı ∝ dmgScale)
         const z = ZONES[idx];
-        s.perm['elite.hp'] = 100 * z.dmgScale * 2;
+        s.perm['elite.hp'] = 100 * z.dmgScale * 2 * testBoost(level);
         s.perm['elite.dmg'] = 0; // gerçek değer calibrateTest() ile kamp süresine göre hesaplanır
         const rp = this.restPoints()[idx];
         s.x = rp.x;
