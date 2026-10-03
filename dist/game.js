@@ -196,6 +196,8 @@ export class Game {
         this.bonus = null;
         /** bonus düşmanları arası asgari mesafe: 400 düşman adaya sığana kadar 130'dan 70'e indirilir (sprite boyu ~70, üst üste binmez) */
         this.bonusGap = 130;
+        this.bonusGap0 = 130;
+        this.bonusTrack = new Map();
         this.campsOf = new Map();
         this.sealedNudgeT = 0;
         this.houseFlash = new Map();
@@ -3669,6 +3671,8 @@ export class Game {
     /** bonus düşmanları birbirine en az bonusGap kadar yaklaşamaz: ızgarayla komşular itilir */
     separateBonus() {
         const MIN = this.bonusGap;
+        if (MIN <= 0)
+            return;
         const grid = new Map();
         const list = this.enemies.filter((e) => e.sp === BONUS_SP && e.hp > 0);
         const key = (cx, cy) => cx * 100003 + cy;
@@ -3724,9 +3728,13 @@ export class Game {
                 this.endBonus();
                 return;
             } // sonraki adaya geçilince bonus tur biter
+            const alive = this.enemies.filter((e) => e.sp === BONUS_SP && e.hp > 0);
+            const left = alive.length;
+            // son düşmanlar aralık kuralına takılıp uzakta kalmasın: az kaldığında aralık kuralı kapanır
+            this.bonusGap = left > 30 ? this.bonusGap0 : 0;
             for (let pass = 0; pass < 6; pass++)
                 this.separateBonus();
-            const left = this.enemies.filter((e) => e.sp === BONUS_SP && e.hp > 0).length;
+            this.unstickBonus(alive, dt);
             b.kills = b.total - left; // sayaç kalan düşmandan hesaplanır: ölen hiçbir düşman atlanmaz
             if (b.t <= 0 || left === 0)
                 this.endBonus();
@@ -3743,6 +3751,44 @@ export class Game {
             if (near(br.tGate) || near(br.tExit)) {
                 this.startBonus(i);
                 return;
+            }
+        }
+    }
+    /** 2 sn boyunca kıpırdamayan ve uzakta kalan bonus düşmanı oyuncunun yakınına (300-450 px) alınır: hiçbiri kaybolup kalmaz */
+    unstickBonus(alive, dt) {
+        const b = this.bonus;
+        if (!b)
+            return;
+        const c = this.regionCenter(b.reg);
+        for (const e of alive) {
+            const tr = this.bonusTrack.get(e);
+            if (!tr) {
+                this.bonusTrack.set(e, { x: e.x, y: e.y, t: 0 });
+                continue;
+            }
+            tr.t += dt;
+            if (tr.t < 2)
+                continue;
+            const moved = Math.hypot(e.x - tr.x, e.y - tr.y);
+            tr.x = e.x;
+            tr.y = e.y;
+            tr.t = 0;
+            if (moved > 25 || Math.hypot(e.x - this.px, e.y - this.py) < 450)
+                continue;
+            for (let k = 0; k < 40; k++) {
+                const a = Math.random() * Math.PI * 2;
+                const r = 300 + Math.random() * 150;
+                const x = this.px + Math.cos(a) * r;
+                const y = this.py + Math.sin(a) * r;
+                if (Math.hypot(x - c.x, y - c.y) > c.r - 60 || !this.walkable(x, y, true))
+                    continue;
+                e.x = x;
+                e.y = y;
+                e.hx = x;
+                e.hy = y;
+                tr.x = x;
+                tr.y = y;
+                break;
             }
         }
     }
@@ -3771,6 +3817,7 @@ export class Game {
         let spots = [];
         for (const gap of [130, 115, 100, 90, 80, 70]) {
             this.bonusGap = gap;
+            this.bonusGap0 = gap;
             spots = [];
             for (let k = 0; k < 40000 && spots.length < BONUS_COUNT; k++) {
                 const a = Math.random() * Math.PI * 2;
@@ -3801,6 +3848,7 @@ export class Game {
         if (!b)
             return;
         this.bonus = null;
+        this.bonusTrack.clear();
         this.enemies = this.enemies.filter((e) => e.sp !== BONUS_SP);
         const n = b.kills;
         if (n > 0) {
