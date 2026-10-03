@@ -16,6 +16,10 @@ const BIOME_ART = /^(ground|tree|boss|beast|rock|bld)_/;
 /** Evimiz: doğduğumuz yer ve hızlı iyileşme alanı */
 export const HOME = { x: 0, y: 40, r: 150 };
 const HOME_HEAL = 0.28; // saniyede azami canın oranı
+/** bonus tur düşmanlarının kamp kimliği (gerçek kamplarla çakışmaz) */
+const BONUS_SP = -777;
+const BONUS_COUNT = 400;
+const BONUS_SEC = 120;
 /** test parametresi: ?level=N oyunu N. adadan başlatır (gücü/canı o seviyeye göre ayarlar, tüm yuvaları 1. seviye eşyalarla doldurur); gerçek kayda dokunmaz */
 const TEST_LEVEL = (() => {
     try {
@@ -180,6 +184,8 @@ export class Game {
         this.focus = 0;
         // ---- yardımcı karakter: beyaz kaplan ----
         this.tg = null;
+        // ---- bonus tur: 5'in katı adalara geçmeden önce 120 sn'de 400 zayıf düşman ----
+        this.bonus = null;
         this.campsOf = new Map();
         this.sealedNudgeT = 0;
         this.houseFlash = new Map();
@@ -3203,6 +3209,7 @@ export class Game {
         this.syncRival(dt);
         this.updateEnemies(dt);
         this.checkPaywall(dt);
+        this.tickBonus(dt);
         this.questTick(dt);
         this.updateTiger(dt);
         this.archerCd = Math.max(0, this.archerCd - dt);
@@ -3394,6 +3401,8 @@ export class Game {
                 e.noHeal = false;
                 e.stuckT = 0;
             }
+            if (e.sp === BONUS_SP)
+                e.state = 'chase'; // bonus turunda düşmanlar sürekli saldırır
             let sp = e.def.speed;
             if (e.def.id === 'bat')
                 sp *= 1 + 0.5 * Math.sin(e.phase * 5);
@@ -3525,6 +3534,71 @@ export class Game {
         this.paywallT = 120;
         this.say('Yolculuğa devam etmek için bir devam paketi gerekir.');
         this.onPaywall();
+    }
+    /** 5, 10, 15… numaralı adaya geçilecek köprü kapısına yaklaşınca (köprü açıksa) bonus tur bir kez başlar */
+    tickBonus(dt) {
+        const b = this.bonus;
+        if (b) {
+            b.t -= dt;
+            const left = this.enemies.some((e) => e.sp === BONUS_SP);
+            if (b.t <= 0 || !left)
+                this.endBonus();
+            return;
+        }
+        const i = this.region;
+        if ((i + 2) % 5 !== 0 || i >= ZONES.length - 1 || this.save.first['bonus' + i] || this.snakeFight || this.dead > 0 || !this.bridgeOpen(i))
+            return;
+        const g = this.gatePos(i);
+        if (Math.hypot(g.x - this.px, g.y - this.py) > 520)
+            return;
+        this.startBonus(i);
+    }
+    startBonus(i) {
+        this.save.first['bonus' + i] = 1;
+        const zone = ZONES[i];
+        const def = ENEMIES[zone.enemies[0]];
+        const probe = { def, tier: 'easy', lv: 1, reg: i, sp: BONUS_SP, x: 0, y: 0, hx: 0, hy: 0, hp: 1, maxHp: 1, state: 'chase', hitCd: 0, phase: 0, dashT: 3, dvx: 0, dvy: 0, flip: 1, flash: 0, lunge: 0, moving: false };
+        const dmg0 = Math.max(1e-6, this.enemyDmg(probe));
+        const target = 0.04 * Math.max(1, this.fullPower()); // her düşman karakter gücünün %4'ü
+        const maxHp = Math.max(1, ((target / 10) ** 2 * 0.6) / dmg0);
+        let placed = 0;
+        for (let k = 0; k < 40000 && placed < BONUS_COUNT; k++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = 220 + Math.random() * 520;
+            const x = this.px + Math.cos(a) * r;
+            const y = this.py + Math.sin(a) * r;
+            if (!this.walkable(x, y, true))
+                continue;
+            this.enemies.push({ def, tier: 'easy', lv: 1, reg: i, sp: BONUS_SP, x, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
+                phase: Math.random() * 6, dashT: 3, dvx: 0, dvy: 0, flip: Math.random() < 0.5 ? 1 : -1, flash: 0, lunge: 0, moving: false });
+            placed++;
+        }
+        this.bonus = { t: BONUS_SEC, kills: 0, reg: i };
+        this.say('BONUS TUR! 120 sn içinde ne kadar düşman yenersen o kadar ödül');
+        audio.play('roar');
+        vibrate([90, 40, 160]);
+    }
+    endBonus() {
+        const b = this.bonus;
+        if (!b)
+            return;
+        this.bonus = null;
+        this.enemies = this.enemies.filter((e) => e.sp !== BONUS_SP);
+        const n = b.kills;
+        if (n > 0) {
+            this.addPerm('elite.hp', n * 0.0002 * this.hpPool()); // yenilen düşman başına kalıcı +%0,02 can
+            this.tigerInit();
+            this.save.tiger.hpBase *= 1 + n * 0.0004; // kaplana iki kat oran
+            this.save.dust += n;
+        }
+        this.gain('Bonus tur: ' + n + ' düşman', '#ffd84a', 'icon_geode');
+        if (n > 0) {
+            this.gain('+%' + (n * 0.02).toFixed(1) + ' Can (kalıcı)', '#7bff9a', 'ui_heart');
+            this.gain('+%' + (n * 0.04).toFixed(1) + ' Kaplan canı (kalıcı)', '#ffb36b', 'ui_heart');
+            this.gain('+' + n + ' Ruh tozu', '#ffd1f0', 'ui_dust');
+        }
+        this.persist();
+        this.onChange();
     }
     /** son adanın bossu yenilince rakip cadıyla düello (street fighter tarzı ayrı oyun, src/fight.ts) önerilir */
     syncRival(dt) {
@@ -4122,6 +4196,13 @@ export class Game {
         this.onChange();
     }
     killEnemy(e) {
+        if (e.sp === BONUS_SP) {
+            if (this.bonus)
+                this.bonus.kills++;
+            audio.play('kill');
+            this.deathFx.push({ x: e.x, y: e.y, t: 0.3, name: e.def.id, size: e.def.r * 3, flip: e.flip });
+            return;
+        }
         this.save.kills++;
         this.bumpDaily('kills');
         if (e.def.id === 'snake' && !e.seg)
@@ -4317,6 +4398,7 @@ export class Game {
         }
     }
     die() {
+        this.endBonus();
         this.dead = 2.5;
         vibrate(250);
         this.save.deaths++;
@@ -5579,6 +5661,16 @@ export class Game {
             c.fillStyle = '#fff';
             c.fillText(this.banner, this.w / 2, this.h * 0.3);
             c.globalAlpha = 1;
+        }
+        if (this.bonus) {
+            c.textAlign = 'center';
+            c.font = 'bold 20px sans-serif';
+            c.lineWidth = 5;
+            c.strokeStyle = 'rgba(0,0,0,0.75)';
+            const t = T('BONUS TUR') + ' ' + Math.ceil(this.bonus.t) + ' sn · ' + this.bonus.kills + '/' + BONUS_COUNT;
+            c.strokeText(t, this.w / 2, 34);
+            c.fillStyle = '#ffd84a';
+            c.fillText(t, this.w / 2, 34);
         }
         if (this.joy) {
             c.strokeStyle = 'rgba(255,255,255,0.35)';
