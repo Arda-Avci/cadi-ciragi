@@ -14,6 +14,11 @@ var phase := 0.0
 var legs: Array = []
 var wings: Array = []
 var body_node: Node3D
+var model_ready := false
+var model_inst: Node3D
+var fly_h := 0.0
+var move_anim := "Walk"
+var idle_anim := "Idle"
 
 func setup(k: String, m) -> void:
 	kind = k
@@ -28,6 +33,10 @@ func setup(k: String, m) -> void:
 			hp = 1
 			speed = 4.2
 			touch_dmg = 5.0
+		"wisp":
+			hp = 2
+			speed = 3.6
+			touch_dmg = 7.0
 		"golem":
 			hp = 5
 			speed = 1.9
@@ -42,10 +51,31 @@ func setup(k: String, m) -> void:
 	collision_mask = 1
 	body_node = Node3D.new()
 	add_child(body_node)
+	model_ready = false
+
+func _ready() -> void:
+	# gerçek 3B model: ağaçtayken ölçeklenir; bulunamazsa ilkel şekiller kurulur
+	var spec := {"spider": ["blob", 1.1, 0.0, "Walk", "Idle"], "bat": ["armabee", 1.3, 1.5, "Fast_Flying", "Flying_Idle"], "wisp": ["ghostskull", 1.2, 1.4, "Fast_Flying", "Flying_Idle"], "golem": ["goleling", 2.7, 0.5, "Fast_Flying", "Flying_Idle"]}
+	var sp = spec.get(kind, spec["spider"])
+	var inst: Node3D = main_ref.load_model(sp[0])
+	if inst != null:
+		inst.rotation.y = PI
+		body_node.add_child(inst)
+		main_ref.fit_model(inst, sp[1])
+		model_inst = inst
+		fly_h = sp[2]
+		move_anim = sp[3]
+		idle_anim = sp[4]
+		inst.position.y += fly_h
+		for mi in inst.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		main_ref.play_anim(inst, idle_anim)
+		model_ready = true
+		return
 	match kind:
 		"spider":
 			_build_spider()
-		"bat":
+		"bat", "wisp":
 			_build_bat()
 		"golem":
 			_build_golem()
@@ -157,6 +187,8 @@ func damage(n: int) -> void:
 	tw.tween_property(body_node, "scale", Vector3.ONE, 0.12)
 	if hp <= 0:
 		alive = false
+		if model_inst != null:
+			main_ref.play_anim(model_inst, "Death", false)
 		main_ref.enemy_died(self)
 		var tw2 := create_tween()
 		tw2.tween_property(body_node, "scale", Vector3(0.01, 0.01, 0.01), 0.25)
@@ -183,7 +215,9 @@ func _physics_process(dt: float) -> void:
 	else:
 		velocity = Vector3.ZERO
 	global_position.y = 0.0
-	if kind == "spider":
+	if model_ready:
+		main_ref.play_anim(model_inst, move_anim if (awake and stun <= 0.0) else idle_anim)
+	elif kind == "spider":
 		for i in range(legs.size()):
 			legs[i].rotation.x = sin(phase * 12.0 + float(i)) * 0.35
 	elif kind == "bat":

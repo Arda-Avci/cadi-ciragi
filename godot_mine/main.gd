@@ -39,6 +39,7 @@ var finished := false
 var cast_cd := 0.0
 var shake := 0.0
 var quota := QUOTA
+var exit_gate: Node3D
 var yaw := 0.0                         # kahraman/kamera yönü (0 = -Z)
 var auto_dir := Vector3.ZERO
 var exit_label: Label3D
@@ -63,6 +64,7 @@ var tap_time := 0.0
 var debug_room := -1
 var debug_cast := false
 var debug_auto := false
+var debug_enemies := false
 var auto_path: Array = []
 var tex_cache := {}
 var mats := {}
@@ -100,6 +102,8 @@ func _ready() -> void:
 				debug_cast = true
 			elif a == "--auto":
 				debug_auto = true
+			elif a == "--enemies":
+				debug_enemies = true
 	if seed_v == 0:
 		seed_v = int(Time.get_unix_time_from_system()) % 100000 + 1
 	rng.seed = seed_v
@@ -114,6 +118,10 @@ func _ready() -> void:
 	_make_light_pool()
 	_place_content()
 	_make_hud()
+	if debug_enemies:
+		var ks := ["spider", "bat", "wisp", "golem"]
+		for i in range(ks.size()):
+			_add_enemy(ks[i], player.position + Vector3(-4.0 + float(i) * 2.8, 0, -6.5))
 	if debug_auto:
 		_auto_plan()
 	if OS.has_feature("web"):
@@ -369,7 +377,7 @@ func _make_exit() -> void:
 	add_child(beam)
 	var l := OmniLight3D.new()
 	l.light_color = Color(1, 0.92, 0.65)
-	l.light_energy = 1.6
+	l.light_energy = 0.7
 	l.omni_range = 9.0
 	l.position = p + Vector3(0, 2.0, 0)
 	add_child(l)
@@ -382,6 +390,12 @@ func _make_exit() -> void:
 	lab.position = p + Vector3(0, 3.2, 0)
 	add_child(lab)
 	exit_label = lab
+	var gate := load_model("gate_bars")
+	if gate != null:
+		gate.position = p + Vector3(0, 0, 0)
+		gate.scale = Vector3(0.7, 0.7, 0.7)
+		add_child(gate)
+		exit_gate = gate
 
 # ---------------------------------------------------------------- gizli odalar (ışıkla kırılan çatlak duvar)
 func _make_secrets() -> void:
@@ -451,7 +465,48 @@ func _spawn_secret_loot(a: Vector2i, which: int) -> void:
 	for i in range(3):
 		_add_diamond(p + Vector3(rng.randf_range(-0.9, 0.9), 0.7, rng.randf_range(-0.9, 0.9)))
 
+# ---------------------------------------------------------------- 3B modeller (Quaternius CC0 canavarlar/büyücü, Kenney CC0 kapı)
+func load_model(name: String) -> Node3D:
+	var path := "res://models/%s.glb" % name
+	if not ResourceLoader.exists(path):
+		return null
+	var ps = load(path)
+	if ps == null:
+		return null
+	return ps.instantiate()
+
+## model ağaçtayken çağrılır: boyunu hedef yüksekliğe ölçekler ve tabanını y=0'a oturtur
+func fit_model(inst: Node3D, height: float) -> void:
+	var box := AABB()
+	var first := true
+	for mi in inst.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var xf: Transform3D = inst.global_transform.affine_inverse() * m.global_transform
+		var ta: AABB = xf * m.get_aabb()
+		box = ta if first else box.merge(ta)
+		first = false
+	if first or box.size.y < 0.0001:
+		return
+	var sc := height / box.size.y
+	inst.scale = Vector3.ONE * sc
+	inst.position.y = -box.position.y * sc
+
+func play_anim(root: Node, suffix: String, loop: bool = true) -> AnimationPlayer:
+	for ap in root.find_children("*", "AnimationPlayer", true, false):
+		var player_ap := ap as AnimationPlayer
+		for an in player_ap.get_animation_list():
+			if String(an).ends_with(suffix):
+				var a := player_ap.get_animation(an)
+				if loop:
+					a.loop_mode = Animation.LOOP_LINEAR
+				if player_ap.current_animation != an:
+					player_ap.play(an, 0.15)
+				return player_ap
+	return null
+
 # ---------------------------------------------------------------- oyuncu
+var wiz_model: Node3D
+
 func _make_player() -> void:
 	player = CharacterBody3D.new()
 	player.position = _cell_pos(start_cell)
@@ -531,6 +586,32 @@ func _make_player() -> void:
 		if mi is MeshInstance3D:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(player)
+	# gerçek büyücü modeli (varsa) ilkel şekillerin yerini alır
+	var wiz: Node3D = null  # cadı ilkel modelle kalır (kullanıcı kararı: cadı değiştirilmez)
+	if wiz != null:
+		for mi in model.get_children():
+			if mi is MeshInstance3D and mi != null:
+				mi.visible = false
+		wiz.rotation.y = PI
+		var holder := Node3D.new()
+		holder.name = "WizHolder"
+		model.add_child(holder)
+		holder.add_child(wiz)
+		fit_model(wiz, 1.9)
+		wiz_model = wiz
+		for mi in wiz.find_children("*", "MeshInstance3D", true, false):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		play_anim(wiz, "Idle")
+		# fener elde kalsın
+		var lamp_node := MeshInstance3D.new()
+		var lsm := SphereMesh.new()
+		lsm.radius = 0.12
+		lsm.height = 0.24
+		lamp_node.mesh = lsm
+		lamp_node.material_override = _mat_color(Color(1, 0.9, 0.6), Color(1, 0.8, 0.4), 3.0)
+		lamp_node.position = Vector3(0.45, 1.0, -0.35)
+		lamp_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		model.add_child(lamp_node)
 	cam = Camera3D.new()
 	cam.fov = 66.0
 	cam.far = 90.0
@@ -564,7 +645,7 @@ func _place_content() -> void:
 		_add_diamond(_cell_pos(_random_floor_cell()) + Vector3(rng.randf_range(-1, 1), 0.7, rng.randf_range(-1, 1)))
 	for i in range(4):
 		_add_chest(_cell_pos(_random_floor_cell()) + Vector3(rng.randf_range(-0.8, 0.8), 0, rng.randf_range(-0.8, 0.8)))
-	var kinds := ["spider", "bat", "spider", "bat", "golem"]
+	var kinds := ["spider", "bat", "spider", "wisp", "golem"]
 	for i in range(14):
 		var c := _random_floor_cell()
 		_add_enemy(kinds[i % kinds.size()], _cell_pos(c))
@@ -1013,7 +1094,9 @@ func _physics_process(dt: float) -> void:
 		player.global_position.y = 0.0
 		var m: Node3D = player.get_node("Model")
 		m.rotation.y = lerp_angle(m.rotation.y, yaw, minf(1.0, dt * 14.0))
-		m.position.y = absf(sin(elapsed * 12.0)) * 0.05 if absf(along) > 0.1 else 0.0
+		m.position.y = absf(sin(elapsed * 12.0)) * 0.05 if absf(along) > 0.1 and wiz_model == null else 0.0
+		if wiz_model != null:
+			play_anim(wiz_model, "Walk" if absf(along) > 0.1 else "Idle")
 		_check_cart()
 	else:
 		_update_ride(dt)
@@ -1155,6 +1238,8 @@ func _check_exit() -> void:
 	if exit_label != null:
 		exit_label.text = "%s %d/%d" % [t("exit"), mini(diamonds, quota), quota]
 		exit_label.modulate = Color(1, 0.95, 0.7) if diamonds >= quota else Color(1, 0.55, 0.45)
+		if exit_gate != null and diamonds >= quota and exit_gate.position.y < 3.0:
+			exit_gate.position.y = lerpf(exit_gate.position.y, 3.2, 0.05)
 	need_cd = maxf(0.0, need_cd - get_physics_process_delta_time())
 	if player.global_position.distance_to(_cell_pos(exit_cell)) < 1.6:
 		if diamonds >= quota:
