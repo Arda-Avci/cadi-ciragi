@@ -10,29 +10,43 @@ export const PET_CD = 4 * 3600 * 1000;
 export const GARDEN_CD = 8 * 3600 * 1000;
 export const BREW_TIME = 30 * 60 * 1000;
 export const SOUP_CAP = 8 * 3600 * 1000;
+export const FEED_CD = 12 * 3600 * 1000;
+export const FEED_GAP = 36 * 3600 * 1000;
 export function freshHouse() {
-    return { pet: 0, garden: 0, brewAt: 0, soupAt: 0, streakDay: 0, streak: 0, hp: 0, dmg: 0, pets: 0, brews: 0 };
+    return { pet: 0, garden: 0, brewAt: 0, soupAt: 0, streakDay: 0, streak: 0, hp: 0, dmg: 0, pets: 0, brews: 0, food: 0, fed: 0, feeds: 0, fedStreak: 0, catName: 'Pamuk' };
 }
 export const dayNumber = (ms) => Math.floor((ms - new Date(ms).getTimezoneOffset() * 60000) / 86400000);
-export function tasks(h, now) {
+/** kedi şu an tok mu (son beslemeden 12 saat geçmediyse) */
+export const catFull = (h, now) => h.fed > 0 && now - h.fed < FEED_CD;
+export function tasks(h, now, ctx) {
     const wait = (since, cd) => Math.max(0, since + cd - now);
     const brewing = h.brewAt > 0;
     const brewLeft = brewing ? Math.max(0, h.brewAt + BREW_TIME - now) : 0;
+    const capped = h.hp >= HOUSE_HP_CAP;
     return [
         {
             id: 'daily', name: 'Günlük giriş', icon: '🎁', ready: h.streakDay !== dayNumber(now), waitMs: 0,
             desc: `Seri: ${h.streak} gün. Her gün gel, ödül büyür (7. günde büyük ödül).`, state: h.streakDay === dayNumber(now) ? 'Bugünkü ödül alındı' : 'Ödülü al',
         },
         {
-            id: 'pet', name: 'Kediyi sev', icon: '🐈', ready: wait(h.pet, PET_CD) === 0 && h.hp < HOUSE_HP_CAP, waitMs: wait(h.pet, PET_CD),
-            desc: 'Kalıcı +%1 azami can. 4 saatte bir.', state: h.hp >= HOUSE_HP_CAP ? 'Sınıra ulaşıldı' : 'Sev',
+            id: 'pet', name: 'Kediyi sev', icon: '🐈', ready: wait(h.pet, PET_CD) === 0 && !capped, waitMs: wait(h.pet, PET_CD),
+            desc: 'Kalıcı +%1 azami can. 4 saatte bir.', state: capped ? 'Sınıra ulaşıldı' : 'Sev',
+        },
+        {
+            id: 'buyfood', name: 'Kedi maması al', icon: '🥫', ready: ctx.essence >= ctx.foodPrice, waitMs: 0,
+            desc: `Toplanan ruhla alınır: ${ctx.foodPrice} ruh / porsiyon. Stokta: ${h.food}.`, state: 'Satın al',
+        },
+        {
+            id: 'feed', name: 'Kediyi besle', icon: '🍽️', ready: h.food > 0 && wait(h.fed, FEED_CD) === 0 && !capped, waitMs: wait(h.fed, FEED_CD),
+            desc: `1 porsiyon mama: kalıcı +%0,5 azami can ve tok kedi. 12 saatte bir. Düzenli beslenme serisi: ${h.fedStreak} (her 5'te +2 jeod).`,
+            state: capped ? 'Sınıra ulaşıldı' : h.food > 0 ? 'Besle' : 'Mama yok',
         },
         {
             id: 'brew', name: brewing ? 'İksiri topla' : 'İksir demle', icon: '⚗️', ready: brewing ? brewLeft === 0 : h.dmg < HOUSE_DMG_CAP, waitMs: brewLeft,
             desc: 'Demle (30 dk), topla: kalıcı +%2 hasar/güç.', state: h.dmg >= HOUSE_DMG_CAP && !brewing ? 'Sınıra ulaşıldı' : brewing ? (brewLeft === 0 ? 'Hazır' : 'Demleniyor') : 'Demlemeye başla',
         },
         {
-            id: 'garden', name: 'Bahçeyi sula', icon: '🌿', ready: wait(h.garden, GARDEN_CD) === 0 && h.hp < HOUSE_HP_CAP, waitMs: wait(h.garden, GARDEN_CD),
+            id: 'garden', name: 'Bahçeyi sula', icon: '🌿', ready: wait(h.garden, GARDEN_CD) === 0 && !capped, waitMs: wait(h.garden, GARDEN_CD),
             desc: 'Kalıcı +%1 azami can ve 1 jeod. 8 saatte bir.', state: 'Sula',
         },
         {

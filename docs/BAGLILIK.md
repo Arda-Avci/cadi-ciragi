@@ -17,3 +17,15 @@ Amaç: oyuncuyu "bir kez bitir, bırak" yerine geri getirmek. Hepsi sunucusuz, c
 - Gölge kodu yalnızca ad, ustalık ve renk taşır; gerçek oyuncunun can/hasarı gönderilmez (hile ve sunucu gerektirmemek için).
 - Hikâye sayfaları şimdilik yalnız Türkçe (arayüz çevirisi var).
 - İnsan oynanışıyla denenmedi; tarayıcıda duman testi yapıldı.
+
+## v0.14.0 eklemeleri
+- **Kedi maması:** toplanan ruhla alınır (bir buçuk saatlik kazan getirisi, en az 40 ruh); kediyi besle = kalıcı +%0,5 can (12 saatte bir), düzenli beslenme serisi (36 saati aşan ara seriyi sıfırlar), her 5'te +2 jeod. Kediye isim verilir.
+- **Kıyafet bonusları:** Altın +%6 ruh, Orman +%4 hız, Okyanus +%5 menzil, Gece mavisi +%3 kritik, Gül +%1 can çalma, Kızıl +%3 kaçınma (yalnız giyiliyken).
+- **Başlangıç görevleri (8 adım)** ve **günlük 3 görev:** ekranda görev takipçisi; ödül jeod/ruh.
+- **Düşman koleksiyonu:** her 5 yeni tür +2 jeod, her 10'da kalıcı +%1 can.
+- **Zor boss:** ada bossu yenilince adada günde bir kez ×3 güçte yeniden çıkar; büyük ganimet.
+- **Bekleme geliri:** kahraman duruyorsa kazan getirisinin dörtte biri kadar ruh akar.
+- **Yerel bildirimler** (`src/notify.ts`): iksir hazır, kedi acıktı, bahçe, kazan doldu, günlük ödül. Yalnız mobil uygulamada; cihazda denenmedi. `@capacitor/local-notifications` eklendi.
+- **Ekran sarsıntısı** (vuruş, kombo, boss).
+- **Görseller:** panel başlık görselleri, hikâye ara sahneleri ve ev ikonları için kod hazır (yavaş yakınlaşma animasyonu); görseller `tools/gen_ui.py` ile Gemini'den üretilir. Görsel yoksa emoji/gradyan yedek kullanılır. **Gemini kredisi bittiği için (HTTP 402) görseller henüz üretilmedi.**
+- **Geri bildirim özeti:** Ayarlar → "Oyun özetini kopyala"; testçi bunu sana yapıştırır (`docs/PLAYTEST.md`).

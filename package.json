@@ -12,6 +12,7 @@
     "@capacitor/core": "^7.0.0",
     "@capacitor/haptics": "^7.0.0",
     "@capacitor/ios": "^7.0.0",
+    "@capacitor/local-notifications": "^7.0.0",
     "cordova-plugin-purchase": "^13.0.0"
   },
   "devDependencies": {

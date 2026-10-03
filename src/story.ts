@@ -30,6 +30,9 @@ const FLAVOR: Record<string, string[]> = {
   'Gölge Diyarı': ['Gölgeler burada ışıktan önce geliyor. Biri arkamda hep bir adım geride.', 'Gölge Kraliçe\'nin tacında kırık yok; kendisi bir kırık.', 'Karanlığın içinde kendi sesimi duydum: "Yakında."'],
 };
 
+/** görseli ve ara sahnesi olan dönüm noktası sayfası mı */
+export const hasScene = (i: number): boolean => i in KEY;
+
 /** ada dizini için günlük sayfası */
 export function pageFor(i: number): Page {
   const k = KEY[i];

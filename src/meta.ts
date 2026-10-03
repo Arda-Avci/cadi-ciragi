@@ -65,13 +65,15 @@ export function weekly(now: number): WeeklyChallenge {
 }
 
 // ---- gardırop: cadı renkleri (kozmetik, güç vermez) ----
-export interface Outfit { hue: number; name: string; how: string }
+export type BonusKey = 'yield' | 'speed' | 'reach' | 'crit' | 'lifesteal' | 'evasion';
+export interface Outfit { hue: number; name: string; how: string; bonus?: { key: BonusKey; v: number; label: string } }
+/** her kıyafetin küçük, niş bir bonusu vardır (yalnız giyiliyken); güç dengesini bozmayacak kadar küçüktür */
 export const OUTFITS: Outfit[] = [
   { hue: 0, name: 'Klasik mor', how: 'Başlangıç' },
-  { hue: 40, name: 'Altın', how: '10. ada bossunu yen' },
-  { hue: 90, name: 'Orman', how: '20. ada bossunu yen' },
-  { hue: 190, name: 'Okyanus', how: '7 günlük seri' },
-  { hue: 230, name: 'Gece mavisi', how: 'Haftalık meydan okumayı kazan' },
-  { hue: 320, name: 'Gül', how: 'Gölge Arenası: Pelin ve Ayça\'yı yen' },
-  { hue: 350, name: 'Kızıl', how: '30 günlük seri' },
+  { hue: 40, name: 'Altın', how: '10. ada bossunu yen', bonus: { key: 'yield', v: 6, label: '+%6 ruh kazancı' } },
+  { hue: 90, name: 'Orman', how: '20. ada bossunu yen', bonus: { key: 'speed', v: 4, label: '+%4 hareket hızı' } },
+  { hue: 190, name: 'Okyanus', how: '7 günlük seri', bonus: { key: 'reach', v: 5, label: '+%5 büyü menzili' } },
+  { hue: 230, name: 'Gece mavisi', how: 'Haftalık meydan okumayı kazan', bonus: { key: 'crit', v: 3, label: '+%3 kritik şansı' } },
+  { hue: 320, name: 'Gül', how: 'Gölge Arenası: Pelin ve Ayça\'yı yen', bonus: { key: 'lifesteal', v: 1, label: '+%1 can çalma' } },
+  { hue: 350, name: 'Kızıl', how: '30 günlük seri', bonus: { key: 'evasion', v: 3, label: '+%3 kaçınma' } },
 ];

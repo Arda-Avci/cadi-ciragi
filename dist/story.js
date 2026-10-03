@@ -25,6 +25,8 @@ const FLAVOR = {
     'Bulut Sarayı': ['Bulutlar yansıma gibi: aşağıdaki adayı tersine gösteriyor.', 'Fırtına Kartalı ayna kırığını yuvasına taşımış. Kanatlarında yansıma var.', 'Sarayın tavanında bir göz: kırığı gözlüyor.'],
     'Gölge Diyarı': ['Gölgeler burada ışıktan önce geliyor. Biri arkamda hep bir adım geride.', 'Gölge Kraliçe\'nin tacında kırık yok; kendisi bir kırık.', 'Karanlığın içinde kendi sesimi duydum: "Yakında."'],
 };
+/** görseli ve ara sahnesi olan dönüm noktası sayfası mı */
+export const hasScene = (i) => i in KEY;
 /** ada dizini için günlük sayfası */
 export function pageFor(i) {
     const k = KEY[i];

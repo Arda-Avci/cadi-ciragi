@@ -5,9 +5,10 @@ import { changed, loadSettings, settings, vibrate } from './settings.js';
 import { BUILD, CODENAME, VERSION } from './version.js';
 import { LEVEL_PACKS, PACKS, createBilling } from './billing.js';
 import { FightGame } from './fight.js';
-import { fmtWait } from './house.js';
+import { catFull, fmtWait } from './house.js';
+import { TUTORIAL } from './quests.js';
 import { LEGENDS, OUTFITS, RIVAL_HUE, ghostCode, heroLevel, parseGhostCode, weekly } from './meta.js';
-import { pageFor } from './story.js';
+import { hasScene, pageFor } from './story.js';
 import { createAds } from './ads.js';
 import { CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, statIcon, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemAbility, itemUpgradeCost, itemValue, upgradeCost, } from './data.js';
 loadSettings();
@@ -61,12 +62,43 @@ function setPanelTitle(t, iconName) {
     head.innerHTML = `<b>${ico(iconName, 26)} ${L(t)}</b>`;
     head.append(btn('✕', 'x', true, () => { open = null; renderPanel(); }));
     panel.append(head);
+    // panel başlık görseli (varsa): yavaşça kayan/yakınlaşan animasyon
+    const art = open === 'house' ? { home: 'house', quests: 'quests', story: 'story', arena: 'arena', wardrobe: 'wardrobe' }[houseTab] : open;
+    if (art) {
+        const ban = document.createElement('div');
+        ban.className = 'banner';
+        ban.innerHTML = `<img src="assets/panel_${art}.jpg" alt="" onerror="this.parentElement.style.display='none'">`;
+        panel.append(ban);
+    }
 }
 // ---------------- cadı evi ----------------
 const chip = (hue) => `<span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:hsl(${(270 + hue) % 360} 65% 52%);border:2px solid #fff6"></span>`;
-const emoji = (e) => `<span style="font-size:28px;width:36px;text-align:center;display:inline-block">${e}</span>`;
+/** görsel (assets/<ad>.jpg) varsa onu, yoksa emojiyi gösterir */
+const emoji = (e, art) => art
+    ? `<span style="display:inline-block;width:40px;height:40px;text-align:center;font-size:28px"><img src="assets/${art}.jpg" width="40" height="40" style="border-radius:10px;object-fit:cover" alt="" onerror="this.parentElement.textContent='${e}'"></span>`
+    : `<span style="font-size:28px;width:36px;text-align:center;display:inline-block">${e}</span>`;
 const hashHue = (id) => { let h = 0; for (const c of id)
     h = (h * 31 + c.charCodeAt(0)) % 360; return Math.abs(h - RIVAL_HUE) < 25 ? (h + 60) % 360 : h; };
+/** sayfa içi metin kutusu (tarayıcı prompt() penceresi yerine) */
+function askText(title, def, done) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#241a40;color:#fff;border:1px solid #fff4;border-radius:12px;padding:18px;width:min(300px,86vw);text-align:center;font:15px sans-serif';
+    box.textContent = L(title);
+    const inp = document.createElement('input');
+    inp.value = def;
+    inp.maxLength = 14;
+    inp.style.cssText = 'width:100%;margin-top:10px;padding:9px;border-radius:8px;border:1px solid #fff4;background:#0006;color:#fff;box-sizing:border-box';
+    const ok = document.createElement('button');
+    ok.textContent = L('Tamam');
+    ok.style.cssText = 'margin-top:12px;padding:10px 24px;border-radius:8px;border:0;font:bold 15px sans-serif;background:#d9822b;color:#fff';
+    ok.addEventListener('click', () => { wrap.remove(); done(inp.value); });
+    box.append(inp, ok);
+    wrap.append(box);
+    document.body.append(wrap);
+    inp.focus();
+}
 function startDuel(opts, done) {
     if (fight.active)
         return;
@@ -76,7 +108,7 @@ function startDuel(opts, done) {
 }
 function renderHouse() {
     setPanelTitle('Cadı Evi', 'home');
-    const tabs = [['home', 'Ev'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop']];
+    const tabs = [['home', 'Ev'], ['quests', 'Görev'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop']];
     const tabRow = document.createElement('div');
     tabRow.style.cssText = 'display:flex;gap:6px;margin:6px 0';
     for (const [k, name] of tabs) {
@@ -92,14 +124,43 @@ function renderHouse() {
         info.className = 'row';
         info.innerHTML = `<small>${L('Evden kalıcı kazanç')}: <b>+%${h.hp.toFixed(0)}</b> ${L('can')} (${L('en çok')} %100) · <b>+%${h.dmg.toFixed(0)}</b> ${L('hasar')} (${L('en çok')} %200) · ${L('Seri')}: <b>${h.streak}</b></small>`;
         panel.append(info);
+        const full = catFull(h, game.now());
+        panel.append(row(emoji('🐈', full ? 'cat_fed' : 'cat_hungry'), h.catName, `${full ? 'Tok ve mutlu' : 'Aç olabilir'} · ${L('Mama stoku')}: ${h.food} · ${L('Besleme')}: ${h.feeds}`, btn('Adlandır', '', true, () => askText('Kedinin adı', h.catName, (v) => { game.setCatName(v); renderPanel(); }))));
         for (const t of game.houseTasks()) {
-            const icon = { daily: '🎁', pet: '🐈', brew: '⚗️', garden: '🌿', soup: '🍲' };
+            const icon = { daily: '🎁', pet: '🐈', brew: '⚗️', garden: '🌿', soup: '🍲', buyfood: '🥫', feed: '🍽️' };
             let sub = t.desc;
             if (t.id === 'soup')
                 sub += ` ${L('Biriken')}: ${fmt(game.soupReady())} ${L('ruh')}.`;
             const label = t.ready ? t.state : t.waitMs > 0 ? fmtWait(t.waitMs) : t.state;
-            panel.append(row(emoji(icon[t.id]), t.name, sub, btn(label, '', t.ready, () => { game.doHouse(t.id); renderPanel(); })));
+            panel.append(row(emoji(icon[t.id], 'task_' + t.id), t.name, sub, btn(label, '', t.ready, () => { game.doHouse(t.id); renderPanel(); })));
         }
+    }
+    else if (houseTab === 'quests') {
+        const tu = game.tutorial();
+        const h1 = document.createElement('h3');
+        h1.textContent = L('Başlangıç görevleri') + ` ${Math.min(tu.i, TUTORIAL.length)}/${TUTORIAL.length}`;
+        panel.append(h1);
+        TUTORIAL.forEach((st, i) => {
+            const el = document.createElement('div');
+            el.className = 'row';
+            const done = i < tu.i;
+            const cur = i === tu.i;
+            el.style.opacity = done ? '0.5' : cur ? '1' : '0.7';
+            el.innerHTML = `<div>${done ? '✅' : cur ? '👉' : '⬜'} <b>${L(st.text)}</b>${cur ? `<br><small>${L(st.hint)}</small>` : ''}</div>`;
+            panel.append(el);
+        });
+        const h2 = document.createElement('h3');
+        h2.textContent = L('Günlük görevler');
+        panel.append(h2);
+        game.dailyRoll();
+        game.save.daily.goals.forEach((g, i) => {
+            const ok = g.have >= g.need;
+            panel.append(row(emoji(g.claimed ? '✅' : '📅'), game.dailyText(g.t), `${g.have}/${g.need} · +1 ${L('jeod')}`, btn(g.claimed ? '✓' : ok ? 'Ödülü al' : '…', '', ok && !g.claimed, () => { game.claimDaily(i); renderPanel(); })));
+        });
+        const col = document.createElement('div');
+        col.className = 'row';
+        col.innerHTML = `<small>${L('Koleksiyon')}: <b>${Object.keys(sv.seen).length}</b> ${L('tür görüldü')} · ${L('her 5 yeni türde +2 jeod, her 10\'da kalıcı +%1 can')}</small>`;
+        panel.append(col);
     }
     else if (houseTab === 'story') {
         const open0 = sv.bossDown.map((b, i) => (b ? i : -1)).filter((i) => i >= 0).reverse();
@@ -112,7 +173,7 @@ function renderHouse() {
             const pg = pageFor(i);
             const el = document.createElement('div');
             el.className = 'row';
-            el.innerHTML = `<div><b>${pg.title}</b><br><small>${pg.text}</small></div>`;
+            el.innerHTML = `${hasScene(i) ? `<img class="scene" src="assets/story_${i}.jpg" alt="" onerror="this.style.display='none'">` : ''}<div><b>${pg.title}</b><br><small>${pg.text}</small></div>`;
             panel.append(el);
         }
         if (!open0.length)
@@ -173,12 +234,12 @@ function renderHouse() {
     else {
         const info = document.createElement('div');
         info.className = 'row';
-        info.innerHTML = `<small>${L('Kıyafetler yalnız görünümdür, güç vermez. Kazanarak aç.')}</small>`;
+        info.innerHTML = `<small>${L('Her kıyafet giyilirken küçük bir niş bonus verir; güç dengesini bozmaz. Kazanarak aç.')}</small>`;
         panel.append(info);
         for (const o of OUTFITS) {
             const owned = sv.outfits.includes(o.hue);
             const cur = sv.outfit === o.hue;
-            panel.append(row(chip(o.hue), o.name, owned ? 'Sahipsin' : o.how, btn(cur ? '✓ Giyili' : owned ? 'Giy' : '🔒', '', owned && !cur, () => { game.setOutfit(o.hue); renderPanel(); })));
+            panel.append(row(chip(o.hue), o.name, (owned ? 'Sahipsin' : o.how) + (o.bonus ? ' · ' + L(o.bonus.label) : ''), btn(cur ? '✓ Giyili' : owned ? 'Giy' : '🔒', '', owned && !cur, () => { game.setOutfit(o.hue); renderPanel(); })));
         }
     }
     const rb = document.createElement('div');
@@ -382,6 +443,10 @@ function renderPanel() {
         }
         lang.append(lg);
         panel.append(lang);
+        const fb = document.createElement('div');
+        fb.className = 'row';
+        fb.append(btn('Oyun özetini kopyala (geri bildirim için)', '', true, () => { void navigator.clipboard?.writeText(game.feedbackSummary()); fb.append(' ✓'); }));
+        panel.append(fb);
         const foot = document.createElement('div');
         foot.className = 'row';
         foot.append(btn('Ana menü', '', true, () => { open = null; renderPanel(); showLanding(); }), btn('Oyuna dön', '', true, () => { open = null; renderPanel(); }));
@@ -738,10 +803,44 @@ game.onPaywall = () => { if (!fight.active && !landingOpen) {
 let shopPrices = {};
 billing.prices().then((p) => { shopPrices = p; if (open === 'shop')
     renderPanel(); }).catch((e) => console.error('fiyatlar alınamadı', e));
+/** hikâye ara sahnesi: tam ekran, yavaş yakınlaşan illüstrasyon + yazı (dokununca kapanır) */
+function showScene(i) {
+    if (!hasScene(i))
+        return;
+    const pg = pageFor(i);
+    const wrap = document.createElement('div');
+    wrap.className = 'scene-ov';
+    wrap.innerHTML = `<img src="assets/story_${i}.jpg" alt="" onerror="this.style.display='none'"><div class="scene-txt"><b>${L(pg.title)}</b><p>${pg.text}</p><small>${L('Devam etmek için dokun')}</small></div>`;
+    wrap.addEventListener('click', () => { wrap.classList.add('out'); setTimeout(() => wrap.remove(), 500); game.paused = false; });
+    document.body.append(wrap);
+    game.paused = true;
+}
+game.onStory = (i) => setTimeout(() => showScene(i), 1800);
 const houseBtn = document.getElementById('btn-house');
 houseBtn.addEventListener('click', () => { open = open === 'house' ? null : 'house'; renderPanel(); });
 // ev düğmesindeki rozet: hazır iş ya da yeni günlük sayfası varsa; ev açıkken geri sayımlar tazelenir
+const questEl = document.getElementById('quest');
+questEl.addEventListener('click', () => { open = 'house'; houseTab = 'quests'; renderPanel(); });
+function updateQuest() {
+    if (landingOpen || open || fight.active) {
+        questEl.style.display = 'none';
+        return;
+    }
+    const tu = game.tutorial();
+    let text;
+    if (tu.step)
+        text = `📜 ${L(tu.step.text)}${tu.step.progress ? ' ' + tu.step.progress(game.save) : ''}`;
+    else {
+        const g = game.save.daily.goals;
+        const done = g.filter((x) => x.have >= x.need).length;
+        const unclaimed = g.filter((x) => x.have >= x.need && !x.claimed).length;
+        text = `📅 ${L('Günlük görevler')} ${done}/3${unclaimed ? ' · ' + L('ödül hazır') : ''}`;
+    }
+    questEl.textContent = text;
+    questEl.style.display = 'block';
+}
 setInterval(() => {
+    updateQuest();
     const ready = game.houseTasks().some((t) => t.ready && t.id !== 'soup') || game.save.bossDown.filter(Boolean).length > game.save.storyRead;
     houseBtn.dataset.badge = ready ? '1' : '0';
     if (open === 'house' && houseTab === 'home')
