@@ -26,7 +26,10 @@ const HOF_KEY = 'cadi-ciragi-hof';
 export interface Crystal { id: number; rarity: number; stat: CStat; enchant: number }
 export interface Item { id: number; type: SlotType; rarity: number; level: number; dtype: DType }
 
+/** yeniden doğuş: seviye sıfırlanır, güç korunur; p0 = sıfırlama anındaki ücretsiz güç, floor = o ana kadar aşılan en yüksek ada sayısı */
+export interface Rebirth { n: number; p0: number; floor: number }
 export interface SaveData {
+  rebirth?: Rebirth;
   essence: number;
   upgrades: Record<string, number>;
   weapons: number[];
@@ -530,7 +533,7 @@ export class Game {
     const list = Game.loadHof();
     const e: HofEntry = {
       id: this.save.hero.id, name: this.save.hero.name, power: Math.max(this.fullPower(), list.find((x) => x.id === this.save.hero.id)?.power ?? 0),
-      islands: this.bossesDown(), kills: this.save.kills, deaths: this.save.deaths, maxHp: this.maxHp(), born: this.save.hero.born,
+      islands: Math.max(this.bossesDown(), this.save.rebirth?.floor ?? 0, list.find((x) => x.id === this.save.hero.id)?.islands ?? 0), kills: this.save.kills, deaths: this.save.deaths, maxHp: this.maxHp(), born: this.save.hero.born,
       updated: Date.now(), version: VERSION,
     };
     const at = list.findIndex((x) => x.id === e.id);
@@ -1012,7 +1015,7 @@ export class Game {
   }
   isWorn(id: number): boolean { return this.save.eq.helmet === id || this.save.eq.shield === id || this.save.extra.includes(id); }
   /** ekipman ek yuvası: her 10 aşılan adada bir */
-  extraSlots(): number { return Math.floor(this.bossesDown() / 10); }
+  extraSlots(): number { return Math.floor(this.bdFloor() / 10); }
   private helmetHp(): number { return this.worn('helmet').reduce((a, h) => a + itemValue('helmet', h.rarity, h.level), 0); }
   private helmetRegen(): number { return this.worn('helmet').reduce((a, h) => a + (h.rarity >= 3 ? 1.5 * (h.rarity - 2) : 0), 0); }
   private blockChance(): number { return Math.min(0.6, this.worn('shield').reduce((a, s) => a + (s.rarity >= 3 ? 0.08 * (s.rarity - 2) : 0), 0)); }
@@ -1047,6 +1050,42 @@ export class Game {
     return true;
   }
 
+  // ---- yeniden doğuş: paket almadan devam yolu ----
+  static readonly RB_G = 3;
+  rebirthCount(): number { return this.save.rebirth?.n ?? 0; }
+  /** ücret: 1 günlük boştayken ruh geliri x (1 + önceki yeniden doğuş sayısı); her sıfırlama bir öncekinden pahalıdır */
+  rebirthCost(): number { return Math.max(100, this.soupYield(24 * 3.6e6)) * (1 + this.rebirthCount()); }
+  canRebirth(): boolean { return this.bossesDown() >= 10 && this.dead <= 0 && !this.bonus && !this.snakeFight; }
+  /** seviyeyi (ada ilerlemesini) sıfırlar, gücü korur; ücret ruh olarak ödenir. Boss/kamp/ağaç ilerlemesi baştan yapılır, bir kez verilen ödüller (sandık, kule, bonus, yılan) tekrar verilmez. */
+  rebirth(): string {
+    if (!this.canRebirth()) return 'Şu an yapılamaz';
+    const cost = this.rebirthCost();
+    if (this.save.essence < cost) return 'Ruh yetmiyor';
+    this.save.essence -= cost;
+    const prev = this.save.rebirth;
+    const p0 = Math.max(1, this.fullPower() / this.shopMul());
+    this.save.rebirth = { n: (prev?.n ?? 0) + 1, p0: Math.max(p0, prev?.p0 ?? 0), floor: Math.max(this.bossesDown(), prev?.floor ?? 0) };
+    this.save.bossDown = ZONES.map(() => false);
+    this.save.spawn = {};
+    this.save.gw = {};
+    this.save.fog = {};
+    for (const k of Object.keys(this.save.first)) if (/^(s|t|bx)\d/.test(k)) delete this.save.first[k]; // kamp, ağaç ve köprü ilerlemesi; kule/sandık/bonus/yılan ödülleri kalır
+    this.save.x = HOME.x; this.save.y = HOME.y + 70;
+    this.fogSets.clear(); this.fogFade.clear();
+    this.tg = null;
+    this.enemies = []; this.projs = []; this.orbs = []; this.treeHp.clear(); this.bldHp.clear(); this.cast.clear();
+    this.px = this.save.x; this.py = this.save.y;
+    this.region = this.regionAt(this.px, this.py);
+    this.ensureLoaded(this.region);
+    this.hp = this.maxHp();
+    this.persist();
+    this.onChange();
+    this.say('Yeniden doğdun: seviyen sıfırlandı, gücün korundu');
+    audio.play('boss');
+    vibrate([90, 40, 160]);
+    return '';
+  }
+
   /** satın alınan güç paketlerinin toplam çarpanı (can ve hasar ×çarpan → güç ×çarpan) */
   shopMul(): number {
     let m = 1;
@@ -1077,7 +1116,7 @@ export class Game {
   soupReady(): number { return this.soupYield(soupMs(this.save.house, this.now())); }
   /** saatlik ruh getirisi: son aşılan adanın ölçeğine göre */
   private soupRate(): number {
-    const reg = Math.min(this.bossesDown(), ZONES.length - 1);
+    const reg = Math.min(this.bdFloor(), ZONES.length - 1);
     return 60 * Math.pow(ZONES[reg].scale, 0.7) * this.yieldMul();
   }
   private soupYield(ms: number): number { return Math.floor(this.soupRate() * (ms / 3.6e6)); }
@@ -2473,9 +2512,11 @@ export class Game {
     return this.zoneWorld(reg).spawners.find((x) => x.tier === 'boss' && x.bridge === undefined)?.kind ?? ZONES[reg].enemies[0];
   }
   bossesDown(): number { return this.save.bossDown.filter(Boolean).length; }
+  /** yeniden doğuştan sonra da korunan "aşılan ada" tabanı: yuva sayıları ve gelir buna göre (güç korunsun) */
+  private bdFloor(): number { return Math.max(this.bossesDown(), this.save.rebirth?.floor ?? 0); }
   /** kristal yuvası: 2'den başlar, boss'larla 4'e çıkar, her 10 adada bir yenisi eklenir */
-  slots(): number { return Math.min(4, 2 + this.bossesDown()) + Math.floor(this.bossesDown() / 10); }
-  weaponSlots(): number { return Math.min(4, 1 + this.bossesDown() + (this.save.kills >= 25 ? 1 : 0)); }
+  slots(): number { return Math.min(4, 2 + this.bdFloor()) + Math.floor(this.bdFloor() / 10); }
+  weaponSlots(): number { return Math.min(4, 1 + this.bdFloor() + (this.save.kills >= 25 ? 1 : 0)); }
   chestsOpened(reg: number = this.region): number {
     return this.getWorld().chests.filter((c) => c.reg === reg && this.save.chests.includes(c.id)).length;
   }
@@ -3729,7 +3770,10 @@ export class Game {
     const done = this.save.gw[reg] ?? 0;
     const rem = Math.max(w, total - done);
     this.save.gw[reg] = done + w;
-    const cap = this.bossPower(reg) * Game.MARGIN * softCap(reg); // 101. adadan sonra tavan düşer: fark güç paketleriyle kapanır
+    let cap = this.bossPower(reg) * Game.MARGIN * softCap(reg); // 101. adadan sonra tavan düşer: fark güç paketleriyle kapanır
+    const rb = this.save.rebirth;
+    // yeniden doğuş turunda tavan, sıfırlama anındaki güçten (p0) 3 katına yumuşakça yükselir: eski adaları baştan yaparak güç yine artar
+    if (rb && rb.n > 0) cap = Math.max(cap, rb.p0 * Math.pow(Game.RB_G, Math.min(1, (reg + 1) / Math.max(1, rb.floor))));
     const P = Math.max(1, this.fullPower() / this.shopMul()); // satın alınan güç, ücretsiz ilerleme kazancını etkilemez
     if (P >= cap) return 0;
     return Math.pow(cap / P, Math.min(1, w / rem)) - 1;

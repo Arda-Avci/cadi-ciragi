@@ -580,6 +580,22 @@ function renderPanel(): void {
     msg.className = 'row';
     msg.innerHTML = `<small id="shop-msg">${TESTING ? L('TEST: satın alma 3 sn test reklamıyla yapılır') : billing.kind === 'none' ? L('Mağaza yalnızca mobil uygulamada kullanılabilir.') : billing.kind === 'dev' ? 'GELİŞTİRME MODU: sahte satın alma' : ''}</small>`;
     panel.append(msg);
+    // yeniden doğuş: paket almadan devam yolu (seviye sıfırlanır, güç korunur, ruh ücreti)
+    const rh = document.createElement('h3');
+    rh.textContent = L('Paket almadan devam: Yeniden doğuş');
+    panel.append(rh);
+    const rbCost = game.rebirthCost();
+    const rbOk = game.canRebirth() && game.save.essence >= rbCost;
+    panel.append(row(ico('ui_soul', 36), `${L('Yeniden doğuş')} (${game.rebirthCount()})`,
+      `${L('Seviyen 1\'e döner, gücün korunur; adaları baştan yaparak gücün yine artar.')} ${L('Ücret')}: ${fmt(rbCost)} ${L('Ruh')}${game.bossesDown() < 10 ? ' · ' + L('en az 10 ada aşılmalı') : ''}`,
+      btn(fmt(rbCost), 'danger', rbOk, () => {
+        if (!confirm(L('Seviyen 1\'e döner, gücün korunur. Ücret ödenir. Devam edilsin mi?'))) return;
+        const r = game.rebirth();
+        const mm = document.getElementById('shop-msg');
+        if (r && mm) mm.textContent = L(r);
+        open = null;
+        renderPanel();
+      })));
     // devam paketleri: 40. adadan sonrasını açar (kalıcı, bir kez alınır)
     const lh = document.createElement('h3');
     lh.textContent = L('Devam paketleri (40. adadan sonra)');
