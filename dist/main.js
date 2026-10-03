@@ -898,6 +898,8 @@ if ('serviceWorker' in navigator && !location.search.includes('nosw') && !window
 const hintTip = document.getElementById('hint-tip');
 const hintBtns = [['btn-tree', 'tree'], ['btn-weapons', 'weapons'], ['btn-gear', 'gear'], ['btn-crystals', 'crystals']];
 let hintAt = 0;
+for (const [id] of hintBtns)
+    document.getElementById(id)?.addEventListener('click', () => { game.save.first['hintTip'] = 1; });
 function updateHints(now) {
     if (now - hintAt < 500)
         return;
@@ -913,7 +915,7 @@ function updateHints(now) {
         if (on && !first)
             first = b;
     }
-    if (first && !open) {
+    if (first && !open && !game.save.first['hintTip']) { // "Buraya tıkla!" balonu yalnızca ilk tıklamaya kadar görünür; sonra düğmenin yanıp sönmesi yeterli
         const r = first.getBoundingClientRect();
         hintTip.style.display = 'block';
         hintTip.style.left = r.left + r.width / 2 + 'px';
@@ -991,6 +993,50 @@ game.onPaywall = () => { if (!fight.active && !landingOpen) {
     open = 'shop';
     renderPanel();
 } };
+/**
+ * Godot maden oyunu (godot_mine/ projesi, web'e tek iş parçacıklı aktarılmış mine/index.html) tam ekran iframe ile açılır.
+ * Oyun hazır olunca 'mine-ready', bitince 'mine-result' mesajı gönderir; 25 sn içinde hazır olmazsa (çevrimdışı, WebGL yok) yedek çalışır.
+ */
+function playMineGodot(reg, after, fallback) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:260;background:#000;color:#fff;font:600 16px system-ui';
+    const seed = (reg + 1) * 1000 + Math.floor(Math.random() * 900) + 1;
+    const ifr = document.createElement('iframe');
+    ifr.src = `mine/index.html?seed=${seed}&lang=${settings.lang}${location.search.includes("mine_test") ? "&auto=1&quota=0" : ""}`; // mine_test: otomatik oynatma (yalnız test)
+    ifr.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000';
+    ifr.allow = 'fullscreen';
+    const loading = document.createElement('div');
+    loading.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-size:18px';
+    loading.textContent = L('Maden yükleniyor…');
+    const quit = document.createElement('button');
+    quit.textContent = '✕';
+    quit.style.cssText = 'position:absolute;right:10px;top:10px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:20px;z-index:2';
+    wrap.append(ifr, loading, quit);
+    document.body.append(wrap);
+    let ready = false;
+    let closed = false;
+    const close = () => { if (closed)
+        return; closed = true; clearTimeout(timer); window.removeEventListener('message', onMsg); wrap.remove(); };
+    const timer = window.setTimeout(() => { if (!ready) {
+        close();
+        fallback();
+    } }, 25000);
+    const onMsg = (e) => {
+        if (e.source !== ifr.contentWindow)
+            return;
+        const d = e.data;
+        if (d?.type === 'mine-ready') {
+            ready = true;
+            loading.remove();
+        }
+        else if (d?.type === 'mine-result') {
+            close();
+            after(d.result?.diamonds ?? 0, !!d.result?.potion);
+        }
+    };
+    window.addEventListener('message', onMsg);
+    quit.addEventListener('click', () => { close(); after(0, false); });
+}
 // elmas madeni: kaşif ilk madeni bulunca hikâye; madene girince ana oyun duraklar, maden oyunu oynanır, bitince ödül verilir
 game.onMineFound = () => setTimeout(() => { if (!landingOpen && !fight.active)
     showIntro(() => undefined, MINE_FOUND); }, 1500);
@@ -1014,8 +1060,11 @@ game.onMine = (reg) => {
             wrap.append(box);
             document.body.append(wrap);
         };
-        // 3B maden (Three.js, tembel yüklenir); açılamazsa 2B yedek oyun
-        import('./mine3d.js').then((m) => m.playMine3d(L, (r) => after(r.diamonds, r.potion))).catch((e) => { console.error('3B maden açılamadı, 2B oyun', e); playMine(L, after); });
+        // maden: önce Godot (mine/ klasöründeki web aktarımı, iframe içinde); açılamazsa Three.js, o da olmazsa 2B yedek oyun
+        const viaThree = () => {
+            import('./mine3d.js').then((m) => m.playMine3d(L, (r) => after(r.diamonds, r.potion))).catch((e) => { console.error('3B maden açılamadı, 2B oyun', e); playMine(L, after); });
+        };
+        playMineGodot(reg, after, viaThree);
     };
     if (!game.save.first['mineIn']) {
         game.save.first['mineIn'] = 1;
