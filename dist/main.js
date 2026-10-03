@@ -597,7 +597,7 @@ function renderPanel() {
         rh.textContent = L('Paket almadan devam: Yeniden doğuş');
         panel.append(rh);
         const rbOk = game.canRebirth() && (billing.kind !== 'none' || TESTING);
-        panel.append(row(ico('ui_soul', 36), `${L('Yeniden doğuş')} (${game.rebirthCount()})`, `${L('Seviyen 1\'e döner, gücün korunur; adaları baştan yaparak gücün yine artar.')}${game.bossesDown() < 10 ? ' · ' + L('en az 10 ada aşılmalı') : ''}`, btn(shopPrices[REBIRTH.id] ?? REBIRTH.fallbackPrice, 'danger', rbOk, async () => {
+        panel.append(row(ico('ui_soul', 36), `${L('Yeniden doğuş')} (${game.rebirthCount()})`, `${L('Seviyen 1\'e döner, gücün korunur; adaları baştan yaparak gücün yine artar.')}${Math.max(game.bossesDown(), game.region + 1) < Game.REBIRTH_FROM ? ' · ' + L('40. seviyeye ulaşmalısın') : ''}`, btn(shopPrices[REBIRTH.id] ?? REBIRTH.fallbackPrice, 'danger', rbOk, async () => {
             if (!confirm(L('Seviyen 1\'e döner, gücün korunur. Her yeniden doğuş satın alınır. Devam edilsin mi?')))
                 return;
             const r = await buy(REBIRTH.id);

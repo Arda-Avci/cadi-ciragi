@@ -1128,7 +1128,7 @@ export class Game {
         return true;
     }
     rebirthCount() { return this.save.rebirth?.n ?? 0; }
-    canRebirth() { return this.bossesDown() >= 10 && this.dead <= 0 && !this.bonus && !this.snakeFight; }
+    canRebirth() { return Math.max(this.bossesDown(), this.region + 1) >= Game.REBIRTH_FROM && this.dead <= 0 && !this.bonus && !this.snakeFight; }
     /** seviyeyi (ada ilerlemesini) sıfırlar, gücü korur; her sıfırlama mağazadan satın alınır (REBIRTH, consumable). Boss/kamp/ağaç ilerlemesi baştan yapılır, bir kez verilen ödüller (sandık, kule, bonus, yılan) tekrar verilmez. */
     rebirth() {
         if (!this.canRebirth())
@@ -6459,6 +6459,8 @@ Game.AD_DAILY = 10;
 Game.AD_COOLDOWN = 180; // sn, ödül türü başına
 // ---- yeniden doğuş: paket almadan devam yolu ----
 Game.RB_G = 3;
+/** yeniden doğuş 40. seviyeden itibaren (40. seviyeye ulaşıldığında) satın alınabilir */
+Game.REBIRTH_FROM = 40;
 // ---- kaşif ve elmas madeni ----
 Game.EXPLORE_MS = 2 * 60 * 1000;
 Game.MINE_CD_MS = 6 * 3600 * 1000;

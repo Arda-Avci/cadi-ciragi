@@ -1057,7 +1057,9 @@ export class Game {
   // ---- yeniden doğuş: paket almadan devam yolu ----
   static readonly RB_G = 3;
   rebirthCount(): number { return this.save.rebirth?.n ?? 0; }
-  canRebirth(): boolean { return this.bossesDown() >= 10 && this.dead <= 0 && !this.bonus && !this.snakeFight; }
+  /** yeniden doğuş 40. seviyeden itibaren (40. seviyeye ulaşıldığında) satın alınabilir */
+  static readonly REBIRTH_FROM = 40;
+  canRebirth(): boolean { return Math.max(this.bossesDown(), this.region + 1) >= Game.REBIRTH_FROM && this.dead <= 0 && !this.bonus && !this.snakeFight; }
   /** seviyeyi (ada ilerlemesini) sıfırlar, gücü korur; her sıfırlama mağazadan satın alınır (REBIRTH, consumable). Boss/kamp/ağaç ilerlemesi baştan yapılır, bir kez verilen ödüller (sandık, kule, bonus, yılan) tekrar verilmez. */
   rebirth(): string {
     if (!this.canRebirth()) return 'Şu an yapılamaz';
