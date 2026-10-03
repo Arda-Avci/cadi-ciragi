@@ -3387,6 +3387,14 @@ export class Game {
       this.hp = Math.min(this.maxHp(), this.hp + this.maxHp() * 0.01);
       audio.play('kill');
       this.deathFx.push({ x: o.x, y: o.y, t: 0.45, name: o.art, size: o.size, flip: o.flip });
+      // ilk parçalanışta kaplana kalıcı saldırı gücü (yeniden doğan kaya tekrar vermez: tarlacılık yok)
+      const firstRock = !this.save.first['o' + o.id];
+      this.save.first['o' + o.id] = 1;
+      if (firstRock) {
+        this.tigerInit();
+        this.save.tiger.dpsBase *= 1.02;
+        this.gain('+%2 Kaplan saldırı gücü (kalıcı, kaya)', '#ffb36b', 'ui_dust');
+      }
       this.gain('+' + dust + ' Toz (kaya parçalandı)', '#ffd1f0', 'ui_dust');
       this.persist();
       this.onChange();
