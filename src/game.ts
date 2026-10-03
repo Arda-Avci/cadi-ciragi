@@ -1115,6 +1115,7 @@ export class Game {
   private holeFreeze = 0;
   private holeHits = 0;
   private holeHitT = 0;
+  private holeBossT = 0;
   private archerCd = 0;
   archerOn(): boolean { return this.save.archer === 1 && settings.archer; }
 
@@ -1240,6 +1241,15 @@ export class Game {
     this.holeHitT = Math.max(0, this.holeHitT - dt);
     if (this.holeHitT <= 0) this.holeHits = 0;
     if (this.holeFreeze > 0) return; // okçu dondurdu: kımıldamaz, çekmez, yutmaz
+    // delik bossa zarar verir: yakınındaki ada bossu 0,5 sn'de bir azami canının %1'ini kaybeder
+    this.holeBossT -= dt;
+    if (this.holeBossT <= 0) {
+      this.holeBossT = 0.5;
+      for (const e of this.enemies) {
+        if (e.tier !== 'boss' || e.hp <= 0 || e.seg) continue;
+        if (Math.hypot(e.x - h.x, e.y - h.y) < 260) this.hitEnemy(e, e.maxHp * 0.01, 'smash');
+      }
+    }
     // yavaşça kahramana süzülür
     const tx = this.px; // delik yalnız kahramanı kovalar: kaplan savaşırken kaçırılamadığı için deliğe karışmaz
     const ty = this.py;
@@ -1792,14 +1802,20 @@ export class Game {
     if (Math.hypot(g.x - this.px, g.y - this.py) > 1000) { g.x = this.px - 40; g.y = this.py + 20; }
     // hedef: ekrandaki en yakın canlı düşman
     let target: Enemy | null = null;
+    let tHouse: Spawner | null = null;
     let td = 650;
+    const houses = this.bossHouses();
     for (const e of this.enemies) {
       if (e.hp <= 0 || !this.visible(e.x, e.y)) continue;
       if (e.seg && !this.snakeWrapped(e)) continue; // zırhlı yılana vurmak boşa; saran yılana saldırır
       if (this.snakeFight && !e.seg) continue; // yılan savaşında kaplan yalnız yılana saldırır
-      const d = Math.hypot(e.x - g.x, e.y - g.y) * (e.def.id === 'snake' ? 0.6 : 1); // yılanlara öncelik verir
-      if (d < td) { td = d; target = e; }
+      // ada bosslarının kendisine değil evlerine saldırır (ev vuruşları bossa %60 zarar verir)
+      const hs = e.tier === 'boss' ? houses.find((s) => s.id === e.sp) : undefined;
+      const cand = hs ? { ...e, x: hs.x, y: hs.y } : e;
+      const d = Math.hypot(cand.x - g.x, cand.y - g.y) * (e.def.id === 'snake' ? 0.6 : 1); // yılanlara öncelik verir
+      if (d < td) { td = d; target = cand; tHouse = hs ?? null; }
     }
+    const realTarget = target && tHouse ? this.enemies.find((x) => x.sp === (tHouse as Spawner).id) ?? target : target;
     let gx: number;
     let gy: number;
     let speed: number;
@@ -1817,9 +1833,10 @@ export class Game {
           g.atkT = 0.25;
           t.energy = Math.max(0, t.energy - g.cd * 0.5); // enerji yalnızca vururken azalır
           audio.play('tigerhit');
-          if (!target.tg) target.tgFirst = this.time + 3; // ilk vuruştan sonra 3 sn kaplan yalnız mücadele eder
-          target.tg = true;
-          this.hitEnemy(target, this.tigerDps() * g.cd, 'cut'); // saniyelik hasar = tigerDps
+          if (realTarget && !realTarget.tg) realTarget.tgFirst = this.time + 3; // ilk vuruştan sonra 3 sn kaplan yalnız mücadele eder
+          if (realTarget) realTarget.tg = true;
+          if (tHouse) this.hitHouse(tHouse, this.tigerDps() * g.cd, 'cut');
+          else this.hitEnemy(target, this.tigerDps() * g.cd, 'cut'); // saniyelik hasar = tigerDps
         }
       } else { gx = target.x; gy = target.y; speed = 250; }
     } else {
@@ -2597,6 +2614,14 @@ export class Game {
         vx = Math.cos(e.phase * 0.8 + e.sp) * 6;
         vy = Math.sin(e.phase * 0.7 + e.sp) * 6;
       }
+      // ada bossu kara delikten kaçar (dondurulmuş delikten kaçmaz)
+      const hl = this.hole;
+      if (big && hl && this.holeFreeze <= 0) {
+        const hx = e.x - hl.x;
+        const hy = e.y - hl.y;
+        const hd = Math.hypot(hx, hy) || 1;
+        if (hd < 380) { const fs = Math.max(sp * 1.2, 130); vx = (hx / hd) * fs; vy = (hy / hd) * fs; }
+      }
       const nx = e.x + vx * dt;
       const ny = e.y + vy * dt;
       const ox0 = e.x;
@@ -2804,6 +2829,19 @@ export class Game {
   bossHouses(): Spawner[] {
     return this.getWorld().spawners.filter((s) => s.tier === 'boss' && s.bridge === undefined && !this.spCleared(s) && this.enemies.some((e) => e.sp === s.id));
   }
+  /** mühürlü (henüz açılmamış) boss evleri */
+  private sealedHouses(): Spawner[] {
+    return this.getWorld().spawners.filter((s) => s.tier === 'boss' && s.bridge === undefined && this.bossSealed(s));
+  }
+  private sealedNudgeT = 0;
+  /** mühürlü eve vurulunca nedenini söyler (sessizce hasar yememesin) */
+  private sealedNudge(sp: Spawner): void {
+    if (this.time < this.sealedNudgeT) return;
+    this.sealedNudgeT = this.time + 2;
+    const pr = this.sealProgress(sp.reg);
+    this.say('Boss evi mühürlü: önce adadaki diğer kampları temizle (' + pr.done + '/' + pr.need + ')');
+    this.houseFlash.set(sp.id, 0.15);
+  }
   private houseFlash = new Map<number, number>();
   private hitHouse(sp: Spawner, raw: number, dtype: DType): void {
     const boss = this.enemies.find((e) => e.sp === sp.id);
@@ -2835,6 +2873,7 @@ export class Game {
       if (!this.isCleared('t' + t.id) && apply(t.x, t.y, 24)) this.hitTree(t, p.dmg);
     }
     for (const s of this.bossHouses()) if (apply(s.x, s.y, 56)) this.hitHouse(s, p.dmg, p.dtype);
+    for (const s of this.sealedHouses()) if (apply(s.x, s.y, 56)) this.sealedNudge(s);
     for (const o of this.liveBlds()) if (apply(o.x, o.y, o.r)) this.hitBld(o, p.dmg);
   }
 
@@ -2895,6 +2934,7 @@ export class Game {
         if (!once) { p.pierce--; if (p.pierce < 0) return; }
       }
     }
+    for (const s of this.sealedHouses()) if (!p.hit.has(s) && Math.hypot(s.x - p.x, s.y - p.y) < 56 + r) { p.hit.add(s); this.sealedNudge(s); }
     for (const s of this.bossHouses()) {
       if (p.hit.has(s)) continue;
       if (Math.hypot(s.x - p.x, s.y - p.y) < 56 + r) {

@@ -149,6 +149,7 @@ export class Game {
         this.holeFreeze = 0;
         this.holeHits = 0;
         this.holeHitT = 0;
+        this.holeBossT = 0;
         this.archerCd = 0;
         this.fogSets = new Map();
         this.fogFade = new Map();
@@ -167,6 +168,7 @@ export class Game {
         // ---- yardımcı karakter: beyaz kaplan ----
         this.tg = null;
         this.campsOf = new Map();
+        this.sealedNudgeT = 0;
         this.houseFlash = new Map();
         /** büyü kombosu: kısa sürede iki farklı hasar türü aynı düşmana vurursa +%30 */
         this.comboMark = new WeakMap();
@@ -1316,6 +1318,17 @@ export class Game {
             this.holeHits = 0;
         if (this.holeFreeze > 0)
             return; // okçu dondurdu: kımıldamaz, çekmez, yutmaz
+        // delik bossa zarar verir: yakınındaki ada bossu 0,5 sn'de bir azami canının %1'ini kaybeder
+        this.holeBossT -= dt;
+        if (this.holeBossT <= 0) {
+            this.holeBossT = 0.5;
+            for (const e of this.enemies) {
+                if (e.tier !== 'boss' || e.hp <= 0 || e.seg)
+                    continue;
+                if (Math.hypot(e.x - h.x, e.y - h.y) < 260)
+                    this.hitEnemy(e, e.maxHp * 0.01, 'smash');
+            }
+        }
         // yavaşça kahramana süzülür
         const tx = this.px; // delik yalnız kahramanı kovalar: kaplan savaşırken kaçırılamadığı için deliğe karışmaz
         const ty = this.py;
@@ -2034,7 +2047,9 @@ export class Game {
         }
         // hedef: ekrandaki en yakın canlı düşman
         let target = null;
+        let tHouse = null;
         let td = 650;
+        const houses = this.bossHouses();
         for (const e of this.enemies) {
             if (e.hp <= 0 || !this.visible(e.x, e.y))
                 continue;
@@ -2042,12 +2057,17 @@ export class Game {
                 continue; // zırhlı yılana vurmak boşa; saran yılana saldırır
             if (this.snakeFight && !e.seg)
                 continue; // yılan savaşında kaplan yalnız yılana saldırır
-            const d = Math.hypot(e.x - g.x, e.y - g.y) * (e.def.id === 'snake' ? 0.6 : 1); // yılanlara öncelik verir
+            // ada bosslarının kendisine değil evlerine saldırır (ev vuruşları bossa %60 zarar verir)
+            const hs = e.tier === 'boss' ? houses.find((s) => s.id === e.sp) : undefined;
+            const cand = hs ? { ...e, x: hs.x, y: hs.y } : e;
+            const d = Math.hypot(cand.x - g.x, cand.y - g.y) * (e.def.id === 'snake' ? 0.6 : 1); // yılanlara öncelik verir
             if (d < td) {
                 td = d;
-                target = e;
+                target = cand;
+                tHouse = hs ?? null;
             }
         }
+        const realTarget = target && tHouse ? this.enemies.find((x) => x.sp === tHouse.id) ?? target : target;
         let gx;
         let gy;
         let speed;
@@ -2068,10 +2088,14 @@ export class Game {
                     g.atkT = 0.25;
                     t.energy = Math.max(0, t.energy - g.cd * 0.5); // enerji yalnızca vururken azalır
                     audio.play('tigerhit');
-                    if (!target.tg)
-                        target.tgFirst = this.time + 3; // ilk vuruştan sonra 3 sn kaplan yalnız mücadele eder
-                    target.tg = true;
-                    this.hitEnemy(target, this.tigerDps() * g.cd, 'cut'); // saniyelik hasar = tigerDps
+                    if (realTarget && !realTarget.tg)
+                        realTarget.tgFirst = this.time + 3; // ilk vuruştan sonra 3 sn kaplan yalnız mücadele eder
+                    if (realTarget)
+                        realTarget.tg = true;
+                    if (tHouse)
+                        this.hitHouse(tHouse, this.tigerDps() * g.cd, 'cut');
+                    else
+                        this.hitEnemy(target, this.tigerDps() * g.cd, 'cut'); // saniyelik hasar = tigerDps
                 }
             }
             else {
@@ -3071,6 +3095,18 @@ export class Game {
                 vx = Math.cos(e.phase * 0.8 + e.sp) * 6;
                 vy = Math.sin(e.phase * 0.7 + e.sp) * 6;
             }
+            // ada bossu kara delikten kaçar (dondurulmuş delikten kaçmaz)
+            const hl = this.hole;
+            if (big && hl && this.holeFreeze <= 0) {
+                const hx = e.x - hl.x;
+                const hy = e.y - hl.y;
+                const hd = Math.hypot(hx, hy) || 1;
+                if (hd < 380) {
+                    const fs = Math.max(sp * 1.2, 130);
+                    vx = (hx / hd) * fs;
+                    vy = (hy / hd) * fs;
+                }
+            }
             const nx = e.x + vx * dt;
             const ny = e.y + vy * dt;
             const ox0 = e.x;
@@ -3342,6 +3378,19 @@ export class Game {
     bossHouses() {
         return this.getWorld().spawners.filter((s) => s.tier === 'boss' && s.bridge === undefined && !this.spCleared(s) && this.enemies.some((e) => e.sp === s.id));
     }
+    /** mühürlü (henüz açılmamış) boss evleri */
+    sealedHouses() {
+        return this.getWorld().spawners.filter((s) => s.tier === 'boss' && s.bridge === undefined && this.bossSealed(s));
+    }
+    /** mühürlü eve vurulunca nedenini söyler (sessizce hasar yememesin) */
+    sealedNudge(sp) {
+        if (this.time < this.sealedNudgeT)
+            return;
+        this.sealedNudgeT = this.time + 2;
+        const pr = this.sealProgress(sp.reg);
+        this.say('Boss evi mühürlü: önce adadaki diğer kampları temizle (' + pr.done + '/' + pr.need + ')');
+        this.houseFlash.set(sp.id, 0.15);
+    }
     hitHouse(sp, raw, dtype) {
         const boss = this.enemies.find((e) => e.sp === sp.id);
         if (!boss)
@@ -3380,6 +3429,9 @@ export class Game {
         for (const s of this.bossHouses())
             if (apply(s.x, s.y, 56))
                 this.hitHouse(s, p.dmg, p.dtype);
+        for (const s of this.sealedHouses())
+            if (apply(s.x, s.y, 56))
+                this.sealedNudge(s);
         for (const o of this.liveBlds())
             if (apply(o.x, o.y, o.r))
                 this.hitBld(o, p.dmg);
@@ -3468,6 +3520,11 @@ export class Game {
                 }
             }
         }
+        for (const s of this.sealedHouses())
+            if (!p.hit.has(s) && Math.hypot(s.x - p.x, s.y - p.y) < 56 + r) {
+                p.hit.add(s);
+                this.sealedNudge(s);
+            }
         for (const s of this.bossHouses()) {
             if (p.hit.has(s))
                 continue;
