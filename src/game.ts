@@ -1057,19 +1057,19 @@ export class Game {
   }
 
   // ---- yılanlar: 3. adadan itibaren bazı kuleler yıkılınca çok sayıda küçük yılan, 5. adadan sonra bazı kulelerden dev yılan çıkar ----
-  /** kule bir yılan yuvası mı: küçük (3. adadan) ya da dev (6. adadan; ada dizini ≥ 5) */
+  /** kule bir yılan yuvası mı: küçük (3. adadan) ya da dev (4. adadan; ada dizini ≥ 3) */
   private nestCache = new Map<number, { giant: Set<number>; small: Set<number> }>();
   nestOf(o: Obstacle): 'small' | 'giant' | null {
     if (o.kind !== 'bld') return null;
     const reg = Math.floor(o.id / 100);
     let c = this.nestCache.get(reg);
     if (!c) {
-      // adanın kuleleri arasından deterministik seçim: 6. adadan itibaren her adada en az bir dev yılan kulesi, 16. adadan sonra iki;
+      // adanın kuleleri arasından deterministik seçim: 4. adadan itibaren her adada en az bir dev yılan kulesi, 16. adadan sonra iki;
       // 3. adadan itibaren kalan kulelerin yarısı küçük yılan yuvası
       const ids = this.zoneWorld(reg).obstacles.filter((x) => x.kind === 'bld').map((x) => x.id).sort((a, b) => a - b);
       const giant = new Set<number>();
       const small = new Set<number>();
-      if (reg >= 5 && ids.length) giant.add(ids[reg % ids.length]);
+      if (reg >= 3 && ids.length) giant.add(ids[reg % ids.length]);
       if (reg >= 15 && ids.length > 3) giant.add(ids[(reg + 2) % ids.length]);
       if (reg >= 2) ids.forEach((id, i) => { if (i % 2 === 0 && !giant.has(id)) small.add(id); });
       c = { giant, small };
@@ -1450,13 +1450,14 @@ export class Game {
   private spawnGiant(x: number, y: number, reg: number): void {
     const gid = ++this.snakeGid;
     const rr = rng(gid * 7919 + reg);
-    const n = Math.min(14, 8 + Math.floor((reg - 5) / 3));
+    const n = Math.min(36, 14 + Math.floor((reg - 3) * 0.9)); // ilerledikçe uzar
+    const pw = 1 + 0.1 * (reg - 3); // ilerledikçe güçlenir: can ×pw, hasar ×√pw
     const z = ZONES[reg];
     for (let i = 0; i < n; i++) {
       const f = i === 0 ? 2.4 : i === n - 1 ? 0.5 : 0.55 + rr() * 0.95; // baş en güçlü, kuyruk en zayıf, aradakiler farklı
-      const maxHp = SNAKE_SEG_DEF.hp * TIERS.hard.hp * z.scale * f;
+      const maxHp = SNAKE_SEG_DEF.hp * TIERS.hard.hp * z.scale * f * pw;
       this.enemies.push({
-        def: SNAKE_SEG_DEF, tier: 'hard', lv: 1, reg, sp: 700000 + gid, x: x - i * 8, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
+        def: SNAKE_SEG_DEF, tier: 'hard', lv: pw, reg, sp: 700000 + gid, x: x - i * 8, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
         phase: 0, dashT: 0, dvx: 0, dvy: 0, flip: 1, flash: 0, lunge: 0, moving: true, seg: { gid, idx: i, f }, rot: 0,
       });
     }
@@ -1527,7 +1528,7 @@ export class Game {
       // uzaktan zehir tükürür (aralıkla; zamanla sıklaşır)
       S.spit -= dt;
       if (S.phase === 'chase' && d > 240 && d < 560 && S.spit <= 0 && this.dead <= 0) {
-        S.spit = Math.max(1.8, 3.6 - S.age / 40);
+        S.spit = Math.max(1.2, 3.6 - S.age / 40 - Math.min(1.2, S.reg * 0.03));
         this.venoms.push({ x: head.x, y: head.y, vx: (dx / d) * 320, vy: (dy / d) * 320, t: 2.2, dmg: this.enemyDmg(head) * 0.2 });
         audio.play('cast');
       }
