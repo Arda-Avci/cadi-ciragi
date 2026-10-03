@@ -1493,6 +1493,7 @@ export class Game {
       const py2 = y + ((h.y - y) / d) * f;
       return this.walkable(px2, py2, false, ign) ? { x: px2, y: py2 } : { x, y };
     };
+    if (this.flyT > 0) return; // süpürgeyle uçarken kara delik çekemez ve yutamaz
     const hp = pull(this.px, this.py, false);
     this.px = hp.x; this.py = hp.y;
     if (this.holeGrace > 0) return;
