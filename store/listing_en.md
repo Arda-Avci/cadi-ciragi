@@ -51,6 +51,7 @@ Hall of Fame, 5 languages, adjustable sound and vibration.
 The game is free to play. It contains optional in-app purchases and ads: power packs, continuation packs for islands beyond 40, and rewarded videos. Notifications are optional.
 
 ## Release notes (0.16.0)
+• v0.17.4: giant snake from island 4, longer and stronger as you progress; hard boss houses can now be attacked; the tiger attacks boss houses; the black hole damages bosses.
 • v0.17.2: a new game opens with a short intro story; "watch an ad to rescue" shows a 3 s test ad on web.
 • v0.17.1: the black hole now chases only the hero (the tiger is unaffected); clouds lift in a 1200 px circle; harder test mode.
 • v0.17.0 New: black hole on islands from level 3 (appears at 20 s, swallowing costs 2% health; rescue with an ad or restart the island; vanishes when the first boss falls).

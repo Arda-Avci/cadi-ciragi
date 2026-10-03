@@ -2828,7 +2828,7 @@ export class Game {
 
   /** canlı boss'un evi (kampı): vurulabilir, vuruşlar boss'a zarar verir */
   bossHouses(): Spawner[] {
-    return this.getWorld().spawners.filter((s) => s.tier === 'boss' && s.bridge === undefined && !this.spCleared(s) && this.enemies.some((e) => e.sp === s.id));
+    return this.getWorld().spawners.filter((s) => s.tier === 'boss' && (s.bridge === undefined || !!s.hard) && !this.spCleared(s) && this.enemies.some((e) => e.sp === s.id));
   }
   /** mühürlü (henüz açılmamış) boss evleri */
   private sealedHouses(): Spawner[] {
@@ -3571,7 +3571,7 @@ export class Game {
           this.drawSpr('ui_lock', sp.x, sp.y - 46, 38);
           c.font = 'bold 12px sans-serif'; c.textAlign = 'center'; c.fillStyle = '#ffb0b0';
           c.fillText(`MÜHÜRLÜ · kamp ${pr.done}/${pr.need}`, sp.x, sp.y + 78);
-        } else if (sp.tier === 'boss' && sp.bridge === undefined) {
+        } else if (sp.tier === 'boss' && (sp.bridge === undefined || !!sp.hard)) {
           // boss evi: içi iyileştirir (yeşil alan), vurulabilir
           const pulse = 0.5 + 0.5 * Math.sin(this.time * 2.2);
           const gr = c.createRadialGradient(sp.x, sp.y, 10, sp.x, sp.y, 130);

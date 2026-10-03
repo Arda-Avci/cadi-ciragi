@@ -53,6 +53,7 @@ FİNAL
 Oyun ücretsizdir. İsteğe bağlı uygulama içi satın almalar ve reklamlar içerir: güç paketleri, 40. adadan sonrası için devam paketleri ve ödüllü videolar. Bildirimler isteğe bağlıdır.
 
 ## Sürüm notları (0.16.0)
+• v0.17.4: dev yılan 4. adadan başlar, daha uzun ve ilerledikçe güçlü; zor boss evine artık saldırılabilir; kaplan boss evlerine saldırır; kara delik bossa zarar verir.
 • v0.17.2: yeni oyun kısa bir açılış hikâyesiyle başlar; kara delikten "reklam izle ve kurtar" web sürümünde 3 sn test reklamı gösterir.
 • v0.17.1: kara delik artık yalnız kahramanı kovalar (kaplan deliğe karışmaz); bulutlar 1200 px çapında açılır; test modu daha zor.
 • v0.17.0 Yeni: 3. adadan itibaren adalarda kara delik (20. saniyede belirir, yutarsa %2 can; reklamla kurtar ya da adaya baştan başla; ilk boss yenilince kaybolur).
