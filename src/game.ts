@@ -1130,6 +1130,7 @@ export class Game {
   private snakeDone = new Set<number>();
   /** dev yılan savaşı: yılan yakındayken kamera yaklaşır, diğer düşmanlar/kamplar durur, yalnız yılana odaklanılır */
   snakeFight = false;
+  private wrapNoteT = -9;
 
   // ---- kara delik: 3. adadan itibaren adada 20. saniyede belirir, ilk boss yenilince kaybolur ----
   hole: { x: number; y: number } | null = null;
@@ -2814,6 +2815,12 @@ export class Game {
       const dy = this.joy.y - this.joy.oy;
       const d = Math.hypot(dx, dy);
       if (d > 8) { mx = dx / Math.max(d, 50); my = dy / Math.max(d, 50); }
+    }
+    // dev yılan halkayı tamamen kapatınca (sardığında) yılan ölene kadar kımıldanılamaz; halka kapanmadan hareket serbesttir
+    if ([...this.snakes.values()].some((S) => S.wrapped)) {
+      this.moving = false;
+      if (Math.hypot(mx, my) > 0.05 && this.time - this.wrapNoteT > 3) { this.wrapNoteT = this.time; this.float(this.px, this.py - 40, 'Yılan sardı: hareket edemezsin', '#9dff7a'); }
+      return;
     }
     const len = Math.hypot(mx, my);
     if (len > 1) { mx /= len; my /= len; }
