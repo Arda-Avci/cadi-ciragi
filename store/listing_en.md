@@ -49,7 +49,7 @@ Hall of Fame, 5 languages, adjustable sound and vibration.
 
 The game is free to play. It contains optional in-app purchases and ads: power packs, continuation packs for islands beyond 40, and rewarded videos. Notifications are optional.
 
-## Release notes (0.16.0)
+## Release notes (0.15.4)
 • New: cat food, regular feeding streak, name your cat.
 • New: starter and daily quests, enemy collection, hard bosses, outfit bonuses.
 • New: story cutscenes and new artwork across all panels.
