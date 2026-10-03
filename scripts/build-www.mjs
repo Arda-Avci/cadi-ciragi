@@ -4,7 +4,7 @@ import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 rmSync('www', { recursive: true, force: true });
 mkdirSync('www', { recursive: true });
 for (const f of ['index.html', 'manifest.webmanifest']) cpSync(f, `www/${f}`);
-for (const d of ['dist', 'assets', 'icons']) {
+for (const d of ['dist', 'assets', 'icons', 'vendor']) {
   if (!existsSync(d)) throw new Error(`${d}/ bulunamadı`);
   cpSync(d, `www/${d}`, { recursive: true, filter: (src) => !src.includes('assets/raw') && !src.includes('assets\\raw') });
 }

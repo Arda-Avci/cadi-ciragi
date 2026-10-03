@@ -286,7 +286,7 @@ function renderHouse(): void {
     if (st.away) { sub = `${L('Yolda')} → ${st.target + 1}. ${L('ada')}`; label = fmtWait(st.leftMs); }
     else if (st.target < 0) { sub = L('Bu seviyeden sonra keşfedilecek maden yok'); label = '—'; }
     else if (st.found) { sub = `${st.target + 1}. ${L('ada')}: ${L('maden zaten keşfedildi')}`; label = '✓'; }
-    else { sub = `${L('Hedef')}: ${st.target + 1}. ${L('ada')} · ${L('süre')}: 10 ${L('dk')}`; label = L('Keşfe gönder'); can = true; }
+    else { sub = `${L('Hedef')}: ${st.target + 1}. ${L('ada')} · ${L('süre')}: 2 ${L('dk')}`; label = L('Keşfe gönder'); can = true; }
     panel.append(row(emoji('🧭', 'explorer'), L('Kaşif'), sub, btn(label, '', can, () => {
       const r = game.sendExplorer();
       const m = document.getElementById('exp-msg');
@@ -305,7 +305,17 @@ function renderHouse(): void {
     }
     for (const r of sv.mines) {
       const left = game.mineCdLeftMs(r);
-      panel.append(row(ico('icon_geode', 36), `${L('Elmas madeni')} · ${r + 1}. ${L('ada')}`, left > 0 ? `${L('Dinleniyor')}: ${Math.ceil(left / 60000)} ${L('dk')}` : L('Hazır: adadaki girişe dokun'), document.createElement('span')));
+      const stock = game.mineStock(r);
+      const lv = game.mineLevel(r);
+      const cost = game.mineUpgradeCost(r);
+      const acts = document.createElement('div');
+      acts.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+      acts.append(
+        btn(`${L('Topla')} (${stock.dust}${stock.geodes ? ' +' + stock.geodes + '💎' : ''})`, '', stock.dust > 0 || stock.geodes > 0, () => { game.collectMine(r); renderPanel(); }),
+        btn(lv >= 10 ? L('En üst seviye') : `${L('Geliştir')} (${fmt(cost)} ${L('toz')})`, '', lv < 10 && sv.dust >= cost, () => { game.upgradeMine(r); renderPanel(); }),
+      );
+      panel.append(row(ico('icon_geode', 36), `${L('Elmas madeni')} · ${r + 1}. ${L('ada')} · ${L('Seviye')} ${lv}`,
+        `${left > 0 ? `${L('Dinleniyor')}: ${Math.ceil(left / 60000)} ${L('dk')}` : L('Oyna: adadaki girişe dokun')} · ${L('Boştayken biriken')}: ${stock.hours.toFixed(1)} ${L('sa')}/8`, acts));
     }
   } else {
     const info = document.createElement('div');
@@ -919,7 +929,7 @@ game.onMine = (reg) => {
   if (fight.active || landingOpen || open) return;
   const enter = (): void => {
     game.paused = true;
-    playMine(L, (d, p) => {
+    const after = (d: number, p: boolean): void => {
       const r = game.finishMine(reg, d, p);
       const wrap = document.createElement('div');
       wrap.style.cssText = 'position:fixed;inset:0;z-index:270;background:rgba(5,10,25,.88);display:flex;align-items:center;justify-content:center;padding:16px';
@@ -933,7 +943,9 @@ game.onMine = (reg) => {
       box.append(ok);
       wrap.append(box);
       document.body.append(wrap);
-    });
+    };
+    // 3B maden (Three.js, tembel yüklenir); açılamazsa 2B yedek oyun
+    import('./mine3d.js').then((m) => m.playMine3d(L, (r) => after(r.diamonds, r.potion))).catch((e) => { console.error('3B maden açılamadı, 2B oyun', e); playMine(L, after); });
   };
   if (!game.save.first['mineIn']) { game.save.first['mineIn'] = 1; showIntro(enter, MINE_ENTER); } else enter();
 };
@@ -993,7 +1005,7 @@ function updateQuest(): void {
 }
 setInterval(() => {
   updateQuest();
-  const ready = game.houseTasks().some((t) => t.ready && t.id !== 'soup') || game.save.bossDown.filter(Boolean).length > game.save.storyRead;
+  const ready = game.houseTasks().some((t) => t.ready && t.id !== 'soup') || game.explorerCanSend() || game.save.bossDown.filter(Boolean).length > game.save.storyRead;
   houseBtn.dataset.badge = ready ? '1' : '0';
   if (open === 'house' && (houseTab === 'home' || houseTab === 'explorer')) renderPanel();
 }, 1000);

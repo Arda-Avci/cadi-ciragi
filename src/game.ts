@@ -90,6 +90,9 @@ export interface SaveData {
   explorer: { at: number; target: number };
   mines: number[];
   mineAt: Record<number, number>;
+  /** maden seviyesi (boştayken kazanç çarpanı) ve son toplama zamanı (ms) */
+  mineLv: Record<number, number>;
+  mineIdleAt: Record<number, number>;
 }
 
 interface Spawner { id: number; reg: number; x: number; y: number; tier: Tier; kind: EnemyId; tag?: SlotType; lv: number; bridge?: number; /** canavar: her 3 adada bir, boss'un 2 katı güçte, boss ölmeden de çıkar */ beast?: boolean; /** zor boss: bossu yenilmiş adada günde bir kez, ×3 güç */ hard?: boolean }
@@ -413,7 +416,7 @@ export class Game {
     return {
       essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
       bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, lvPacks: {}, rivalDown: 0, house: { ...freshHouse(), soupAt: Date.now() }, outfit: 0, outfits: [0], arena: {}, weekWon: -1, storyRead: 0, tut: 0, daily: makeDaily(Date.now()), col: 0, tiger: freshTiger(), ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
-      chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {}, archer: 0, fog: {}, explorer: { at: 0, target: -1 }, mines: [], mineAt: {},
+      chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {}, archer: 0, fog: {}, explorer: { at: 0, target: -1 }, mines: [], mineAt: {}, mineLv: {}, mineIdleAt: {},
     };
   }
 
@@ -1125,7 +1128,7 @@ export class Game {
   archerOn(): boolean { return this.save.archer === 1 && settings.archer; }
 
   // ---- kaşif ve elmas madeni ----
-  private static readonly EXPLORE_MS = 10 * 60 * 1000;
+  private static readonly EXPLORE_MS = 2 * 60 * 1000;
   private static readonly MINE_CD_MS = 6 * 3600 * 1000;
   /** yakındaki bulunmuş madene dokunuldu: maden oyunu açılır (oyun duraklar, bitince finishMine çağrılır) */
   onMine: (reg: number) => void = () => {};
@@ -1178,10 +1181,66 @@ export class Game {
     this.onChange();
     return 'ok';
   }
+  /** kaşif gönderilebilir mi (hedef maden henüz bulunmadı ve kaşif evde): ev düğmesinde rozet için */
+  explorerCanSend(): boolean {
+    const st = this.explorerState();
+    return !st.away && st.target >= 0 && !st.found;
+  }
+  private hintReg = -1;
+  /** yeni adaya girince (ve oyun başında) kaşifi göndermesi önerilir; her hedef için bir kez */
+  private hintExplorer(): void {
+    if (this.hintReg === this.region) return;
+    this.hintReg = this.region;
+    const t = this.exploreTarget();
+    if (!this.explorerCanSend() || this.save.first['xh' + t]) return;
+    this.save.first['xh' + t] = 1;
+    this.gain('Kaşifi keşfe gönder: ' + (t + 1) + '. adada elmas madeni olabilir', '#8fdcff', 'icon_geode');
+    this.say('Kaşifi keşfe gönder (Cadı Evi → Kaşif): ' + (t + 1) + '. adada elmas madeni olabilir');
+  }
+
+  // ---- madenin boştayken kazancı: bulunan her maden saatte toz ve ara sıra jeod biriktirir (en çok 8 saat), seviyesi toz ile yükseltilir ----
+  private static readonly MINE_CAP_H = 8;
+  mineLevel(reg: number): number { return this.save.mineLv[reg] ?? 1; }
+  /** biriken ödül: toz, jeod (kesirli kısım saklanır) ve geçen saat */
+  mineStock(reg: number): { dust: number; geodes: number; hours: number } {
+    const since = this.save.mineIdleAt[reg] ?? Date.now();
+    const h = Math.min(Game.MINE_CAP_H, Math.max(0, (Date.now() - since) / 3.6e6));
+    const lv = this.mineLevel(reg);
+    return { dust: Math.floor(h * 30 * (1 + reg / 10) * lv), geodes: Math.floor(h * 0.25 * lv), hours: h };
+  }
+  collectMine(reg: number): boolean {
+    const st = this.mineStock(reg);
+    if (st.dust <= 0 && st.geodes <= 0) return false;
+    this.save.dust += st.dust;
+    this.save.geodes += st.geodes;
+    this.save.mineIdleAt[reg] = Date.now();
+    this.gain('+' + st.dust + ' Toz (maden)', '#ffd1f0', 'ui_dust');
+    if (st.geodes > 0) this.gain('+' + st.geodes + ' Jeod (maden)', '#7dffb0', 'icon_geode');
+    audio.play('chest');
+    this.persist();
+    this.onChange();
+    return true;
+  }
+  mineUpgradeCost(reg: number): number { return Math.floor(150 * Math.pow(this.mineLevel(reg), 1.6) * (1 + reg / 20)); }
+  upgradeMine(reg: number): 'ok' | 'poor' | 'max' {
+    const lv = this.mineLevel(reg);
+    if (lv >= 10) return 'max';
+    const cost = this.mineUpgradeCost(reg);
+    if (this.save.dust < cost) return 'poor';
+    this.collectMine(reg); // eski seviyenin kazancı önce teslim alınır
+    this.save.dust -= cost;
+    this.save.mineLv[reg] = lv + 1;
+    this.persist();
+    this.onChange();
+    return 'ok';
+  }
+
   private tickExplorer(): void {
+    this.hintExplorer();
+    for (const r of this.save.mines) if (this.save.mineIdleAt[r] === undefined) this.save.mineIdleAt[r] = Date.now();
     const ex = this.save.explorer;
     if (ex.at <= 0 || Date.now() < ex.at + this.exploreMs()) return;
-    if (!this.save.mines.includes(ex.target)) this.save.mines.push(ex.target);
+    if (!this.save.mines.includes(ex.target)) { this.save.mines.push(ex.target); this.save.mineIdleAt[ex.target] = Date.now(); }
     this.save.explorer = { at: 0, target: -1 };
     audio.play('chest');
     vibrate([80, 60, 160]);
@@ -1219,11 +1278,11 @@ export class Game {
     this.save.mineAt[reg] = Date.now();
     this.hp = this.maxHp();
     const before = this.fullPower();
-    const f = 0.004 * diamonds; // her elmas kalıcı +%0,4 can ve hasar
+    const f = 0.003 * diamonds; // her elmas kalıcı +%0,3 can ve hasar
     this.addPerm('elite.hp', f * this.hpPool());
     this.addPerm('elite.dmg', f * this.dmgPool());
     const power = Math.max(0, this.fullPower() - before);
-    const items = Math.floor(diamonds / 4);
+    const items = Math.floor(diamonds / 5);
     for (let i = 0; i < items; i++) this.gainItem(i % 2 ? 'shield' : 'helmet', 1 + (reg >= 12 ? 1 : 0));
     if (diamonds >= 6) this.gainTigerItem(1);
     const geodes = Math.floor(diamonds / 3);

@@ -157,6 +157,7 @@ export class Game {
         this.onMineFound = () => { };
         /** madende bulunan gizli iksir: kalan süre (sn); süresince can ve hasar ×10 (güç ×10) */
         this.potionT = 0;
+        this.hintReg = -1;
         this.mineSpots = new Map();
         this.fogSets = new Map();
         this.fogFade = new Map();
@@ -359,7 +360,7 @@ export class Game {
         return {
             essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
             bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, lvPacks: {}, rivalDown: 0, house: { ...freshHouse(), soupAt: Date.now() }, outfit: 0, outfits: [0], arena: {}, weekWon: -1, storyRead: 0, tut: 0, daily: makeDaily(Date.now()), col: 0, tiger: freshTiger(), ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
-            chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {}, archer: 0, fog: {}, explorer: { at: 0, target: -1 }, mines: [], mineAt: {},
+            chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {}, archer: 0, fog: {}, explorer: { at: 0, target: -1 }, mines: [], mineAt: {}, mineLv: {}, mineIdleAt: {},
         };
     }
     load() {
@@ -1231,12 +1232,73 @@ export class Game {
         this.onChange();
         return 'ok';
     }
+    /** kaşif gönderilebilir mi (hedef maden henüz bulunmadı ve kaşif evde): ev düğmesinde rozet için */
+    explorerCanSend() {
+        const st = this.explorerState();
+        return !st.away && st.target >= 0 && !st.found;
+    }
+    /** yeni adaya girince (ve oyun başında) kaşifi göndermesi önerilir; her hedef için bir kez */
+    hintExplorer() {
+        if (this.hintReg === this.region)
+            return;
+        this.hintReg = this.region;
+        const t = this.exploreTarget();
+        if (!this.explorerCanSend() || this.save.first['xh' + t])
+            return;
+        this.save.first['xh' + t] = 1;
+        this.gain('Kaşifi keşfe gönder: ' + (t + 1) + '. adada elmas madeni olabilir', '#8fdcff', 'icon_geode');
+        this.say('Kaşifi keşfe gönder (Cadı Evi → Kaşif): ' + (t + 1) + '. adada elmas madeni olabilir');
+    }
+    mineLevel(reg) { return this.save.mineLv[reg] ?? 1; }
+    /** biriken ödül: toz, jeod (kesirli kısım saklanır) ve geçen saat */
+    mineStock(reg) {
+        const since = this.save.mineIdleAt[reg] ?? Date.now();
+        const h = Math.min(Game.MINE_CAP_H, Math.max(0, (Date.now() - since) / 3.6e6));
+        const lv = this.mineLevel(reg);
+        return { dust: Math.floor(h * 30 * (1 + reg / 10) * lv), geodes: Math.floor(h * 0.25 * lv), hours: h };
+    }
+    collectMine(reg) {
+        const st = this.mineStock(reg);
+        if (st.dust <= 0 && st.geodes <= 0)
+            return false;
+        this.save.dust += st.dust;
+        this.save.geodes += st.geodes;
+        this.save.mineIdleAt[reg] = Date.now();
+        this.gain('+' + st.dust + ' Toz (maden)', '#ffd1f0', 'ui_dust');
+        if (st.geodes > 0)
+            this.gain('+' + st.geodes + ' Jeod (maden)', '#7dffb0', 'icon_geode');
+        audio.play('chest');
+        this.persist();
+        this.onChange();
+        return true;
+    }
+    mineUpgradeCost(reg) { return Math.floor(150 * Math.pow(this.mineLevel(reg), 1.6) * (1 + reg / 20)); }
+    upgradeMine(reg) {
+        const lv = this.mineLevel(reg);
+        if (lv >= 10)
+            return 'max';
+        const cost = this.mineUpgradeCost(reg);
+        if (this.save.dust < cost)
+            return 'poor';
+        this.collectMine(reg); // eski seviyenin kazancı önce teslim alınır
+        this.save.dust -= cost;
+        this.save.mineLv[reg] = lv + 1;
+        this.persist();
+        this.onChange();
+        return 'ok';
+    }
     tickExplorer() {
+        this.hintExplorer();
+        for (const r of this.save.mines)
+            if (this.save.mineIdleAt[r] === undefined)
+                this.save.mineIdleAt[r] = Date.now();
         const ex = this.save.explorer;
         if (ex.at <= 0 || Date.now() < ex.at + this.exploreMs())
             return;
-        if (!this.save.mines.includes(ex.target))
+        if (!this.save.mines.includes(ex.target)) {
             this.save.mines.push(ex.target);
+            this.save.mineIdleAt[ex.target] = Date.now();
+        }
         this.save.explorer = { at: 0, target: -1 };
         audio.play('chest');
         vibrate([80, 60, 160]);
@@ -1276,11 +1338,11 @@ export class Game {
         this.save.mineAt[reg] = Date.now();
         this.hp = this.maxHp();
         const before = this.fullPower();
-        const f = 0.004 * diamonds; // her elmas kalıcı +%0,4 can ve hasar
+        const f = 0.003 * diamonds; // her elmas kalıcı +%0,3 can ve hasar
         this.addPerm('elite.hp', f * this.hpPool());
         this.addPerm('elite.dmg', f * this.dmgPool());
         const power = Math.max(0, this.fullPower() - before);
-        const items = Math.floor(diamonds / 4);
+        const items = Math.floor(diamonds / 5);
         for (let i = 0; i < items; i++)
             this.gainItem(i % 2 ? 'shield' : 'helmet', 1 + (reg >= 12 ? 1 : 0));
         if (diamonds >= 6)
@@ -5644,8 +5706,10 @@ export class Game {
 Game.AD_DAILY = 10;
 Game.AD_COOLDOWN = 180; // sn, ödül türü başına
 // ---- kaşif ve elmas madeni ----
-Game.EXPLORE_MS = 10 * 60 * 1000;
+Game.EXPLORE_MS = 2 * 60 * 1000;
 Game.MINE_CD_MS = 6 * 3600 * 1000;
+// ---- madenin boştayken kazancı: bulunan her maden saatte toz ve ara sıra jeod biriktirir (en çok 8 saat), seviyesi toz ile yükseltilir ----
+Game.MINE_CAP_H = 8;
 // ---- sis/bulut: ada ilk girişte bulutlarla kaplıdır; oyuncu gezdikçe çevresindeki 500 px çaplı daire açılır (haritada değil, oyun ekranında) ----
 Game.FOG_CELL = 100;
 Game.FOG_R = 600;
