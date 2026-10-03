@@ -28,19 +28,19 @@ func setup(k: String, m) -> void:
 		"spider":
 			hp = 2
 			speed = 3.4
-			touch_dmg = 6.0
+			touch_dmg = 4.0
 		"bat":
 			hp = 1
 			speed = 4.2
-			touch_dmg = 5.0
+			touch_dmg = 3.5
 		"wisp":
 			hp = 2
 			speed = 3.6
-			touch_dmg = 7.0
+			touch_dmg = 4.5
 		"golem":
 			hp = 5
 			speed = 1.9
-			touch_dmg = 12.0
+			touch_dmg = 8.0
 	var cs := CollisionShape3D.new()
 	var sh := SphereShape3D.new()
 	sh.radius = 0.6 if kind != "golem" else 0.9

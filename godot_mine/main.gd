@@ -42,6 +42,8 @@ var quota := QUOTA
 var exit_gate: Node3D
 var yaw := 0.0                         # kahraman/kamera yönü (0 = -Z)
 var auto_dir := Vector3.ZERO
+var hurt_cd := 0.0
+var auto_cd := 0.0
 var exit_label: Label3D
 var need_cd := 0.0
 var riding = null                      # binilen maden arabası
@@ -577,9 +579,7 @@ func _make_player() -> void:
 	lantern.light_color = Color(1.0, 0.82, 0.55)
 	lantern.light_energy = 2.0
 	lantern.omni_range = 8.5
-	lantern.shadow_enabled = true
-	lantern.shadow_bias = 0.06
-	lantern.shadow_normal_bias = 1.2
+	lantern.shadow_enabled = false  # gölge pahalı: web/telefonda takılmayı önler
 	lantern.position = Vector3(0.6, 2.6, 0.9)
 	player.add_child(lantern)
 	for mi in model.get_children():
@@ -646,7 +646,7 @@ func _place_content() -> void:
 	for i in range(4):
 		_add_chest(_cell_pos(_random_floor_cell()) + Vector3(rng.randf_range(-0.8, 0.8), 0, rng.randf_range(-0.8, 0.8)))
 	var kinds := ["spider", "bat", "spider", "wisp", "golem"]
-	for i in range(14):
+	for i in range(11):
 		var c := _random_floor_cell()
 		_add_enemy(kinds[i % kinds.size()], _cell_pos(c))
 	for r in rooms:
@@ -931,6 +931,10 @@ func tip(key: String) -> void:
 	lbl_tip.text = t(key)
 
 func hurt(amount: float, key: String) -> void:
+	if key == "hit":
+		if hurt_cd > 0.0:
+			return
+		hurt_cd = 1.0
 	meter -= amount
 	shake = 0.5
 	flash_rect.color = Color(1, 0.1, 0.1, 0.4)
@@ -1021,6 +1025,33 @@ func cast_orb(dir: Vector3) -> void:
 	orbs.append({"node": n, "vel": dir * 24.0, "slot": slot, "life": 1.4})
 
 # ---------------------------------------------------------------- döngü
+func _auto_fire(dt: float) -> void:
+	# yaratıklara otomatik ışık topu: yakındaki en yakın yaratık (görüş hattı açıksa) hedeflenir
+	auto_cd -= dt
+	if auto_cd > 0.0 or finished:
+		return
+	var best = null
+	var bd := 11.0
+	var from := player.global_position + Vector3(0, 1.1, 0)
+	var space := get_world_3d().direct_space_state
+	for e in enemies:
+		if not is_instance_valid(e) or not e.alive:
+			continue
+		var d: float = e.global_position.distance_to(player.global_position)
+		if d >= bd:
+			continue
+		var q := PhysicsRayQueryParameters3D.create(from, e.global_position + Vector3(0, 1.0, 0))
+		q.collision_mask = 1
+		if space.intersect_ray(q).is_empty():
+			bd = d
+			best = e
+	if best != null:
+		var dir: Vector3 = best.global_position - player.global_position
+		dir.y = 0
+		if dir.length() > 0.5:
+			cast_orb(dir.normalized())
+			auto_cd = 0.6
+
 func _auto_plan() -> void:
 	# test: başlangıçtan çıkışa BFS yolu
 	var prev := {}
@@ -1075,6 +1106,8 @@ func _physics_process(dt: float) -> void:
 		cast_orb(Vector3(0.5, 0, -1.0).normalized())
 	elapsed += dt
 	cast_cd = maxf(0.0, cast_cd - dt)
+	hurt_cd = maxf(0.0, hurt_cd - dt)
+	_auto_fire(dt)
 	shake = maxf(0.0, shake - dt * 1.4)
 	flash_rect.color.a = maxf(0.0, flash_rect.color.a - dt * 1.6)
 	# oyuncu hareketi
@@ -1296,6 +1329,8 @@ func finish(reason: String) -> void:
 		tip("dark")
 	elif reason == "dead":
 		tip("dead")
+	if reason != "exit":
+		await get_tree().create_timer(1.6).timeout
 	var res := {"diamonds": diamonds, "potion": potion, "chests": chests, "meter": maxf(0.0, meter), "reason": reason}
 	var js := JSON.stringify(res)
 	if OS.has_feature("web"):

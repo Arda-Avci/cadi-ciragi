@@ -940,7 +940,7 @@ game.onPaywall = () => { if (!fight.active && !landingOpen) { open = 'shop'; ren
  * Godot maden oyunu (godot_mine/ projesi, web'e tek iş parçacıklı aktarılmış mine/index.html) tam ekran iframe ile açılır.
  * Oyun hazır olunca 'mine-ready', bitince 'mine-result' mesajı gönderir; 45 sn içinde hazır olmazsa (çevrimdışı, WebGL yok) yedek çalışır.
  */
-function playMineGodot(reg: number, after: (d: number, p: boolean) => void, fallback: () => void): void {
+function playMineGodot(reg: number, after: (d: number, p: boolean, reason?: string) => void, fallback: () => void): void {
   const wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed;inset:0;z-index:260;background:#000;color:#fff;font:600 16px system-ui';
   const seed = (reg + 1) * 1000 + Math.floor(Math.random() * 900) + 1;
@@ -962,9 +962,9 @@ function playMineGodot(reg: number, after: (d: number, p: boolean) => void, fall
   const timer = window.setTimeout(() => { if (!ready) { close(); fallback(); } }, 45000);
   const onMsg = (e: MessageEvent): void => {
     if (e.source !== ifr.contentWindow) return;
-    const d = e.data as { type?: string; result?: { diamonds?: number; potion?: boolean } } | null;
+    const d = e.data as { type?: string; result?: { diamonds?: number; potion?: boolean; reason?: string } } | null;
     if (d?.type === 'mine-ready') { ready = true; loading.remove(); }
-    else if (d?.type === 'mine-result') { close(); after(d.result?.diamonds ?? 0, !!d.result?.potion); }
+    else if (d?.type === 'mine-result') { close(); after(d.result?.diamonds ?? 0, !!d.result?.potion, d.result?.reason); }
   };
   window.addEventListener('message', onMsg);
   quit.addEventListener('click', () => { close(); after(0, false); });
@@ -975,13 +975,13 @@ game.onMine = (reg) => {
   if (fight.active || landingOpen || open) return;
   const enter = (): void => {
     game.paused = true;
-    const after = (d: number, p: boolean): void => {
+    const after = (d: number, p: boolean, reason?: string): void => {
       const r = game.finishMine(reg, d, p);
       const wrap = document.createElement('div');
       wrap.style.cssText = 'position:fixed;inset:0;z-index:270;background:rgba(5,10,25,.88);display:flex;align-items:center;justify-content:center;padding:16px';
       const box = document.createElement('div');
       box.style.cssText = 'background:#16233a;color:#fff;border:1px solid #8fdcff88;border-radius:14px;padding:18px;max-width:320px;text-align:center;font:15px sans-serif';
-      box.innerHTML = `<div style="font-size:42px">💎</div><b>${L('Maden bitti')}</b><p>${L('Elmas')}: ${r.diamonds} · ${L('Eşya')}: ${r.items} · ${L('Jeod')}: ${r.geodes}<br>${L('Canın doldu')}${r.potion ? ' · 🧪 ' + L('Güç ×10 (1 dk)') : ''}${r.power > 0 ? ' · ⚔ +' + fmt(r.power) : ''}</p>`;
+      box.innerHTML = `<div style="font-size:42px">💎</div><b>${L('Maden bitti')}</b>${reason ? `<br><small>${L(reason === 'dead' ? 'Gücün tükendi' : reason === 'dark' ? 'Süre doldu' : 'Çıkışa ulaştın')}</small>` : ''}<p>${L('Elmas')}: ${r.diamonds} · ${L('Eşya')}: ${r.items} · ${L('Jeod')}: ${r.geodes}<br>${L('Canın doldu')}${r.potion ? ' · 🧪 ' + L('Güç ×10 (1 dk)') : ''}${r.power > 0 ? ' · ⚔ +' + fmt(r.power) : ''}</p>`;
       const ok = document.createElement('button');
       ok.textContent = L('Tamam');
       ok.style.cssText = 'padding:10px 28px;border-radius:8px;border:0;font:bold 15px sans-serif;background:#d9822b;color:#fff';
