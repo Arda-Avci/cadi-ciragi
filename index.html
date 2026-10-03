@@ -77,6 +77,8 @@
   #btn-settings img { width: 32px; height: 32px; display: block; margin: 0 auto; }
   #btn-shop { position: fixed; left: 10px; top: 160px; width: 42px; height: 42px; padding: 4px; border-radius: 21px; background: rgba(120,70,10,.85); border: 1px solid rgba(255,210,120,.6); font-size: 22px; line-height: 1; }
   #btn-shop img { width: 30px; height: 30px; display: block; margin: 0 auto; }
+  #btn-house { position: fixed; left: 10px; top: 208px; width: 42px; height: 42px; padding: 4px; border-radius: 21px; background: rgba(90,40,110,.85); border: 1px solid rgba(255,170,240,.6); font-size: 22px; line-height: 1; }
+  #btn-house[data-badge="1"]::after { content: ''; position: absolute; right: 2px; top: 2px; width: 11px; height: 11px; border-radius: 50%; background: #ff4d4d; border: 2px solid #fff; }
   /* açılış ekranı */
   #landing { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: space-between; color: #fff; overflow: hidden; touch-action: manipulation; }
   #landing.hidden { display: none; }
@@ -119,6 +121,7 @@
 <div id="essence-wrap"><img class="ico" src="assets/ui_soul.png" width="26" height="26" alt="" onerror="this.outerHTML='✦'"> <span id="essence">0</span></div>
 <div id="hint-tip" data-t>Buraya tıkla!</div>
 <button id="btn-shop" title="Güç Paketleri"><img src="assets/ui_power.png" alt="" onerror="this.outerHTML='⚡'"></button>
+<button id="btn-house" title="Cadı Evi">🏠</button>
 <button id="btn-settings" title="Ayarlar"><img src="assets/ui_settings.png" alt="" onerror="this.outerHTML='⚙'"></button>
 <button id="master-btn"><img class="ico" src="assets/ui_skill.png" width="26" height="26" alt="" onerror="this.style.display='none'"> <span data-t>Usta Cadı: Eğitim</span></button>
 <div id="ad-slot"></div>

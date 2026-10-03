@@ -5,6 +5,8 @@ import {
 } from './data.js';
 import { VERSION } from './version.js';
 import { LEVEL_PACKS, PACKS } from './billing.js';
+import { HOUSE_DMG_CAP, HOUSE_HP_CAP, HouseState, TaskId, TaskInfo, dayNumber, freshHouse, soupMs, tasks } from './house.js';
+import { OUTFITS, weekly } from './meta.js';
 import { audio } from './audio.js';
 import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
 import { N, T } from './i18n.js';
@@ -59,6 +61,16 @@ export interface SaveData {
   lvPacks: Record<string, number>;
   /** son düelloda rakip cadı yenildi mi */
   rivalDown: number;
+  /** cadı evi: kedi, bahçe, iksir, kazan, günlük seri */
+  house: HouseState;
+  /** gardırop: seçili ve sahip olunan cadı renkleri (kozmetik) */
+  outfit: number;
+  outfits: number[];
+  /** gölge arenası: yenilen efsaneler; haftalık meydan okuma: kazanılan son hafta */
+  arena: Record<string, number>;
+  weekWon: number;
+  /** günlükte okunmuş sayfa sayısı */
+  storyRead: number;
 }
 
 interface Spawner { id: number; reg: number; x: number; y: number; tier: Tier; kind: EnemyId; tag?: SlotType; lv: number; bridge?: number; /** canavar: her 3 adada bir, boss'un 2 katı güçte, boss ölmeden de çıkar */ beast?: boolean }
@@ -283,7 +295,7 @@ export class Game {
   private fresh(): SaveData {
     return {
       essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
-      bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, lvPacks: {}, rivalDown: 0, ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
+      bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, lvPacks: {}, rivalDown: 0, house: { ...freshHouse(), soupAt: Date.now() }, outfit: 0, outfits: [0], arena: {}, weekWon: -1, storyRead: 0, ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
       chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {},
     };
   }
@@ -297,6 +309,10 @@ export class Game {
         if (!Array.isArray(s.extra)) s.extra = [];
         if (!s.shop) s.shop = {};
         if (!s.lvPacks) s.lvPacks = {};
+        s.house = { ...freshHouse(), ...(s.house ?? {}) };
+        if (!s.house.soupAt) s.house.soupAt = Date.now();
+        if (!Array.isArray(s.outfits)) s.outfits = [0];
+        if (!s.arena) s.arena = {};
         if (!s.ads) s.ads = { day: 0, n: 0, last: {} };
         return s;
       }
@@ -792,6 +808,107 @@ export class Game {
     return true;
   }
 
+  // ---- cadı evi ----
+  houseTasks(): TaskInfo[] { return tasks(this.save.house, this.now()); }
+  /** kazanın o ana kadar biriktirdiği ruh */
+  soupReady(): number { return this.soupYield(soupMs(this.save.house, this.now())); }
+  private soupYield(ms: number): number {
+    const reg = Math.min(this.bossesDown(), ZONES.length - 1);
+    return Math.floor(25 * Math.pow(ZONES[reg].scale, 0.7) * (ms / 3.6e6) * this.yieldMul());
+  }
+  /** evde bir iş yap: kalıcı, sınırlı kazançlar (can en çok +%100, hasar en çok +%200) */
+  doHouse(id: TaskId): string {
+    const h = this.save.house;
+    const now = this.now();
+    const info = tasks(h, now).find((t) => t.id === id);
+    if (!info || !info.ready) return 'Henüz hazır değil';
+    let msg = '';
+    if (id === 'daily') {
+      const day = dayNumber(now);
+      const gap = day - h.streakDay;
+      h.streak = h.streakDay === 0 || gap > 2 ? 1 : gap === 2 ? h.streak : h.streak + 1; // bir gün kaçırmak seriyi bozmaz, yalnız durdurur
+      h.streakDay = day;
+      const geo = Math.min(5, h.streak);
+      const ess = this.soupYield(4 * 3.6e6);
+      this.save.geodes += geo;
+      this.save.essence += ess;
+      if (h.streak % 7 === 0) { this.gainItem('helmet', 3); this.gainItem('shield', 3); }
+      msg = `Günlük ödül: +${geo} jeod, +${this.fmt(ess)} ruh · seri ${h.streak} gün` + (h.streak % 7 === 0 ? ' · büyük ödül!' : '');
+      this.unlockOutfits();
+    } else if (id === 'pet') {
+      h.pet = now; h.hp = Math.min(HOUSE_HP_CAP, h.hp + 1); h.pets++;
+      this.hp = Math.min(this.maxHp(), this.hp + this.maxHp() * 0.2);
+      msg = 'Kedi mırıldadı: kalıcı +%1 azami can';
+    } else if (id === 'garden') {
+      h.garden = now; h.hp = Math.min(HOUSE_HP_CAP, h.hp + 1); this.save.geodes += 1;
+      msg = 'Bahçe sulandı: +%1 azami can, +1 jeod';
+    } else if (id === 'brew') {
+      if (h.brewAt === 0) { h.brewAt = now; msg = 'İksir demlenmeye başladı (30 dk)'; }
+      else { h.brewAt = 0; h.dmg = Math.min(HOUSE_DMG_CAP, h.dmg + 2); h.brews++; msg = 'İksir hazır: kalıcı +%2 hasar'; }
+    } else if (id === 'soup') {
+      const amt = this.soupYield(soupMs(h, now));
+      h.soupAt = now;
+      this.save.essence += amt;
+      msg = amt > 0 ? `Kazandan +${this.fmt(amt)} ruh topladın` : 'Kazan yeni kuruldu';
+    }
+    audio.play(id === 'pet' ? 'heal' : 'chest');
+    this.say(msg);
+    this.hp = Math.min(this.hp, this.maxHp());
+    this.persist();
+    this.onChange();
+    return msg;
+  }
+
+  // ---- gardırop (kozmetik) ----
+  unlockOutfits(): void {
+    const own = new Set(this.save.outfits);
+    const add = (hue: number): void => {
+      if (own.has(hue)) return;
+      own.add(hue);
+      this.gain('Yeni kıyafet: ' + (OUTFITS.find((o) => o.hue === hue)?.name ?? ''), '#ffd1f0', 'ui_skill');
+    };
+    if (this.save.bossDown[9]) add(40);
+    if (this.save.bossDown[19]) add(90);
+    if (this.save.house.streak >= 7) add(190);
+    if (this.save.house.streak >= 30) add(350);
+    if (this.save.arena.Pelin && this.save.arena['Ayça']) add(320);
+    if (this.save.weekWon >= 0) add(230);
+    this.save.outfits = [...own];
+  }
+  setOutfit(hue: number): boolean {
+    if (!this.save.outfits.includes(hue)) return false;
+    this.save.outfit = hue;
+    this.persist();
+    this.onChange();
+    return true;
+  }
+
+  // ---- gölge arenası / haftalık meydan okuma ----
+  finishArena(kind: 'legend' | 'weekly' | 'ghost', id: string, won: boolean): void {
+    if (!won) return;
+    if (kind === 'legend') {
+      const first = !this.save.arena[id];
+      this.save.arena[id] = 1;
+      this.save.geodes += first ? 3 : 0;
+      this.say(first ? `${id} yenildi! +3 jeod` : `${id} yine yenildi!`);
+    } else if (kind === 'weekly') {
+      const w = weekly(this.now());
+      if (this.save.weekWon !== w.week) {
+        this.save.weekWon = w.week;
+        this.save.geodes += 5;
+        this.say('Haftalık meydan okuma kazanıldı! +5 jeod');
+      } else this.say('Bu haftanın ödülünü zaten aldın');
+    } else {
+      const amt = this.soupYield(2 * 3.6e6);
+      this.save.essence += amt;
+      this.say(`Gölge yenildi! +${this.fmt(amt)} ruh`);
+    }
+    this.unlockOutfits();
+    audio.play('boss');
+    this.persist();
+    this.onChange();
+  }
+
   /** devam paketi: ücretsiz 40 adanın ötesini açar (tekrar edilirse etkisiz: geri yükleme güvenli) */
   grantLevelPack(id: string, receipt: string): boolean {
     const p = LEVEL_PACKS.find((x) => x.id === id);
@@ -816,11 +933,11 @@ export class Game {
 
   maxHp(): number {
     return this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
-      * (1 + (this.cb('hp') + this.helmetHp() + this.perm('elite.hpPct') + this.perm('train.hp')) / 100);
+      * (1 + (this.cb('hp') + this.helmetHp() + this.perm('elite.hpPct') + this.perm('train.hp') + this.save.house.hp) / 100);
   }
   regen(): number { return 0.6 * this.lv('regen') + this.cb('regen') + this.helmetRegen() + this.perm('tree.regen') + this.perm('train.regen'); }
   armor(): number { return Math.max(0.2, 1 - 0.04 * this.lv('armor')); }
-  dmgMul(): number { return this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg')) / 100); }
+  dmgMul(): number { return this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
   castSpeed(): number { return 1 + 0.08 * this.lv('spin'); }
   reachMul(): number { return 1 + 0.06 * this.lv('reach'); }
   magnet(): number { return 70 + 25 * this.lv('magnet') + this.cb('magnet'); }
@@ -1572,9 +1689,19 @@ export class Game {
     }
   }
 
+  /** büyü kombosu: kısa sürede iki farklı hasar türü aynı düşmana vurursa +%30 */
+  private comboMark = new WeakMap<Enemy, { d: DType; t: number }>();
+  private comboName(a: DType, b: DType): string {
+    const k = [a, b].sort().join('+');
+    return k === 'cut+smash' ? 'Yanan Bumerang' : k === 'cut+pierce' ? 'Yıldızlı Dilim' : 'Delici Patlama';
+  }
   private hitEnemy(e: Enemy, raw: number, dtype: DType): void {
     const crit = Math.random() < this.critChance();
-    const dmg = Math.max(1, raw * e.def.resist[dtype] * (crit ? 3 : 1));
+    const cm = this.comboMark.get(e);
+    const combo = !!cm && cm.d !== dtype && this.time - cm.t < 1.2;
+    this.comboMark.set(e, { d: dtype, t: this.time });
+    if (combo && cm) { this.float(e.x, e.y - e.def.r * TIERS[e.tier].size - 44, 'KOMBO ' + T(this.comboName(cm.d, dtype)), '#ffb347'); audio.play('gain'); }
+    const dmg = Math.max(1, raw * e.def.resist[dtype] * (crit ? 3 : 1) * (combo ? 1.3 : 1));
     e.hp -= dmg;
     e.flash = 0.14;
     audio.play('hit');
@@ -1807,6 +1934,8 @@ export class Game {
       this.gainItem('shield', 2);
       if (!this.save.bossDown[sp.reg]) {
         this.save.bossDown[sp.reg] = true;
+        this.gain('Günlüğe yeni sayfa eklendi', '#ffe9a0', 'ui_skill');
+        this.unlockOutfits();
         if (this.bossesDown() % 10 === 0) {
           this.gain('Yeni kristal yuvası kazanıldı!', '#c8b6ff', 'ui_crystal');
           this.gain('Yeni ekipman yuvası kazanıldı!', '#ffe36b', 'ui_gear');
@@ -2439,7 +2568,7 @@ export class Game {
     else if (cast > 0 && has('witch_cast1') && has('witch_cast2')) frame = cast > 0.5 ? 'witch_cast2' : 'witch_cast1';
     else if (cast > 0 && has('witch_cast')) frame = 'witch_cast';
     else if (this.moving && has('witch_walk4')) frame = 'witch_walk' + (1 + (Math.floor(t * 9) % 4));
-    const drawn = this.drawSprX(frame, this.px, this.py - 8, flying ? 94.8 : 81.6, {
+    const drawn = this.drawSprX(this.save.outfit ? frame + '@' + this.save.outfit : frame, this.px, this.py - 8, flying ? 94.8 : 81.6, {
       flip, rot: o.rot + cast * 0.12 * flip, sx: o.sx * sc, sy: o.sy * sc, bob: o.bob + lift, flash: this.hurtFlash > 0,
     });
     if (!drawn) {

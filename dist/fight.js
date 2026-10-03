@@ -6,11 +6,11 @@
 import { audio } from './audio.js';
 import { T } from './i18n.js';
 import { vibrate } from './settings.js';
+import { RIVAL_HUE } from './meta.js';
 const W = 960;
 const H = 540;
 const GROUND = 452;
 const GRAVITY = 2000;
-const RIVAL_HUE = 150;
 const MAX_HP = 100;
 const ROUND_TIME = 60;
 const FIGHTER_SIZE = 200;
@@ -19,6 +19,7 @@ const MOVES = {
     kick: { dur: 0.5, from: 0.15, to: 0.32, reach: 124, dmg: 12, stun: 0.36, knock: 240 },
 };
 const SPECIAL = { dur: 0.55, spawn: 0.22, cooldown: 2.4, dmg: 14, speed: 540, stun: 0.4 };
+const FINAL_OPTS = { foeName: 'Rakip Cadı', foeHue: RIVAL_HUE, level: 1, mod: 'none', playerHue: 0 };
 export class FightGame {
     constructor(spr, bg, heroName) {
         this.spr = spr;
@@ -27,6 +28,7 @@ export class FightGame {
         this.raf = 0;
         this.last = 0;
         this.running = false;
+        this.o = FINAL_OPTS;
         this.f = [this.make(0), this.make(1)];
         this.bolts = [];
         this.inp = { left: false, right: false, block: false };
@@ -94,8 +96,8 @@ export class FightGame {
     }
     make(side) {
         return {
-            x: side === 0 ? 280 : 680, y: GROUND, vx: 0, vy: 0, hp: MAX_HP, face: side === 0 ? 1 : -1, move: null, moveT: 0, moveHit: false,
-            stun: 0, block: false, sp: 0, ko: false, t: 0, flash: 0, hue: side === 0 ? 0 : RIVAL_HUE,
+            x: side === 0 ? 280 : 680, y: GROUND, vx: 0, vy: 0, hp: this.o.mod === 'lowhp' ? MAX_HP * 0.4 : MAX_HP, face: side === 0 ? 1 : -1, move: null, moveT: 0, moveHit: false,
+            stun: 0, block: false, sp: 0, ko: false, t: 0, flash: 0, hue: side === 0 ? this.o.playerHue : this.o.foeHue,
         };
     }
     /** dokunmatik düğmeler: sol altta yön/blok, sağ altta saldırılar */
@@ -125,10 +127,11 @@ export class FightGame {
         this.root.append(quit);
     }
     /** düelloyu başlatır; bittiğinde onDone(kazandı mı) çağrılır */
-    start(onDone) {
+    start(onDone, opts = FINAL_OPTS) {
         if (this.running)
             return;
         this.onDone = onDone;
+        this.o = opts;
         this.root.style.display = 'block';
         this.running = true;
         this.wins = [0, 0];
@@ -159,7 +162,7 @@ export class FightGame {
         this.time = ROUND_TIME;
         this.phase = 'intro';
         this.phaseT = 1.6;
-        this.msg = T('TUR') + ' ' + this.round;
+        this.msg = T('TUR') + ' ' + this.round + (this.round === 1 && this.o.modTitle ? ' · ' + T(this.o.modTitle) : '');
         this.queued = null;
         this.aiT = 0.6;
     }
@@ -168,7 +171,7 @@ export class FightGame {
             return;
         const dt = Math.min(0.05, (now - this.last) / 1000);
         this.last = now;
-        this.update(dt);
+        this.update(this.o.mod === 'fast' ? dt * 1.5 : dt);
         this.draw();
         this.raf = requestAnimationFrame((t) => this.loop(t));
     }
@@ -178,6 +181,8 @@ export class FightGame {
     startMove(f, m) {
         if (!this.canAct(f) || !this.grounded(f))
             return;
+        if (this.o.mod === 'magic' && m !== 'special')
+            return;
         if (m === 'special' && f.sp > 0)
             return;
         f.move = m;
@@ -185,7 +190,7 @@ export class FightGame {
         f.moveHit = false;
         f.vx = 0;
         if (m === 'special')
-            f.sp = SPECIAL.cooldown;
+            f.sp = this.o.mod === 'magic' ? 0.9 : SPECIAL.cooldown;
         audio.play('cast');
     }
     hurt(target, from, dmg, stun, knock) {
@@ -218,7 +223,7 @@ export class FightGame {
         f.sp = Math.max(0, f.sp - dt);
         if (f.stun > 0 && !f.ko)
             f.stun = Math.max(0, f.stun - dt);
-        f.block = wantBlock && this.canBlock(f);
+        f.block = wantBlock && this.o.mod !== 'noblock' && this.canBlock(f);
         if (this.canAct(f) && this.grounded(f) && !f.block)
             f.vx = dir * 230;
         else if (this.grounded(f))
@@ -290,6 +295,8 @@ export class FightGame {
             this.stepFighter(p, a, dt, (this.inp.right ? 1 : 0) - (this.inp.left ? 1 : 0), this.inp.block);
             // yapay zekâ
             const ai = this.think(a, p, dt);
+            if (ai.move && this.o.mod === 'magic')
+                ai.move = 'special';
             if (ai.move)
                 this.startMove(a, ai.move);
             if (ai.jump && this.canAct(a) && this.grounded(a))
@@ -389,26 +396,26 @@ export class FightGame {
         const inc = this.bolts.find((b) => b.owner === 0 && Math.sign(a.x - b.x) === Math.sign(b.vx) && Math.abs(a.x - b.x) < 230);
         if (inc && this.aiT <= 0) {
             this.aiT = 0.25;
-            if (Math.random() < 0.45) {
+            if (Math.random() < 0.1 + 0.4 * this.o.level) {
                 this.aiBlock = 0.5;
                 out.block = true;
                 return out;
             }
-            if (Math.random() < 0.35) {
+            if (Math.random() < 0.1 + 0.3 * this.o.level) {
                 out.jump = true;
                 return out;
             }
         }
         // oyuncu saldırıyorsa menzildeyken blokla
-        if (p.move && p.move !== 'special' && dist < 150 && this.aiT <= 0 && Math.random() < 0.4) {
+        if (p.move && p.move !== 'special' && dist < 150 && this.aiT <= 0 && Math.random() < 0.1 + 0.35 * this.o.level) {
             this.aiT = 0.3;
             this.aiBlock = 0.45;
             out.block = true;
             return out;
         }
         if (this.aiT <= 0) {
-            this.aiT = 0.22 + Math.random() * 0.3;
-            if (dist > 300 && a.sp <= 0 && Math.random() < 0.55) {
+            this.aiT = (0.22 + Math.random() * 0.3) * (1.5 - 0.5 * this.o.level);
+            if (dist > 300 && a.sp <= 0 && Math.random() < 0.2 + 0.35 * this.o.level) {
                 out.move = 'special';
                 return out;
             }
@@ -560,7 +567,7 @@ export class FightGame {
         }
         // HUD
         this.bar(30, 380, p.hp, false, this.heroName(), this.wins[0]);
-        this.bar(550, 380, a.hp, true, T('Rakip Cadı'), this.wins[1]);
+        this.bar(550, 380, a.hp, true, T(this.o.foeName), this.wins[1]);
         c.font = 'bold 34px sans-serif';
         c.textAlign = 'center';
         c.fillStyle = '#fff';

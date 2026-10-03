@@ -4,7 +4,10 @@ import { N, T } from './i18n.js';
 import { changed, loadSettings, settings, vibrate } from './settings.js';
 import { BUILD, CODENAME, VERSION } from './version.js';
 import { LEVEL_PACKS, PACKS, createBilling } from './billing.js';
-import { FightGame } from './fight.js';
+import { FightGame, FightOpts } from './fight.js';
+import { fmtWait } from './house.js';
+import { Ghost, LEGENDS, OUTFITS, RIVAL_HUE, ghostCode, heroLevel, parseGhostCode, weekly } from './meta.js';
+import { pageFor } from './story.js';
 import { createAds } from './ads.js';
 import {
   CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, statIcon, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS,
@@ -19,7 +22,8 @@ const game = new Game(canvas);
 const panel = document.getElementById('panel') as HTMLDivElement;
 const essenceEl = document.getElementById('essence') as HTMLSpanElement;
 const masterBtn = document.getElementById('master-btn') as HTMLButtonElement;
-let open: 'tree' | 'weapons' | 'crystals' | 'gear' | 'stats' | 'cards' | 'train' | 'settings' | 'hof' | 'shop' | null = null;
+let open: 'tree' | 'weapons' | 'crystals' | 'gear' | 'stats' | 'cards' | 'train' | 'settings' | 'hof' | 'shop' | 'house' | null = null;
+let houseTab: 'home' | 'story' | 'arena' | 'wardrobe' = 'home';
 let landingOpen = true;
 let note = '';
 let trainMaster = 0;
@@ -68,6 +72,126 @@ function setPanelTitle(t: string, iconName: string): void {
   head.innerHTML = `<b>${ico(iconName, 26)} ${L(t)}</b>`;
   head.append(btn('✕', 'x', true, () => { open = null; renderPanel(); }));
   panel.append(head);
+}
+
+// ---------------- cadı evi ----------------
+const chip = (hue: number): string => `<span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:hsl(${(270 + hue) % 360} 65% 52%);border:2px solid #fff6"></span>`;
+const emoji = (e: string): string => `<span style="font-size:28px;width:36px;text-align:center;display:inline-block">${e}</span>`;
+const hashHue = (id: string): number => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360; return Math.abs(h - RIVAL_HUE) < 25 ? (h + 60) % 360 : h; };
+
+function startDuel(opts: FightOpts, done: (won: boolean) => void): void {
+  if (fight.active) return;
+  open = null;
+  renderPanel();
+  fight.start(done, opts);
+}
+
+function renderHouse(): void {
+  setPanelTitle('Cadı Evi', 'home');
+  const tabs: [typeof houseTab, string][] = [['home', 'Ev'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop']];
+  const tabRow = document.createElement('div');
+  tabRow.style.cssText = 'display:flex;gap:6px;margin:6px 0';
+  for (const [k, name] of tabs) {
+    const b = btn(name, houseTab === k ? 'sel' : '', true, () => { houseTab = k; renderPanel(); });
+    b.style.cssText = 'flex:1;padding:8px 4px;width:auto;' + (houseTab === k ? 'background:#d9822b;color:#2a1200' : '');
+    tabRow.append(b);
+  }
+  panel.append(tabRow);
+  const sv = game.save;
+  if (houseTab === 'home') {
+    const h = sv.house;
+    const info = document.createElement('div');
+    info.className = 'row';
+    info.innerHTML = `<small>${L('Evden kalıcı kazanç')}: <b>+%${h.hp.toFixed(0)}</b> ${L('can')} (${L('en çok')} %100) · <b>+%${h.dmg.toFixed(0)}</b> ${L('hasar')} (${L('en çok')} %200) · ${L('Seri')}: <b>${h.streak}</b></small>`;
+    panel.append(info);
+    for (const t of game.houseTasks()) {
+      const icon: Record<string, string> = { daily: '🎁', pet: '🐈', brew: '⚗️', garden: '🌿', soup: '🍲' };
+      let sub = t.desc;
+      if (t.id === 'soup') sub += ` ${L('Biriken')}: ${fmt(game.soupReady())} ${L('ruh')}.`;
+      const label = t.ready ? t.state : t.waitMs > 0 ? fmtWait(t.waitMs) : t.state;
+      panel.append(row(emoji(icon[t.id]), t.name, sub, btn(label, '', t.ready, () => { game.doHouse(t.id); renderPanel(); })));
+    }
+  } else if (houseTab === 'story') {
+    const open0 = sv.bossDown.map((b, i) => (b ? i : -1)).filter((i) => i >= 0).reverse();
+    sv.storyRead = open0.length;
+    const info = document.createElement('div');
+    info.className = 'row';
+    info.innerHTML = `<small>${L('Her ada bossu yeni bir sayfa açar')}: <b>${open0.length}/${ZONES.length}</b></small>`;
+    panel.append(info);
+    for (const i of open0.slice(0, 30)) {
+      const pg = pageFor(i);
+      const el = document.createElement('div');
+      el.className = 'row';
+      el.innerHTML = `<div><b>${pg.title}</b><br><small>${pg.text}</small></div>`;
+      panel.append(el);
+    }
+    if (!open0.length) panel.append(row(emoji('📖'), 'Günlük boş', 'İlk adanın bossunu yen', null));
+  } else if (houseTab === 'arena') {
+    const lvl = heroLevel(game.bossesDown(), ZONES.length);
+    const mine: Ghost = { name: sv.hero.name, level: lvl, hue: sv.outfit };
+    const w = weekly(game.now());
+    const won = sv.weekWon === w.week;
+    panel.append(row(emoji('🏆'), `${L('Haftalık meydan okuma')}: ${L(w.title)}`, `${w.desc} (${L('Rakip')}: ${w.opp.name})`,
+      btn(won ? '✓ Kazanıldı' : 'Meydan oku', '', !won, () => startDuel({ foeName: w.opp.name, foeHue: w.opp.hue, level: w.opp.level, mod: w.mod, playerHue: sv.outfit, modTitle: w.title },
+        (r) => { game.finishArena('weekly', w.opp.name, r); renderPanel(); }))));
+    const h3 = document.createElement('h3');
+    h3.textContent = L('Gölge Arenası: efsane cadılar');
+    panel.append(h3);
+    LEGENDS.forEach((lg, i) => {
+      const open1 = i === 0 || !!sv.arena[LEGENDS[i - 1].name];
+      const done = !!sv.arena[lg.name];
+      panel.append(row(chip(lg.hue), lg.name, open1 ? lg.tale : 'Önceki efsaneyi yen', btn(done ? '✓ Yine dövüş' : open1 ? 'Dövüş' : '🔒', '', open1,
+        () => startDuel({ foeName: lg.name, foeHue: lg.hue, level: lg.level, mod: 'none', playerHue: sv.outfit }, (r) => { game.finishArena('legend', lg.name, r); renderPanel(); }))));
+    });
+    const h4 = document.createElement('h3');
+    h4.textContent = L('Gölge kodu: arkadaşınla dövüştür');
+    panel.append(h4);
+    const code = ghostCode(mine);
+    const tip = document.createElement('div');
+    tip.className = 'row';
+    tip.innerHTML = `<small>${L('Kodunu arkadaşına gönder; o yapıştırıp senin gölgenle dövüşür.')}</small>`;
+    panel.append(tip);
+    panel.append(btns(btn('Gölge kodumu kopyala', '', true, () => { void navigator.clipboard?.writeText(code); const m = document.getElementById('ghost-msg'); if (m) m.textContent = L('Kopyalandı') + ': ' + code; })));
+    const inp = document.createElement('input');
+    inp.placeholder = 'HEX-…';
+    inp.style.cssText = 'width:100%;margin:6px 0;padding:8px;border-radius:8px;border:1px solid #fff4;background:#0006;color:#fff';
+    panel.append(inp);
+    const msg = document.createElement('div');
+    msg.id = 'ghost-msg';
+    msg.className = 'row';
+    msg.style.wordBreak = 'break-all';
+    panel.append(msg);
+    panel.append(btns(btn('Kodla dövüş', '', true, () => {
+      const g = parseGhostCode(inp.value);
+      if (!g) { msg.textContent = L('Geçersiz gölge kodu'); return; }
+      startDuel({ foeName: g.name, foeHue: g.hue === RIVAL_HUE ? 100 : g.hue, level: g.level, mod: 'none', playerHue: sv.outfit }, (r) => { game.finishArena('ghost', g.name, r); renderPanel(); });
+    })));
+    const others = Game.loadHof().filter((e) => e.id !== sv.hero.id);
+    if (others.length) {
+      const h5 = document.createElement('h3');
+      h5.textContent = L('Bu cihazdaki diğer kahramanlar');
+      panel.append(h5);
+      for (const e of others.slice(0, 8)) {
+        const gl = heroLevel(e.islands, ZONES.length);
+        panel.append(row(chip(hashHue(e.id)), e.name, `${e.islands} ${L('ada')} · ⚔ ${fmt(e.power)}`, btn('Dövüş', '', true,
+          () => startDuel({ foeName: e.name, foeHue: hashHue(e.id), level: gl, mod: 'none', playerHue: sv.outfit }, (r) => { game.finishArena('ghost', e.name, r); renderPanel(); }))));
+      }
+    }
+  } else {
+    const info = document.createElement('div');
+    info.className = 'row';
+    info.innerHTML = `<small>${L('Kıyafetler yalnız görünümdür, güç vermez. Kazanarak aç.')}</small>`;
+    panel.append(info);
+    for (const o of OUTFITS) {
+      const owned = sv.outfits.includes(o.hue);
+      const cur = sv.outfit === o.hue;
+      panel.append(row(chip(o.hue), o.name, owned ? 'Sahipsin' : o.how, btn(cur ? '✓ Giyili' : owned ? 'Giy' : '🔒', '', owned && !cur, () => { game.setOutfit(o.hue); renderPanel(); })));
+    }
+  }
+  const rb = document.createElement('div');
+  rb.className = 'row';
+  rb.append(btn('Kapat', '', true, () => { open = null; renderPanel(); }));
+  panel.append(rb);
 }
 
 // ---------------- paneller ----------------
@@ -355,6 +479,8 @@ function renderPanel(): void {
     rb.className = 'row';
     rb.append(btn('Satın alımları geri yükle', '', billing.kind === 'native', async () => { await billing.restore(); renderPanel(); }));
     panel.append(rb);
+  } else if (open === 'house') {
+    renderHouse();
   } else if (open === 'hof') {
     setPanelTitle('Şeref Salonu', 'ui_stats');
     panel.append(hofList(20));
@@ -574,6 +700,14 @@ game.onDuel = () => {
 game.onPaywall = () => { if (!fight.active && !landingOpen) { open = 'shop'; renderPanel(); } };
 let shopPrices: Record<string, string> = {};
 billing.prices().then((p) => { shopPrices = p; if (open === 'shop') renderPanel(); }).catch((e) => console.error('fiyatlar alınamadı', e));
+const houseBtn = document.getElementById('btn-house') as HTMLButtonElement;
+houseBtn.addEventListener('click', () => { open = open === 'house' ? null : 'house'; renderPanel(); });
+// ev düğmesindeki rozet: hazır iş ya da yeni günlük sayfası varsa; ev açıkken geri sayımlar tazelenir
+setInterval(() => {
+  const ready = game.houseTasks().some((t) => t.ready && t.id !== 'soup') || game.save.bossDown.filter(Boolean).length > game.save.storyRead;
+  houseBtn.dataset.badge = ready ? '1' : '0';
+  if (open === 'house' && houseTab === 'home') renderPanel();
+}, 1000);
 document.getElementById('btn-shop')?.addEventListener('click', () => { open = open === 'shop' ? null : 'shop'; renderPanel(); });
 
 // ---------------- Şeref Salonu ----------------
