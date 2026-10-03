@@ -30,6 +30,11 @@ WITCH HOUSE
 • The cauldron collects souls while you are away, and you earn a trickle while idle in the game. Come back daily and your login streak grows the rewards.
 • 3 daily quests, plus notifications when your potion is ready or your cat is hungry.
 
+COMPANION TIGER
+• A White Tiger cub fights beside you: it attacks enemies on screen by itself and grows stronger with a helmet, sharp fang and claw dropped as loot.
+• It has its own level and gains one every 12 enemies it defeats. Wounds weaken it; soul dust heals it.
+• The first level is free; every later level change costs soul dust for the tiger: −40. You can turn it off in Settings any time.
+
 FIGHTING ARENA
 • Street Fighter style side-view duels: punch, kick, spell, block, jump.
 • Beat 12 legendary witches in order. Send your ghost code to a friend and let them fight your shadow.
@@ -43,11 +48,13 @@ Hall of Fame, 5 languages, adjustable sound and vibration.
 
 The game is free to play. It contains optional in-app purchases and ads: power packs, continuation packs for islands beyond 40, and rewarded videos. Notifications are optional.
 
-## Release notes (0.14.2)
+## Release notes (0.15.0)
 • New: cat food, regular feeding streak, name your cat.
 • New: starter and daily quests, enemy collection, hard bosses, outfit bonuses.
 • New: story cutscenes and new artwork across all panels.
 • New: idle income and potion/cat/cauldron notifications.
+• New: White Tiger companion (own level, gear, soul-dust care).
+• New: denser camps after island 10; fight many enemies at once.
 • Fix: crystal upgrade dust now drops from enemies and quests.
 • Fix: duplicate items from old saves merge; card icons fixed.
 • Flying broom is 20% smaller; the guide arrow now points at the enemy itself.

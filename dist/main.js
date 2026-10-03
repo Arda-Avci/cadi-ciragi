@@ -7,6 +7,7 @@ import { LEVEL_PACKS, PACKS, createBilling } from './billing.js';
 import { FightGame } from './fight.js';
 import { catFull, fmtWait } from './house.js';
 import { TUTORIAL } from './quests.js';
+import { ENERGY_MAX, LEVEL_COST, TIGER_SLOTS, tigerItemPct } from './tiger.js';
 import { LEGENDS, OUTFITS, RIVAL_HUE, ghostCode, heroLevel, parseGhostCode, weekly } from './meta.js';
 import { hasScene, pageFor } from './story.js';
 import { createAds } from './ads.js';
@@ -20,6 +21,7 @@ const essenceEl = document.getElementById('essence');
 const masterBtn = document.getElementById('master-btn');
 let open = null;
 let houseTab = 'home';
+let settingsNote = '';
 let landingOpen = true;
 let note = '';
 let trainMaster = 0;
@@ -63,7 +65,7 @@ function setPanelTitle(t, iconName) {
     head.append(btn('✕', 'x', true, () => { open = null; renderPanel(); }));
     panel.append(head);
     // panel başlık görseli (varsa): yavaşça kayan/yakınlaşan animasyon
-    const art = open === 'house' ? { home: 'house', quests: 'quests', story: 'story', arena: 'arena', wardrobe: 'wardrobe' }[houseTab] : open;
+    const art = open === 'house' ? { home: 'house', quests: 'quests', tiger: 'tiger', story: 'story', arena: 'arena', wardrobe: 'wardrobe' }[houseTab] : open;
     if (art) {
         const ban = document.createElement('div');
         ban.className = 'banner';
@@ -108,7 +110,7 @@ function startDuel(opts, done) {
 }
 function renderHouse() {
     setPanelTitle('Cadı Evi', 'home');
-    const tabs = [['home', 'Ev'], ['quests', 'Görev'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop']];
+    const tabs = [['home', 'Ev'], ['quests', 'Görev'], ['tiger', 'Kaplan'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop']];
     const tabRow = document.createElement('div');
     tabRow.style.cssText = 'display:flex;gap:6px;margin:6px 0';
     for (const [k, name] of tabs) {
@@ -161,6 +163,39 @@ function renderHouse() {
         col.className = 'row';
         col.innerHTML = `<small>${L('Koleksiyon')}: <b>${Object.keys(sv.seen).length}</b> ${L('tür görüldü')} · ${L('her 5 yeni türde +2 jeod, her 10\'da kalıcı +%1 can')}</small>`;
         panel.append(col);
+    }
+    else if (houseTab === 'tiger') {
+        const tg = sv.tiger;
+        const energyTxt = `${Math.floor(tg.energy / 60)}:${String(Math.floor(tg.energy % 60)).padStart(2, '0')} / ${ENERGY_MAX / 60}:00`;
+        const c = game.feedCost();
+        panel.append(row(ico('tiger', 40), 'Beyaz Kaplan', `⚔ ${fmt(game.tigerPower())} · ${L('Seviye')} ${tg.level} (${tg.kills}/12) · ${L('Sağlık')}: %${Math.round(tg.frac * 100)}${tg.frac < 1 ? ' · ' + L('gücü') + ' %' + Math.round(game.tigerWound() * 100) : ''}`, btn(settings.companion ? 'Açık' : 'Kapalı', settings.companion ? 'sel' : '', true, () => { const r = game.setCompanion(!settings.companion); if (r !== 'ok')
+            msgEl.textContent = L(r);
+        else
+            renderPanel(); })));
+        const msgEl = document.createElement('div');
+        msgEl.className = 'row';
+        msgEl.innerHTML = `<small>${L('Düşman ekrandaysa kendiliğinden saldırır; saldırırken enerji harcar. Canı ana karakterle birlikte yenilenir.')}<br><b>${L('İlk seviye ücretsiz; sonraki her seviye geçişinde Kaplan için ruh tozu')} −${LEVEL_COST}.</b> ${game.tigerPaid() ? L('Bu seviye için ödendi.') : L('Bu seviye için henüz ödenmedi.')}</small>`;
+        panel.append(msgEl);
+        const canFeed = sv.essence >= c.souls && sv.dust >= c.dust && tg.energy < ENERGY_MAX - 1;
+        panel.append(row(emoji('⚡'), `${L('Enerji')}: ${energyTxt}`, `${L('Bir porsiyon: +10 dk')} · ${c.souls} ${L('ruh')} + ${c.dust} ${L('toz')}`, btn('Besle', '', canFeed, () => { const r = game.feedTiger(); if (r !== 'ok')
+            msgEl.textContent = L(r);
+        else
+            renderPanel(); })));
+        panel.append(row(emoji('🩹'), 'Yara bakımı', `${L('Yaralı kaplan zayıflar: gücü en çok %60 düşer. Ruh tozuyla iyileştir.')} (${game.tigerHealCost()} ${L('toz')})`, btn('İyileştir', '', tg.frac < 0.99 && sv.dust >= game.tigerHealCost(), () => { const r = game.healTiger(); if (r !== 'ok')
+            msgEl.textContent = L(r);
+        else
+            renderPanel(); })));
+        const h6 = document.createElement('h3');
+        h6.textContent = L('Kaplan eşyaları');
+        panel.append(h6);
+        const items = [...tg.items].sort((a, b) => b.rarity - a.rarity || b.level - a.level);
+        if (!items.length)
+            panel.append(row(emoji('🎒'), 'Henüz eşya yok', 'Ganimetle kaplan için kask, keskin diş ve pençe düşer', null));
+        for (const it of items) {
+            const sl = TIGER_SLOTS[it.type];
+            const eq = tg.eq[it.type] === it.id;
+            panel.append(row(`<span class="rar" style="border-color:${RARITIES[it.rarity].color}">${ico(sl.icon, 34)}</span>`, `${L(sl.names[it.rarity])} · ${L('sv.')}${it.level}${eq ? ' ✓' : ''}`, `+%${tigerItemPct(it).toFixed(0)} ${L(sl.stat)}`, btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => { game.tigerEquip(it.id); renderPanel(); }), btn('Sat', 'danger', true, () => { game.tigerSell(it.id); renderPanel(); }))));
+        }
     }
     else if (houseTab === 'story') {
         const open0 = sv.bossDown.map((b, i) => (b ? i : -1)).filter((i) => i >= 0).reverse();
@@ -385,6 +420,7 @@ function renderPanel() {
             d.innerHTML = `<img src="assets/${img}.png" alt="" onerror="this.style.visibility='hidden'"><div class="cname">${known ? N(name) : '???'}</div><div class="cinfo">${known ? info : L('Henüz karşılaşmadın')}</div>`;
             return d;
         };
+        grid.append(card('card_tiger', 'Beyaz Kaplan', `${ico('ui_power', 14)} Güç ${fmt(game.tigerPower())} · ${L('Seviye')} ${game.save.tiger.level}`, true));
         grid.append(card('card_witch', 'Cadı Çırağı', `${ico('ui_power', 14)} Güç ${fmt(game.power())} · ${ico('ui_heart', 14)} ${fmt(game.maxHp())}`, true));
         for (const id of ['ghost', 'mushroom', 'pumpkin', 'bat', 'scorpion', 'golem', 'wisp']) {
             const e = ENEMIES[id];
@@ -431,9 +467,10 @@ function renderPanel() {
         panel.append(seg('Titreşim', 'ui_speed', [['Açık', true], ['Kapalı', false]], settings.vibrate, (v) => { settings.vibrate = v; if (v)
             vibrate(40); }));
         panel.append(seg('Yönlendirme okları', 'ui_map', [['Açık', true], ['Kapalı', false]], settings.guide, (v) => { settings.guide = v; }));
+        panel.append(seg('Yardımcı kaplan', 'icon_fang', [['Açık', true], ['Kapalı', false]], settings.companion, (v) => { const r = game.setCompanion(v); settingsNote = r === 'ok' ? '' : L(r); }));
         const hint = document.createElement('div');
         hint.className = 'row';
-        hint.innerHTML = `<small>${L('Titreşim yalnızca destekleyen cihazlarda çalışır.')}</small>`;
+        hint.innerHTML = `<small>${L('Titreşim yalnızca destekleyen cihazlarda çalışır.')}${settingsNote ? '<br><b>' + settingsNote + '</b>' : ''}</small>`;
         panel.append(hint);
         const lang = document.createElement('div');
         lang.className = 'set-row';
@@ -908,8 +945,32 @@ function showLanding() {
     refreshLanding();
     renderPanel();
 }
+/** ilk açılışta: yardımcı kaplan kullanılsın mı? (ön tanımlı seçili; ilk seviye ücretsiz) */
+function askTiger() {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#241a40;color:#fff;border:1px solid #fff4;border-radius:14px;padding:18px;width:min(320px,88vw);text-align:center;font:15px sans-serif';
+    box.innerHTML = `${ico('tiger', 72)}<div style="font-weight:700;font-size:17px;margin:6px 0">${L('Beyaz Kaplan yardımcın seninle savaşsın mı?')}</div>`
+        + `<div style="font-size:13px;opacity:.85;line-height:1.4">${L('İlk seviye ücretsiz. Sonraki her seviye geçişinde Kaplan için ruh tozu')} −${LEVEL_COST}. ${L('Ruh tozu yetmezse kaplan kapatılır.')}</div>`;
+    const lab = document.createElement('label');
+    lab.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:center;margin:12px 0;font-weight:700';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = true;
+    lab.append(cb, L('Kaplan yardımcıyı kullan'));
+    const ok = document.createElement('button');
+    ok.textContent = L('Tamam');
+    ok.style.cssText = 'padding:10px 28px;border-radius:8px;border:0;font:bold 15px sans-serif;background:#d9822b;color:#fff';
+    ok.addEventListener('click', () => { game.answerTiger(cb.checked); wrap.remove(); });
+    box.append(lab, ok);
+    wrap.append(box);
+    document.body.append(wrap);
+}
 function hideLanding() {
     landingOpen = false;
+    if (!game.save.tiger.asked)
+        setTimeout(askTiger, 300);
     // alt barın altındaki sürekli banner (yalnızca reklam destekli ortamlarda); bar banner yüksekliği kadar yukarı kayar
     ads.showBanner((px) => document.documentElement.style.setProperty('--ad-h', px + 'px')).catch((e) => console.error('banner gösterilemedi', e));
     landing.classList.add('hidden');

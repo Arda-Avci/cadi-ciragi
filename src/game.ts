@@ -9,10 +9,11 @@ import { FEED_GAP, HOUSE_DMG_CAP, HOUSE_HP_CAP, HouseState, TaskId, TaskInfo, da
 import { DailyState, DailyType, TUTORIAL, TutStep, dailyText, makeDaily } from './quests.js';
 import { scheduleHouse } from './notify.js';
 import { OUTFITS, weekly } from './meta.js';
+import { ENERGY_MAX, FEED_SECONDS, LEVEL_COST, LEVEL_GROWTH, LEVEL_KILLS, MAX_TIGER_ITEM_LEVEL, TIGER_POWER, WOUND_FLOOR, TIGER_SLOTS, TIGER_SLOT_LIST, TigerItem, TigerSave, freshTiger, tigerBonus } from './tiger.js';
 import { audio } from './audio.js';
 import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
 import { N, T } from './i18n.js';
-import { settings, vibrate } from './settings.js';
+import { changed as settingsChanged, settings, vibrate } from './settings.js';
 
 export interface HeroInfo { id: string; name: string; born: number }
 /** Şeref Salonu kaydı (bu cihazdaki kahramanlar) */
@@ -79,6 +80,8 @@ export interface SaveData {
   daily: DailyState;
   /** düşman koleksiyonu: ödülü alınmış kilometre taşı sayısı */
   col: number;
+  /** yardımcı karakter: beyaz kaplan */
+  tiger: TigerSave;
 }
 
 interface Spawner { id: number; reg: number; x: number; y: number; tier: Tier; kind: EnemyId; tag?: SlotType; lv: number; bridge?: number; /** canavar: her 3 adada bir, boss'un 2 katı güçte, boss ölmeden de çıkar */ beast?: boolean; /** zor boss: bossu yenilmiş adada günde bir kez, ×3 güç */ hard?: boolean }
@@ -109,6 +112,8 @@ interface Enemy {
   hp: number; maxHp: number;
   beast?: boolean;
   hard?: boolean;
+  /** kaplan bu düşmana vurdu (öldürme kaplanın seviyesine sayılır) */
+  tg?: boolean;
   /** eve dönerken engele takılma: süre, sayaç, son konum; ikinci takılmadan sonra iyileşme durur */
   stuckT?: number; stuckN?: number; noHeal?: boolean; chkX?: number; chkY?: number;
   state: 'idle' | 'chase' | 'return';
@@ -145,6 +150,8 @@ const TREE_RESPAWN = 120;
 const BEAST_MUL = 2;
 /** zor boss: ada bossu yenildikten sonra günde bir kez, güç ×3 */
 const HARD_BOSS_MUL = 3;
+/** bu adadan itibaren (dizin) daha sık kamp: komşu kampların bölgeleri iç içe geçer */
+const DENSE_FROM = 10;
 
 const CAMP_WEIGHT: Record<Tier, number> = { easy: 1, medium: 2, hard: 3, elite: 5, knight: 5, boss: 15 };
 const GATE_GAP = 160; // kapı, bölge kıyısından bu kadar ileride
@@ -313,7 +320,7 @@ export class Game {
   private fresh(): SaveData {
     return {
       essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
-      bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, lvPacks: {}, rivalDown: 0, house: { ...freshHouse(), soupAt: Date.now() }, outfit: 0, outfits: [0], arena: {}, weekWon: -1, storyRead: 0, tut: 0, daily: makeDaily(Date.now()), col: 0, ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
+      bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, lvPacks: {}, rivalDown: 0, house: { ...freshHouse(), soupAt: Date.now() }, outfit: 0, outfits: [0], arena: {}, weekWon: -1, storyRead: 0, tut: 0, daily: makeDaily(Date.now()), col: 0, tiger: freshTiger(), ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
       chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {},
     };
   }
@@ -331,6 +338,10 @@ export class Game {
         if (!s.house.soupAt) s.house.soupAt = Date.now();
         if (!Array.isArray(s.outfits)) s.outfits = [0];
         if (!s.arena) s.arena = {};
+        s.tiger = { ...freshTiger(), ...(s.tiger ?? {}) };
+        s.tiger.eq = { ...freshTiger().eq, ...(s.tiger.eq ?? {}) };
+        if (!Array.isArray(s.tiger.items)) s.tiger.items = [];
+        if (!Array.isArray(s.tiger.paid)) s.tiger.paid = [];
         Game.mergeDuplicates(s);
         if (!s.daily || !Array.isArray(s.daily.goals)) s.daily = makeDaily(Date.now());
         if (!s.ads) s.ads = { day: 0, n: 0, last: {} };
@@ -400,6 +411,7 @@ export class Game {
   resetSave(): void {
     localStorage.removeItem(SAVE_KEY);
     this.save = this.fresh();
+    this.tg = null;
     this.enemies = [];
     this.projs = [];
     this.orbs = [];
@@ -681,6 +693,32 @@ export class Game {
       const h = spot(rng(reg * 32452843 + 5));
       spawners.push({ id: 400000 + reg, reg, x: h.x, y: h.y, tier: 'boss', kind: bossSp.kind, lv: bossSp.lv, bridge: reg, hard: true });
     }
+    // yoğun adalar: 10. adadan sonra ek kamplar (ayrı kimlik bloğu: eski kayıtlar bozulmaz). Kamplar sıklaşır; bir düşmanla savaşırken
+    // komşu kampın bölgesine girilip birden çok kamp aynı anda tetiklenebilir
+    if (reg >= DENSE_FROM) {
+      const xr = rng(reg * 5081 + 3);
+      const k0 = reg - DENSE_FROM;
+      const extra: [Tier, number][] = [['easy', 3 + Math.floor(k0 / 6)], ['medium', 2 + Math.floor(k0 / 8)], ['hard', 1 + Math.floor(k0 / 10)]];
+      let k = 0;
+      for (const [tier, n] of extra) {
+        for (let i = 0; i < n; i++) {
+          let p: { x: number; y: number } | null = null;
+          for (let tries = 0; tries < 80 && !p; tries++) {
+            const a = xr() * Math.PI * 2;
+            const d = R * 0.2 + xr() * (R - 180 - R * 0.2);
+            const c = { x: zone.cx + Math.cos(a) * d, y: zone.cy + Math.sin(a) * d };
+            if (!clearOfHome(c) || nearSeg(c.x, c.y, 200)) continue;
+            if (spawners.some((s) => Math.hypot(s.x - c.x, s.y - c.y) < (s.tier === 'boss' ? 300 : 150))) continue;
+            if (obstacles.some((o) => Math.hypot(o.x - c.x, o.y - c.y) < o.r + 70)) continue;
+            if (chests.some((ch) => Math.hypot(ch.x - c.x, ch.y - c.y) < 110)) continue;
+            p = c;
+          }
+          if (!p) continue;
+          const [lo, hi] = lvRange[tier];
+          spawners.push({ id: 500000 + reg * 40 + k++, reg, x: p.x, y: p.y, tier, kind: zone.enemies[Math.floor(xr() * zone.enemies.length)], lv: lo * Math.pow(hi / lo, xr()) });
+        }
+      }
+    }
     return { spawners, trees, chests, obstacles };
   }
 
@@ -865,6 +903,7 @@ export class Game {
       const ess = this.soupYield(4 * 3.6e6);
       this.save.geodes += geo;
       this.save.dust += 10;
+      this.save.tiger.energy = Math.min(ENERGY_MAX, this.save.tiger.energy + 300); // günlük giriş: kaplana +5 dk enerji
       this.save.essence += ess;
       if (h.streak % 7 === 0) { this.gainItem('helmet', 3); this.gainItem('shield', 3); }
       msg = `Günlük ödül: +${geo} jeod, +${this.fmt(ess)} ruh · seri ${h.streak} gün` + (h.streak % 7 === 0 ? ' · büyük ödül!' : '');
@@ -906,6 +945,265 @@ export class Game {
     this.persist();
     this.onChange();
     return msg;
+  }
+
+  // ---- yardımcı karakter: beyaz kaplan ----
+  private tg: { x: number; y: number; face: number; atkT: number; cd: number; inv: number; flash: number; t: number; moving: boolean; down: boolean; dry: boolean } | null = null;
+  /** bu seviye (ada) için kaplan bedeli ödendi mi (ya da ücretsiz mi) */
+  tigerPaid(reg: number = this.region): boolean { return this.save.tiger.paid.includes(reg); }
+  /** yeni bir seviyeye geçildi: kaplan açıksa 40 ruh tozu düşer; yetmezse kaplan kapatılır */
+  private tigerEnterRegion(reg: number): void {
+    const t = this.save.tiger;
+    if (!settings.companion || !t.asked || t.paid.includes(reg)) return;
+    if (this.save.dust >= LEVEL_COST) {
+      this.save.dust -= LEVEL_COST;
+      t.paid.push(reg);
+      this.gain('Kaplan için ruh tozu −' + LEVEL_COST, '#ffd1f0', 'ui_dust');
+      this.float(this.px, this.py - 50, '−' + LEVEL_COST + ' toz', '#ffd1f0');
+    } else {
+      settings.companion = false;
+      settingsChanged();
+      this.say('Ruh tozu yetmedi: kaplan kapatıldı');
+    }
+    this.persist();
+    this.onChange();
+  }
+  /** ilk açılış sorusunun cevabı: kullanılsın mı; bulunulan seviye ücretsizdir */
+  answerTiger(use: boolean): void {
+    const t = this.save.tiger;
+    t.asked = true;
+    if (!t.paid.includes(this.region)) t.paid.push(this.region);
+    settings.companion = use;
+    settingsChanged();
+    this.persist();
+    this.onChange();
+  }
+  /** kaplanı aç/kapat; açarken bu seviye ödenmemişse 40 ruh tozu gerekir ('ok' ya da hata metni döner) */
+  setCompanion(on: boolean): string {
+    const t = this.save.tiger;
+    if (!on) { settings.companion = false; settingsChanged(); this.onChange(); return 'ok'; }
+    if (!t.paid.includes(this.region)) {
+      if (this.save.dust < LEVEL_COST) return 'Ruh tozu yetmiyor (40)';
+      this.save.dust -= LEVEL_COST;
+      t.paid.push(this.region);
+      this.gain('Kaplan için ruh tozu −' + LEVEL_COST, '#ffd1f0', 'ui_dust');
+    }
+    settings.companion = true;
+    settingsChanged();
+    this.persist();
+    this.onChange();
+    return 'ok';
+  }
+
+  /** ilk kez ana karakterin %80'i ile başlar; sonra kendi seviyesiyle büyür (her 12 öldürmede ×1.07) */
+  private tigerInit(): void {
+    const t = this.save.tiger;
+    if (t.hpBase > 0 && t.dpsBase > 0) return;
+    t.hpBase = TIGER_POWER * this.maxHp();
+    t.dpsBase = TIGER_POWER * Math.max(1, this.dps());
+  }
+  /** yara: güç, seviyesinin en çok %40'ına kadar düşer */
+  tigerWound(): number { return WOUND_FLOOR + (1 - WOUND_FLOOR) * this.save.tiger.frac; }
+  tigerMaxHp(): number { this.tigerInit(); return this.save.tiger.hpBase * (1 + tigerBonus(this.save.tiger, 'helm') / 100); }
+  tigerDps(): number { this.tigerInit(); return this.save.tiger.dpsBase * (1 + tigerBonus(this.save.tiger, 'fang') / 100) * this.tigerWound(); }
+  /** ruh tozuyla iyileştirme bedeli: yara ne kadar derinse o kadar */
+  tigerHealCost(): number { return Math.max(1, Math.ceil((1 - this.save.tiger.frac) * (2 + this.bossesDown() / 4))); }
+  healTiger(): string {
+    const t = this.save.tiger;
+    if (t.frac >= 0.99) return 'Kaplan sağlıklı';
+    const cost = this.tigerHealCost();
+    if (this.save.dust < cost) return 'Toz yetmiyor';
+    this.save.dust -= cost;
+    t.frac = 1;
+    audio.play('heal');
+    this.say('Kaplan iyileşti');
+    this.persist();
+    this.onChange();
+    return 'ok';
+  }
+  /** kaplanın vurduğu bir düşman öldü: her 12'de bir kaplan seviye atlar */
+  private tigerCredit(): void {
+    const t = this.save.tiger;
+    t.kills++;
+    if (t.kills < LEVEL_KILLS) return;
+    t.kills = 0;
+    t.level++;
+    t.hpBase *= LEVEL_GROWTH;
+    t.dpsBase *= LEVEL_GROWTH;
+    this.gain('Kaplan seviye atladı: sv.' + t.level, '#8fe8ff', 'ui_power');
+    audio.play('chest');
+  }
+  private tigerInterval(): number { return 0.6 / (1 + tigerBonus(this.save.tiger, 'claw') / 100); }
+  /** güç = √(can × saniyelik hasar) × 10: ana karakterin %80'i, eşyalarla biraz fazlası */
+  tigerPower(): number { return Math.floor(Math.sqrt(this.tigerMaxHp() * this.tigerWound() * Math.max(1, this.tigerDps())) * 10); }
+  tigerDown(): boolean { return !!this.tg && this.tg.down; }
+  /** ana karakter iyileşirken kaplan da aynı oranda iyileşir (can oranı ortak yenilenir) */
+  private tigerHeal(frac: number): void {
+    const t = this.save.tiger;
+    if (t.frac < 1) t.frac = Math.min(1, t.frac + frac * 0.25); // ana karakterle birlikte ama yavaş; ruh tozu hızlandırır
+  }
+  /** bir porsiyon: ruh + toz harcar, 10 dk saldırı enerjisi verir */
+  feedCost(): { souls: number; dust: number } { return { souls: Math.max(30, this.soupYield(0.4 * 3.6e6)), dust: 1 + Math.floor(this.bossesDown() / 8) }; }
+  feedTiger(): string {
+    const t = this.save.tiger;
+    const c = this.feedCost();
+    if (t.energy >= ENERGY_MAX - 1) return 'Enerji dolu';
+    if (this.save.essence < c.souls || this.save.dust < c.dust) return 'Ruh ya da toz yetmiyor';
+    this.save.essence -= c.souls;
+    this.save.dust -= c.dust;
+    t.energy = Math.min(ENERGY_MAX, t.energy + FEED_SECONDS);
+    t.feeds++;
+    audio.play('heal');
+    this.say('Kaplan beslendi: +10 dk enerji');
+    this.persist();
+    this.onChange();
+    return 'ok';
+  }
+
+  private updateTiger(dt: number): void {
+    if (!settings.companion) { this.tg = null; return; }
+    const t = this.save.tiger;
+    if (!this.tg) this.tg = { x: this.px - 50, y: this.py + 20, face: 1, atkT: 0, cd: 0.5, inv: 0, flash: 0, t: 0, moving: false, down: t.frac <= 0, dry: false };
+    const g = this.tg;
+    g.t += dt;
+    g.cd = Math.max(0, g.cd - dt);
+    g.inv = Math.max(0, g.inv - dt);
+    g.flash = Math.max(0, g.flash - dt);
+    g.atkT = Math.max(0, g.atkT - dt);
+    g.moving = false;
+    if (Math.hypot(g.x - this.px, g.y - this.py) > 1000) { g.x = this.px - 40; g.y = this.py + 20; }
+    // hedef: ekrandaki en yakın canlı düşman
+    let target: Enemy | null = null;
+    let td = 650;
+    for (const e of this.enemies) {
+      if (e.hp <= 0 || !this.visible(e.x, e.y)) continue;
+      const d = Math.hypot(e.x - g.x, e.y - g.y);
+      if (d < td) { td = d; target = e; }
+    }
+    let gx: number;
+    let gy: number;
+    let speed: number;
+    if (target && t.energy > 0) {
+      t.energy = Math.max(0, t.energy - dt);
+      g.dry = false;
+      const reach = target.def.r * TIERS[target.tier].size + 26;
+      const dx = target.x - g.x;
+      const dy = target.y - g.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (Math.abs(dx) > 4) g.face = dx > 0 ? 1 : -1;
+      if (d <= reach) {
+        gx = g.x; gy = g.y; speed = 0;
+        if (g.cd <= 0) {
+          g.cd = this.tigerInterval();
+          g.atkT = 0.25;
+          target.tg = true;
+          this.hitEnemy(target, this.tigerDps() * g.cd, 'cut'); // saniyelik hasar = tigerDps
+        }
+      } else { gx = target.x; gy = target.y; speed = 250; }
+    } else {
+      if (target && t.energy <= 0 && !g.dry) { g.dry = true; this.say('Kaplanın enerjisi bitti: besle'); }
+      // ana karakterin yanında takip
+      const behind = Math.cos(this.face) >= 0 ? -1 : 1;
+      gx = this.px + behind * 62;
+      gy = this.py + 16;
+      speed = Math.min(260, 70 + Math.hypot(gx - g.x, gy - g.y) * 2);
+      if (Math.abs(gx - g.x) > 6) g.face = gx > g.x ? 1 : -1;
+    }
+    const dx = gx - g.x;
+    const dy = gy - g.y;
+    const d = Math.hypot(dx, dy);
+    if (speed > 0 && d > 8) {
+      const nx = g.x + (dx / d) * speed * dt;
+      const ny = g.y + (dy / d) * speed * dt;
+      if (this.walkable(nx, ny, true)) { g.x = nx; g.y = ny; }
+      else if (this.walkable(nx, g.y, true)) g.x = nx;
+      else if (this.walkable(g.x, ny, true)) g.y = ny;
+      g.moving = true;
+    }
+    // düşman teması: kaplan da hasar alır (ana karakterin dayanıklılığının %60'ı kadar yumuşak)
+    if (g.inv <= 0) {
+      for (const e of this.enemies) {
+        if (e.hp <= 0 || e.state === 'return') continue;
+        if (Math.hypot(e.x - g.x, e.y - g.y) > e.def.r * TIERS[e.tier].size + 16) continue;
+        const hit = this.enemyDmg(e) * 0.6;
+        t.frac = Math.max(0, t.frac - hit / this.tigerMaxHp());
+        g.inv = 0.6;
+        g.flash = 0.2;
+        this.float(g.x, g.y - 30, '-' + this.fmt(hit), '#ffb0b0');
+        break;
+      }
+    }
+  }
+
+  private drawTiger(): void {
+    const g = this.tg;
+    if (!g || !settings.companion) return;
+    const c = this.ctx;
+    const t = this.save.tiger;
+    c.fillStyle = 'rgba(0,0,0,0.25)';
+    c.beginPath(); c.ellipse(g.x, g.y + 16, 24, 7, 0, 0, Math.PI * 2); c.fill();
+    const has = (n: string): boolean => !!this.spr(n);
+    let frame = 'tiger_walk1';
+    if (g.down) frame = has('tiger_down1') ? 'tiger_down1' : 'tiger';
+    else if (g.atkT > 0 && has('tiger_atk2')) frame = g.atkT > 0.12 ? 'tiger_atk2' : 'tiger_atk1';
+    else if (g.moving && has('tiger_walk4')) frame = 'tiger_walk' + (1 + (Math.floor(g.t * 9) % 4));
+    else if (!has('tiger_walk1')) frame = 'tiger';
+    const bob = g.moving ? -Math.abs(Math.sin(g.t * 10)) * 3 : Math.sin(g.t * 2) * 1;
+    if (!this.drawSprX(frame, g.x, g.y - 4, 76, { flip: g.face, bob, flash: g.flash > 0, alpha: g.down ? 0.7 : 1 })) {
+      c.fillStyle = '#f4f4f4'; c.beginPath(); c.ellipse(g.x, g.y, 18, 12, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#222'; c.fillRect(g.x - 10, g.y - 6, 4, 10); c.fillRect(g.x + 2, g.y - 6, 4, 10);
+    }
+    // can çubuğu ve enerji durumu
+    c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(g.x - 22, g.y - 52, 44, 6);
+    c.fillStyle = t.frac <= 0.25 ? '#ff7a7a' : '#8fe8ff'; c.fillRect(g.x - 21, g.y - 51, 42 * Math.max(0, t.frac), 4);
+    if (t.energy <= 0 || g.down) {
+      c.font = `bold ${Math.round(11 * this.lk())}px sans-serif`; c.textAlign = 'center'; c.fillStyle = '#cfd8ff';
+      c.fillText(g.down ? 'Zzz' : T('enerji yok'), g.x, g.y - 58);
+    }
+  }
+
+  /** kaplanın eşyası düşer (kask, keskin diş, pençe): aynı tür + nadirlik birleşir, en iyisi otomatik kuşanılır */
+  gainTigerItem(minRarity = 0): void {
+    const t = this.save.tiger;
+    const w = [60, 25, 10, 4, 1];
+    let roll = Math.random() * 100;
+    let r = 0;
+    for (let i = 0; i < w.length; i++) { roll -= w[i]; if (roll <= 0) { r = i; break; } }
+    r = Math.max(minRarity, r);
+    const type = TIGER_SLOT_LIST[Math.floor(Math.random() * TIGER_SLOT_LIST.length)];
+    const slot = TIGER_SLOTS[type];
+    const twin = t.items.find((x) => x.type === type && x.rarity === r);
+    if (twin) {
+      if (twin.level < MAX_TIGER_ITEM_LEVEL) twin.level++;
+      else this.save.dust += 4 * (1 + r);
+      this.gain('Kaplan: ' + slot.names[r] + ' birleştirildi (sv.' + twin.level + ')', RARITIES[r].color, slot.icon);
+      return;
+    }
+    const it: TigerItem = { id: t.nextItem++, type, rarity: r, level: 1 };
+    t.items.push(it);
+    const cur = t.items.find((x) => x.id === t.eq[type]);
+    if (!cur || r * 100 + 1 > cur.rarity * 100 + cur.level) {
+      t.eq[type] = it.id;
+      this.gain('Kaplan: ' + slot.names[r] + ' kuşanıldı', RARITIES[r].color, slot.icon);
+    } else this.gain('Kaplan eşyası bulundu: ' + slot.names[r], RARITIES[r].color, slot.icon);
+  }
+  tigerEquip(id: number): void {
+    const t = this.save.tiger;
+    const it = t.items.find((x) => x.id === id);
+    if (!it) return;
+    t.eq[it.type] = t.eq[it.type] === id ? 0 : id;
+    this.persist();
+    this.onChange();
+  }
+  tigerSell(id: number): void {
+    const t = this.save.tiger;
+    const it = t.items.find((x) => x.id === id);
+    if (!it) return;
+    this.save.dust += 4 * (1 + it.rarity) * it.level;
+    t.items = t.items.filter((x) => x.id !== id);
+    if (t.eq[it.type] === id) t.eq[it.type] = 0;
+    this.persist();
+    this.onChange();
   }
 
   // ---- eğitim zinciri + günlük görevler ----
@@ -1244,6 +1542,7 @@ export class Game {
 
   // ---- miğfer / kalkan ----
   gainItem(type: SlotType, minRarity = 0): Item {
+    if (Math.random() < 0.45) this.gainTigerItem(Math.max(0, minRarity - 1)); // her ganimetle kaplan için de eşya düşebilir
     const w = [60, 25, 10, 4, 1];
     const total = w.reduce((s, x) => s + x, 0);
     let roll = Math.random() * total;
@@ -1380,11 +1679,12 @@ export class Game {
     this.updateZoom(dt);
     const reg0 = this.region;
     this.region = this.regionAt(this.px, this.py);
-    if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); }
+    if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); this.tigerEnterRegion(this.region); }
     const calm = !this.enemies.some((e) => e.state === 'chase');
     const atHome = this.inHome();
     const before = this.hp;
     this.hp = Math.min(this.maxHp(), this.hp + (this.regen() + (calm ? 0.03 * this.maxHp() : 0) + (atHome ? HOME_HEAL * this.maxHp() : 0)) * dt);
+    this.tigerHeal(((this.regen() + (calm ? 0.03 * this.maxHp() : 0) + (atHome ? HOME_HEAL * this.maxHp() : 0)) * dt) / this.maxHp());
     if (atHome && this.hp > before) {
       this.healAcc += this.hp - before;
       this.healShow -= dt;
@@ -1398,6 +1698,7 @@ export class Game {
       // boss evinin içi: hızlı iyileşme
       const b4 = this.hp;
       this.hp = Math.min(this.maxHp(), this.hp + 0.12 * this.maxHp() * dt);
+      this.tigerHeal(0.12 * dt);
       this.bossHealAcc += this.hp - b4;
       this.bossHealShow -= dt;
       if (this.bossHealShow <= 0 && this.bossHealAcc >= 1) {
@@ -1413,6 +1714,7 @@ export class Game {
     this.updateEnemies(dt);
     this.checkPaywall(dt);
     this.questTick(dt);
+    this.updateTiger(dt);
     this.castSpells(dt);
     this.updateProjs(dt);
     this.removeDead();
@@ -2026,6 +2328,7 @@ export class Game {
   private killEnemy(e: Enemy): void {
     this.save.kills++;
     this.bumpDaily('kills');
+    if (e.tg) this.tigerCredit();
     this.shake = Math.max(this.shake, e.tier === 'boss' ? 10 : 1.5);
     audio.play(e.beast ? 'beastdie' : e.tier === 'boss' ? 'boss' : 'kill');
     if (e.tier === 'boss') vibrate([60, 40, 120]);
@@ -2295,6 +2598,7 @@ export class Game {
     for (let i = 0; i < ZONES.length - 1; i++) this.drawMaster(i, camX, camY);
     for (const d of this.deathFx) this.drawDeath(d);
     for (const e of this.enemies) if (this.inView(e.x, e.y, 140, camX, camY)) this.drawEnemy(e);
+    this.drawTiger();
     this.drawPlayer();
     this.drawObstacles(camX, camY, true);
     for (const p of this.projs) this.drawProj(p);

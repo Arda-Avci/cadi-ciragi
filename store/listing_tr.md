@@ -32,6 +32,11 @@ CADI EVİ
 • Kazan sen yokken ruh biriktirir; oyun açıkken de dururken azar azar kazanırsın. Her gün gel, giriş serin büyüdükçe ödüller artar.
 • Günlük 3 görev, bildirimlerle iksirin hazır olduğunda ve kedin acıktığında haber alırsın.
 
+YARDIMCI KAPLAN
+• Beyaz Kaplan yavrusu seninle savaşır: ekrandaki düşmanlara kendiliğinden saldırır, ganimetle düşen kask, keskin diş ve pençeyle güçlenir.
+• Kendi seviyesi vardır, her 12 yendiği düşmanda seviye atlar. Yaralanınca zayıflar, ruh tozuyla iyileşir.
+• İlk seviye ücretsiz; sonraki her seviye geçişinde Kaplan için ruh tozu −40. İstediğin zaman Ayarlar'dan kapatabilirsin.
+
 DÖVÜŞ ARENASI
 • Street Fighter tarzı yan görünümlü dövüş: yumruk, tekme, büyü, blok, zıplama.
 • 12 efsane cadıyı sırayla yen. Arkadaşına gölge kodunu gönder, o senin gölgenle dövüşsün.
@@ -45,11 +50,13 @@ FİNAL
 
 Oyun ücretsizdir. İsteğe bağlı uygulama içi satın almalar ve reklamlar içerir: güç paketleri, 40. adadan sonrası için devam paketleri ve ödüllü videolar. Bildirimler isteğe bağlıdır.
 
-## Sürüm notları (0.14.2)
+## Sürüm notları (0.15.0)
 • Yeni: kedi maması, düzenli besleme serisi, kediye isim verme.
 • Yeni: başlangıç ve günlük görevler, düşman koleksiyonu, zor boss, kıyafet bonusları.
 • Yeni: hikâye ara sahneleri ve tüm panellerde yeni görseller.
 • Yeni: bekleme geliri ve iksir/kedi/kazan bildirimleri.
+• Yeni: yardımcı Beyaz Kaplan (kendi seviyesi, eşyaları, ruh tozuyla bakım).
+• Yeni: 10. adadan sonra daha sık kamplar; aynı anda birçok düşmanla savaş.
 • Düzeltme: kristal geliştirme için toz artık düşmanlardan ve görevlerden gelir.
 • Düzeltme: eski kayıttaki aynı eşyalar birleşir; karakter kartlarındaki ikonlar düzeltildi.
 • Bumerang süpürge %20 küçüldü; yönlendirme oku artık düşmanın kendisini gösterir.
