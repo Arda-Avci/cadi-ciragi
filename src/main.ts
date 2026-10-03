@@ -837,7 +837,19 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 // telefonda çevrimdışı çalışsın (?nosw=1 ile kapatılır)
 if ('serviceWorker' in navigator && !location.search.includes('nosw') && !(window as unknown as { Capacitor?: unknown }).Capacitor) {
   navigator.serviceWorker.register('sw.js').catch((e) => console.error('service worker kaydedilemedi', e));
+  // yeni sürüm etkinleşince açılış sayfasındaysak sayfa yenilenir (önbellekteki eski sürümde kalınmasın); oyundaysak sonraki açılışta yenilenir
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloaded) return;
+    if (landingOpen) { reloaded = true; location.reload(); } else pendingReload = true;
+  });
 }
+let pendingReload = false;
+// maden bulunduysa Godot dosyaları arka planda ısıtılır: madene girişte beklemeden açılsın
+setTimeout(() => {
+  if (game.save.mines.length && !location.search.includes('nosw')) { fetch('mine/index.pck').catch(() => undefined); fetch('mine/index.wasm').catch(() => undefined); }
+}, 5000);
 
 // yapılabilecek geliştirme varsa ilgili düğme parlar, "Buraya tıkla!" balonu zıplar (oyun kesilmez, dokunma engellenmez)
 const hintTip = document.getElementById('hint-tip') as HTMLDivElement;
@@ -926,7 +938,7 @@ game.onHoleTrap = (who) => {
 game.onPaywall = () => { if (!fight.active && !landingOpen) { open = 'shop'; renderPanel(); } };
 /**
  * Godot maden oyunu (godot_mine/ projesi, web'e tek iş parçacıklı aktarılmış mine/index.html) tam ekran iframe ile açılır.
- * Oyun hazır olunca 'mine-ready', bitince 'mine-result' mesajı gönderir; 25 sn içinde hazır olmazsa (çevrimdışı, WebGL yok) yedek çalışır.
+ * Oyun hazır olunca 'mine-ready', bitince 'mine-result' mesajı gönderir; 45 sn içinde hazır olmazsa (çevrimdışı, WebGL yok) yedek çalışır.
  */
 function playMineGodot(reg: number, after: (d: number, p: boolean) => void, fallback: () => void): void {
   const wrap = document.createElement('div');
@@ -947,7 +959,7 @@ function playMineGodot(reg: number, after: (d: number, p: boolean) => void, fall
   let ready = false;
   let closed = false;
   const close = (): void => { if (closed) return; closed = true; clearTimeout(timer); window.removeEventListener('message', onMsg); wrap.remove(); };
-  const timer = window.setTimeout(() => { if (!ready) { close(); fallback(); } }, 25000);
+  const timer = window.setTimeout(() => { if (!ready) { close(); fallback(); } }, 45000);
   const onMsg = (e: MessageEvent): void => {
     if (e.source !== ifr.contentWindow) return;
     const d = e.data as { type?: string; result?: { diamonds?: number; potion?: boolean } } | null;
@@ -1095,6 +1107,7 @@ function refreshLanding(): void {
 function showLanding(): void {
   landingOpen = true;
   game.persist();
+  if (pendingReload) { location.reload(); return; }
   landing.classList.remove('hidden');
   lName.value = '';
   refreshLanding();
