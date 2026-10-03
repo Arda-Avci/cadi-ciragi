@@ -63,3 +63,9 @@ Satın alma, geri yükleme, banner ve ödüllü reklam akışları yalnızca der
 - `ISLAND_COUNT = 250`; 70. adadan sonra yarıçap 1505 ve kamp yoğunluğu sabit (çakışma yok), sapma ±100; çeşit adlarına sıra eki (II, III…).
 - Güç çarpanı 41. adadan sonra her adada x3: 250. adada `scale` ~6e161 (taşma yok). `fmtNum` 1e42 üstünü bilimsel yazar.
 - Yumuşak sınır: `softCap(reg)` 101. adadan itibaren ücretsiz kalıcı güç tavanını her adada 
+## 250 ada (04-10-2026)
+- `ISLAND_COUNT = 250`; 70. adadan sonra yarıçap 1505 ve kamp yoğunluğu sabit (çakışma yok), sapma ±100; çeşit adlarına sıra eki (II, III…).
+- Güç çarpanı 41. adadan sonra her adada x3: 250. adada `scale` ~6e161 (taşma yok). `fmtNum` 1e42 üstünü bilimsel yazar.
+- Yumuşak sınır: `softCap(reg)` 101. adadan itibaren ücretsiz kalıcı güç tavanını her adada %6 düşürür (`SOFT_CAP_FROM`, `SOFT_CAP_DECAY` data.ts); açığı güç paketleri kapatır. Ada girişinde ekipman yetmiyorsa mağaza ipucu çıkar.
+- Performans: `Game.winRange()` çevredeki 10 adayı verir; fizik, çizim, minimap ve büyük harita yalnız bu pencereye bakar.
+- Yeni devam paketleri: `hexling.levels.50` (+50), `hexling.levels.100` (+100); mağaza konsolunda ürün oluşturulmalı, fiyatlar tahmindir.
