@@ -1,5 +1,5 @@
 // Çevrimdışı çalışma: önce önbellek, arkada güncelle (stale-while-revalidate).
-const CACHE = 'hexling-v74';
+const CACHE = 'hexling-v75';
 const CORE = ['index.html', 'manifest.webmanifest', 'dist/main.js', 'dist/game.js', 'dist/data.js', 'dist/audio.js', 'dist/settings.js', 'dist/i18n.js', 'dist/scenery.js', 'dist/version.js', 'dist/billing.js', 'dist/ads.js', 'dist/fight.js', 'dist/house.js', 'dist/meta.js', 'dist/quests.js', 'dist/story.js', 'dist/tiger.js', 'dist/notify.js', 'dist/mine.js', 'dist/mine3d.js', 'vendor/three.min.js', 'assets/manifest.json', 'assets/title_bg.jpg', 'assets/arena_bg.jpg', 'icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

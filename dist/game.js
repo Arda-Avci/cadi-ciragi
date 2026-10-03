@@ -3460,8 +3460,26 @@ export class Game {
                     vy = (hy / hd) * fs;
                 }
             }
-            const nx = e.x + vx * dt;
-            const ny = e.y + vy * dt;
+            let nx = e.x + vx * dt;
+            let ny = e.y + vy * dt;
+            if (e.sp === BONUS_SP) {
+                // bonus düşmanı, bir komşusuna 130 px'den fazla yaklaşacaksa o yöne ilerlemez (yan yana kayabilir)
+                for (const o of this.enemies) {
+                    if (o === e || o.sp !== BONUS_SP)
+                        continue;
+                    const dOld = Math.hypot(o.x - e.x, o.y - e.y);
+                    if (dOld > 400)
+                        continue;
+                    const dNew = Math.hypot(o.x - nx, o.y - ny);
+                    if (dNew < 130 && dNew < dOld) {
+                        const ux = (o.x - e.x) / (dOld || 1);
+                        const uy = (o.y - e.y) / (dOld || 1);
+                        const along = Math.max(0, (nx - e.x) * ux + (ny - e.y) * uy); // komşuya doğru bileşen çıkarılır
+                        nx -= ux * along;
+                        ny -= uy * along;
+                    }
+                }
+            }
             const ox0 = e.x;
             const oy0 = e.y;
             if (this.walkable(nx, ny, true)) {
@@ -3545,13 +3563,64 @@ export class Game {
         this.say('Yolculuğa devam etmek için bir devam paketi gerekir.');
         this.onPaywall();
     }
+    /** bonus düşmanları birbirine en az 130 px yaklaşamaz: ızgarayla komşular itilir */
+    separateBonus() {
+        const MIN = 130;
+        const grid = new Map();
+        const list = this.enemies.filter((e) => e.sp === BONUS_SP && e.hp > 0);
+        const key = (cx, cy) => cx * 100003 + cy;
+        for (const e of list) {
+            const k = key(Math.floor(e.x / MIN), Math.floor(e.y / MIN));
+            const g = grid.get(k);
+            if (g)
+                g.push(e);
+            else
+                grid.set(k, [e]);
+        }
+        for (const a of list) {
+            const cx = Math.floor(a.x / MIN);
+            const cy = Math.floor(a.y / MIN);
+            for (let ox = -1; ox <= 1; ox++)
+                for (let oy = -1; oy <= 1; oy++) {
+                    for (const b of grid.get(key(cx + ox, cy + oy)) ?? []) {
+                        if (b === a || b.x < a.x || (b.x === a.x && b.y <= a.y))
+                            continue; // her çift bir kez
+                        let dx = b.x - a.x;
+                        let dy = b.y - a.y;
+                        let d = Math.hypot(dx, dy);
+                        if (d >= MIN)
+                            continue;
+                        if (d < 0.01) {
+                            const t = Math.random() * 6.283;
+                            dx = Math.cos(t);
+                            dy = Math.sin(t);
+                            d = 1;
+                        }
+                        const push = (MIN - d) / 2 + 0.5;
+                        const ux = (dx / d) * push;
+                        const uy = (dy / d) * push;
+                        if (this.walkable(a.x - ux, a.y - uy, true)) {
+                            a.x -= ux;
+                            a.y -= uy;
+                        }
+                        if (this.walkable(b.x + ux, b.y + uy, true)) {
+                            b.x += ux;
+                            b.y += uy;
+                        }
+                    }
+                }
+        }
+    }
     /** 5, 10, 15… numaralı adaya geçilecek köprü kapısına yaklaşınca (köprü açıksa) bonus tur bir kez başlar */
     tickBonus(dt) {
         const b = this.bonus;
         if (b) {
             b.t -= dt;
-            const left = this.enemies.some((e) => e.sp === BONUS_SP);
-            if (b.t <= 0 || !left)
+            for (let pass = 0; pass < 6; pass++)
+                this.separateBonus();
+            const left = this.enemies.filter((e) => e.sp === BONUS_SP && e.hp > 0).length;
+            b.kills = b.total - left; // sayaç kalan düşmandan hesaplanır: ölen hiçbir düşman atlanmaz
+            if (b.t <= 0 || left === 0)
                 this.endBonus();
             return;
         }
@@ -3572,18 +3641,22 @@ export class Game {
         const target = 0.04 * Math.max(1, this.fullPower()); // her düşman karakter gücünün %4'ü
         const maxHp = Math.max(1, ((target / 10) ** 2 * 0.6) / dmg0);
         let placed = 0;
-        for (let k = 0; k < 40000 && placed < BONUS_COUNT; k++) {
+        const spots = [];
+        for (let k = 0; k < 60000 && placed < BONUS_COUNT; k++) {
             const a = Math.random() * Math.PI * 2;
-            const r = 220 + Math.random() * 520;
+            const r = 260 + Math.random() * (1900 + k / 30);
             const x = this.px + Math.cos(a) * r;
             const y = this.py + Math.sin(a) * r;
             if (!this.walkable(x, y, true))
                 continue;
+            if (spots.some((s) => Math.hypot(s.x - x, s.y - y) < 130))
+                continue; // doğarken de 130 px aralık
+            spots.push({ x, y });
             this.enemies.push({ def, tier: 'easy', lv: 1, reg: i, sp: BONUS_SP, x, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
                 phase: Math.random() * 6, dashT: 3, dvx: 0, dvy: 0, flip: Math.random() < 0.5 ? 1 : -1, flash: 0, lunge: 0, moving: false });
             placed++;
         }
-        this.bonus = { t: BONUS_SEC, kills: 0, reg: i };
+        this.bonus = { t: BONUS_SEC, kills: 0, total: placed, reg: i };
         this.say('BONUS TUR! 120 sn içinde ne kadar düşman yenersen o kadar ödül');
         audio.play('roar');
         vibrate([90, 40, 160]);
@@ -4207,8 +4280,6 @@ export class Game {
     }
     killEnemy(e) {
         if (e.sp === BONUS_SP) {
-            if (this.bonus)
-                this.bonus.kills++;
             audio.play('kill');
             this.deathFx.push({ x: e.x, y: e.y, t: 0.3, name: e.def.id, size: e.def.r * 3, flip: e.flip });
             return;
@@ -5677,7 +5748,7 @@ export class Game {
             c.font = 'bold 20px sans-serif';
             c.lineWidth = 5;
             c.strokeStyle = 'rgba(0,0,0,0.75)';
-            const t = T('BONUS TUR') + ' ' + Math.ceil(this.bonus.t) + ' sn · ' + this.bonus.kills + '/' + BONUS_COUNT;
+            const t = T('BONUS TUR') + ' ' + Math.ceil(this.bonus.t) + ' sn · ' + this.bonus.kills + '/' + this.bonus.total;
             c.strokeText(t, this.w / 2, 34);
             c.fillStyle = '#ffd84a';
             c.fillText(t, this.w / 2, 34);
