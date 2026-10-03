@@ -39,6 +39,8 @@ var finished := false
 var cast_cd := 0.0
 var shake := 0.0
 var quota := QUOTA
+var yaw := 0.0                         # kahraman/kamera yönü (0 = -Z)
+var auto_dir := Vector3.ZERO
 var exit_label: Label3D
 var need_cd := 0.0
 var riding = null                      # binilen maden arabası
@@ -108,7 +110,7 @@ func _ready() -> void:
 	_make_player()
 	if debug_room >= 0:
 		player.position = _cell_pos(_center(rooms[mini(debug_room, rooms.size() - 1)]))
-		cam.global_position = player.position + Vector3(0, 13.0, 8.5)
+		cam.global_position = player.position + Vector3(0, 6.0, 6.8)
 	_make_light_pool()
 	_place_content()
 	_make_hud()
@@ -268,14 +270,7 @@ func _face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: V
 			st.add_vertex(tri[k])
 
 func _build_level() -> void:
-	var st_floor := SurfaceTool.new()
-	st_floor.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var st_wall := SurfaceTool.new()
-	st_wall.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var st_ore := SurfaceTool.new()
-	st_ore.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var st_top := SurfaceTool.new()
-	st_top.begin(Mesh.PRIMITIVE_TRIANGLES)
+	sts.clear()
 	var body := StaticBody3D.new()
 	add_child(body)
 	var u := S / 4.0
@@ -286,7 +281,7 @@ func _build_level() -> void:
 			var x1 := x0 + S
 			var z1 := z0 + S
 			if _is_floor(x, z):
-				_face(st_floor, Vector3(x0, 0, z1), Vector3(x1, 0, z1), Vector3(x1, 0, z0), Vector3(x0, 0, z0), Vector3.UP, Vector2(x * u, (z + 1) * u), Vector2((x + 1) * u, (z + 1) * u), Vector2((x + 1) * u, z * u), Vector2(x * u, z * u))
+				_face(_st("floor", x, z), Vector3(x0, 0, z1), Vector3(x1, 0, z1), Vector3(x1, 0, z0), Vector3(x0, 0, z0), Vector3.UP, Vector2(x * u, (z + 1) * u), Vector2((x + 1) * u, (z + 1) * u), Vector2((x + 1) * u, z * u), Vector2(x * u, z * u))
 				continue
 			var near_floor := false
 			# kuzey (z-) komşu zemin ise kuzey yüz: normal -z... yüz, zemine bakar
@@ -294,7 +289,7 @@ func _build_level() -> void:
 			for d in dirs:
 				if _is_floor(x + d.x, z + d.y):
 					near_floor = true
-					var st: SurfaceTool = st_ore if rng.randf() < 0.07 else st_wall
+					var st: SurfaceTool = _st("ore" if rng.randf() < 0.07 else "wall", x, z)
 					var vu0 := (x + z) * u
 					if d == Vector2i(0, -1):   # zemin kuzeyde: duvarın kuzey yüzü
 						_face(st, Vector3(x1, 0, z0), Vector3(x0, 0, z0), Vector3(x0, WALL_H, z0), Vector3(x1, WALL_H, z0), Vector3(0, 0, -1), Vector2(vu0 + u, 1), Vector2(vu0, 1), Vector2(vu0, 0), Vector2(vu0 + u, 0))
@@ -305,7 +300,7 @@ func _build_level() -> void:
 					else:                      # doğu yüz
 						_face(st, Vector3(x1, 0, z1), Vector3(x1, 0, z0), Vector3(x1, WALL_H, z0), Vector3(x1, WALL_H, z1), Vector3(1, 0, 0), Vector2(vu0, 1), Vector2(vu0 + u, 1), Vector2(vu0 + u, 0), Vector2(vu0, 0))
 			if near_floor:
-				_face(st_top, Vector3(x0, WALL_H, z1), Vector3(x1, WALL_H, z1), Vector3(x1, WALL_H, z0), Vector3(x0, WALL_H, z0), Vector3.UP, Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0))
+				_face(_st("top", x, z), Vector3(x0, WALL_H, z1), Vector3(x1, WALL_H, z1), Vector3(x1, WALL_H, z0), Vector3(x0, WALL_H, z0), Vector3.UP, Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0))
 				var cs := CollisionShape3D.new()
 				var bs := BoxShape3D.new()
 				bs.size = Vector3(S, WALL_H, S)
@@ -319,12 +314,25 @@ func _build_level() -> void:
 	fcs.shape = fshape
 	fcs.position = Vector3(GW * S * 0.5, -0.2, GH * S * 0.5)
 	body.add_child(fcs)
-	_add_surface(st_floor, "floor")
-	_add_surface(st_wall, "wall")
-	_add_surface(st_ore, "ore")
-	_add_surface(st_top, "top")
+	_flush_surfaces()
 	_make_secrets()
 	_make_exit()
+
+const CHUNK := 4
+var sts := {}
+
+func _st(mat_name: String, x: int, z: int) -> SurfaceTool:
+	var key := "%s|%d|%d" % [mat_name, x / CHUNK, z / CHUNK]
+	if not sts.has(key):
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		sts[key] = st
+	return sts[key]
+
+func _flush_surfaces() -> void:
+	for key in sts.keys():
+		_add_surface(sts[key], String(key).split("|")[0])
+	sts.clear()
 
 func _add_surface(st: SurfaceTool, mat_name: String) -> void:
 	st.generate_tangents()
@@ -515,6 +523,8 @@ func _make_player() -> void:
 	lantern.light_energy = 2.0
 	lantern.omni_range = 8.5
 	lantern.shadow_enabled = true
+	lantern.shadow_bias = 0.06
+	lantern.shadow_normal_bias = 1.2
 	lantern.position = Vector3(0.6, 2.6, 0.9)
 	player.add_child(lantern)
 	for mi in model.get_children():
@@ -522,14 +532,14 @@ func _make_player() -> void:
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(player)
 	cam = Camera3D.new()
-	cam.fov = 58.0
+	cam.fov = 66.0
 	cam.far = 90.0
 	add_child(cam)
-	cam.global_position = player.global_position + Vector3(0, 13.0, 8.5)
-	cam.look_at(player.global_position, Vector3.UP)
+	cam.global_position = player.global_position + Vector3(0, 6.0, 6.8)
+	cam.look_at(player.global_position + Vector3(0, 0.5, -3.0), Vector3.UP)
 
 func _make_light_pool() -> void:
-	for i in range(5):
+	for i in range(3):
 		var l := OmniLight3D.new()
 		l.light_color = Color(1.0, 0.92, 0.65)
 		l.light_energy = 0.0
@@ -625,11 +635,6 @@ func _add_potion(p: Vector3) -> void:
 	nk.material_override = mats["metal"]
 	nk.position = Vector3(0, 0.28, 0)
 	n.add_child(nk)
-	var l := OmniLight3D.new()
-	l.light_color = Color(1, 0.4, 0.9)
-	l.light_energy = 0.6
-	l.omni_range = 3.5
-	n.add_child(l)
 	add_child(n)
 	pickups.append({"node": n, "kind": "potion", "taken": false, "ph": rng.randf() * 6.0})
 
@@ -663,12 +668,6 @@ func _add_chest(p: Vector3) -> void:
 		band.material_override = mats["metal"]
 		band.position = Vector3(sx, 0.34, 0)
 		n.add_child(band)
-	var gl := OmniLight3D.new()
-	gl.light_color = Color(1, 0.8, 0.4)
-	gl.light_energy = 0.35
-	gl.omni_range = 3.0
-	gl.position = Vector3(0, 0.8, 0)
-	n.add_child(gl)
 	add_child(n)
 	pickups.append({"node": n, "kind": "chest", "taken": false, "ph": 0.0})
 
@@ -903,10 +902,11 @@ func _move_vec() -> Vector3:
 func _ground_point(screen: Vector2) -> Vector3:
 	var o := cam.project_ray_origin(screen)
 	var d := cam.project_ray_normal(screen)
-	if absf(d.y) < 0.001:
-		return player.global_position + Vector3(0, 0, -5)
+	var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
+	if d.y > -0.02:
+		return player.global_position + fwd * 12.0
 	var t_hit := -o.y / d.y
-	return o + d * t_hit
+	return o + d * minf(t_hit, 40.0)
 
 func cast_toward_screen(screen: Vector2) -> void:
 	if finished or cast_cd > 0.0:
@@ -970,8 +970,7 @@ func _auto_step() -> void:
 	if d.length() < 0.9:
 		auto_path.pop_front()
 		return
-	var v := d.normalized()
-	stick_vec = Vector2(v.x, v.z)
+	auto_dir = d.normalized()
 	# yakındaki yaratığa ışık topu
 	var best = null
 	var bd := 9.0
@@ -999,22 +998,27 @@ func _physics_process(dt: float) -> void:
 	flash_rect.color.a = maxf(0.0, flash_rect.color.a - dt * 1.6)
 	# oyuncu hareketi
 	if riding == null:
-		var mv := _move_vec()
+		var inp := _move_vec()          # x: dön (sağ +), z: geri (+) / ileri (-)
 		var spd := 6.2
-		player.velocity = Vector3(mv.x * spd, 0, mv.z * spd)
+		if debug_auto and auto_dir.length() > 0.01:
+			var want := atan2(-auto_dir.x, -auto_dir.z)
+			yaw = lerp_angle(yaw, want, minf(1.0, dt * 8.0))
+			inp = Vector3(0, 0, -1.0 if absf(angle_difference(yaw, want)) < 0.6 else 0.0)
+		else:
+			yaw -= inp.x * 2.3 * dt
+		var fwd := Vector3(-sin(yaw), 0, -cos(yaw))
+		var along := -inp.z
+		player.velocity = fwd * along * (spd if along > 0.0 else spd * 0.6)
 		player.move_and_slide()
 		player.global_position.y = 0.0
-		if mv.length() > 0.1:
-			var m: Node3D = player.get_node("Model")
-			m.rotation.y = lerp_angle(m.rotation.y, atan2(mv.x, mv.z) + PI, minf(1.0, dt * 12.0))
-			m.position.y = absf(sin(elapsed * 12.0)) * 0.05
+		var m: Node3D = player.get_node("Model")
+		m.rotation.y = lerp_angle(m.rotation.y, yaw, minf(1.0, dt * 14.0))
+		m.position.y = absf(sin(elapsed * 12.0)) * 0.05 if absf(along) > 0.1 else 0.0
 		_check_cart()
 	else:
 		_update_ride(dt)
 	# kamera
-	var target := player.global_position + Vector3(0, 13.0, 8.5)
-	cam.global_position = cam.global_position.lerp(target, minf(1.0, dt * 6.0)) + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)) * shake * 0.12
-	cam.look_at(player.global_position + Vector3(0, 0.5, 0), Vector3.UP)
+	_update_camera(dt)
 	_update_orbs(dt)
 	_update_lights(dt)
 	_update_pickups(dt)
@@ -1024,6 +1028,20 @@ func _physics_process(dt: float) -> void:
 		finish("dead")
 	elif elapsed >= MAX_TIME:
 		finish("dark")
+
+func _update_camera(dt: float) -> void:
+	# arkadan ve hafif yukarıdan takip kamerası: duvara girmesin diye oyuncudan kameraya ışın atılır
+	var head := player.global_position + Vector3(0, 1.6, 0)
+	var back := Vector3(sin(yaw), 0, cos(yaw))
+	var desired := head + back * 6.8 + Vector3(0, 4.4, 0)
+	var q := PhysicsRayQueryParameters3D.create(head, desired)
+	q.collision_mask = 1
+	var r := get_world_3d().direct_space_state.intersect_ray(q)
+	if not r.is_empty():
+		desired = r["position"] + (head - r["position"]).normalized() * 0.5
+	cam.global_position = cam.global_position.lerp(desired, minf(1.0, dt * 9.0)) + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)) * shake * 0.08
+	var ahead := head + Vector3(-sin(yaw), 0, -cos(yaw)) * 3.0 - Vector3(0, 0.9, 0)
+	cam.look_at(ahead, Vector3.UP)
 
 func _update_orbs(dt: float) -> void:
 	var space := get_world_3d().direct_space_state

@@ -2903,7 +2903,7 @@ export class Game {
       else if (this.walkable(nx, e.y, true)) e.x = nx;
       else if (this.walkable(e.x, ny, true)) e.y = ny;
       // iyileşme yalnızca gerçekten eve doğru ilerlerken olur (takılıp iyileşme yok)
-      if (e.state === 'return' && !e.noHeal && Math.hypot(e.x - ox0, e.y - oy0) > 0.05) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * (big ? 0.03 : 0.25) * dt);
+      if (e.state === 'return' && !e.noHeal && Math.hypot(e.x - ox0, e.y - oy0) > 0.05) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * (big ? 0.005 : 0.05) * dt);
       if (e.state === 'return') {
         // engele takıldı mı? 1.2 sn ilerleyemezse eve ışınlanır; tekrar olursa iyileşmesi durdurulur
         e.stuckT = (e.stuckT ?? 0) + dt;
