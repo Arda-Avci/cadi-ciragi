@@ -1378,7 +1378,7 @@ export class Game {
     const c = this.ctx;
     const t = this.save.tiger;
     c.fillStyle = 'rgba(0,0,0,0.25)';
-    c.beginPath(); c.ellipse(g.x, g.y + 17, 25.2, 7.4, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(g.x, g.y + 17, 26.5, 7.8, 0, 0, Math.PI * 2); c.fill();
     const has = (n: string): boolean => !!this.spr(n);
     let frame = 'tiger_walk1';
     if (g.down) frame = has('tiger_down1') ? 'tiger_down1' : 'tiger';
@@ -1386,7 +1386,7 @@ export class Game {
     else if (g.moving && has('tiger_walk4')) frame = 'tiger_walk' + (1 + (Math.floor(g.t * 9) % 4));
     else if (!has('tiger_walk1')) frame = 'tiger';
     const bob = g.moving ? -Math.abs(Math.sin(g.t * 10)) * 3 : Math.sin(g.t * 2) * 1;
-    if (!this.drawSprX(frame, g.x, g.y - 4, 79.8, { flip: g.face, bob, flash: g.flash > 0, alpha: g.down ? 0.7 : 1 })) {
+    if (!this.drawSprX(frame, g.x, g.y - 4, 83.8, { flip: g.face, bob, flash: g.flash > 0, alpha: g.down ? 0.7 : 1 })) {
       c.fillStyle = '#f4f4f4'; c.beginPath(); c.ellipse(g.x, g.y, 18, 12, 0, 0, Math.PI * 2); c.fill();
       c.fillStyle = '#222'; c.fillRect(g.x - 10, g.y - 6, 4, 10); c.fillRect(g.x + 2, g.y - 6, 4, 10);
     }
@@ -2360,7 +2360,7 @@ export class Game {
           p.x += (dx / d) * sp * dt; p.y += (dy / d) * sp * dt;
           if (d < 22) continue;
         }
-        this.projCollide(p, enemies, trees, 14.4, true); // süpürge %20 küçültüldü
+        this.projCollide(p, enemies, trees, 12.2, true); // süpürge toplam %32 küçültüldü (%20 + %15)
         if (p.life < p.max) keep.push(p);
       } else if (p.kind === 'potion') {
         const k = Math.min(1, p.life / p.max);
@@ -3366,7 +3366,7 @@ export class Game {
     }
     // gölge (uçarken küçülür)
     c.fillStyle = flying ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.25)';
-    c.beginPath(); c.ellipse(this.px, this.py + 18, flying ? 14 : 20, flying ? 5 : 7, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(this.px, this.py + 18, flying ? 14.7 : 21, flying ? 5.3 : 7.4, 0, 0, Math.PI * 2); c.fill();
     const lift = flying ? -30 + Math.sin(t * 4) * 3 : 0;
     // animasyon karesi: uçuş > büyü > yürüyüş (iki kare) > duruş
     let frame = 'witch';
@@ -3376,7 +3376,7 @@ export class Game {
     else if (cast > 0 && has('witch_cast1') && has('witch_cast2')) frame = cast > 0.5 ? 'witch_cast2' : 'witch_cast1';
     else if (cast > 0 && has('witch_cast')) frame = 'witch_cast';
     else if (this.moving && has('witch_walk4')) frame = 'witch_walk' + (1 + (Math.floor(t * 9) % 4));
-    const drawn = this.drawSprX(this.save.outfit ? frame + '@' + this.save.outfit : frame, this.px, this.py - 8, flying ? 94.8 : 81.6, {
+    const drawn = this.drawSprX(this.save.outfit ? frame + '@' + this.save.outfit : frame, this.px, this.py - 8, flying ? 99.5 : 85.7, {
       flip, rot: o.rot + cast * 0.12 * flip, sx: o.sx * sc, sy: o.sy * sc, bob: o.bob + lift, flash: this.hurtFlash > 0,
     });
     if (!drawn) {
@@ -3483,7 +3483,7 @@ export class Game {
         c.fillStyle = '#ffd84a'; c.beginPath(); c.arc(p.x, p.y, 8, 0, Math.PI * 2); c.fill();
       }
     } else if (p.kind === 'broom') {
-      if (!this.drawSpr('icon_broom', p.x, p.y, 46.4, this.time * 14)) {
+      if (!this.drawSpr('icon_broom', p.x, p.y, 39.4, this.time * 14)) {
         c.fillStyle = '#c98a4b'; c.fillRect(p.x - 18, p.y - 3, 36, 6);
       }
     } else if (p.kind === 'potion') {
