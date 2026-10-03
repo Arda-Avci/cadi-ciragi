@@ -2965,7 +2965,23 @@ export class Game {
                 }
             }
             const pick = best ?? weak;
-            return pick ? { x: pick.x, y: pick.y, label: 'Sıradaki düşman', color: best ? '#7bff9a' : '#ffb36b' } : null;
+            if (!pick)
+                return null;
+            // okun gösterdiği yer kampın evi değil, kampın canlı düşmanının kendisi (en yakını); henüz sahaya çıkmadıysa kamp noktası
+            let tx = pick.x;
+            let ty = pick.y;
+            let ed = Infinity;
+            for (const e of this.enemies) {
+                if (e.sp !== pick.id || e.hp <= 0)
+                    continue;
+                const d = Math.hypot(e.x - this.px, e.y - this.py);
+                if (d < ed) {
+                    ed = d;
+                    tx = e.x;
+                    ty = e.y;
+                }
+            }
+            return { x: tx, y: ty, label: 'Sıradaki düşman', color: best ? '#7bff9a' : '#ffb36b' };
         }
         if (reg < last) {
             if (this.passedGate(reg))

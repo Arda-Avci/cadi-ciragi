@@ -22,29 +22,34 @@ MACERA
 • 40 ücretsiz ada, 8 farklı biyom: Mantar Ormanı, Bataklık, Buz Mağarası, Kızıl Çöl, Kristal Vadisi, Volkan, Bulut Sarayı, Gölge Diyarı.
 • 4 büyü: Yıldız Değneği, Uçan Süpürge, Kaynar İksir, Büyülü Kepçe. Hasar türleri (kesme, delme, ezme), düşman zayıflıkları ve büyü kombolarıyla (+%30 hasar) ustalaş.
 • Yetenek ağacı, kristaller, miğfer ve kalkanlar, usta cadı eğitimleri, gizli sandıklar.
-• Her 3 adada bir korkunç canavar; kale ve yapıları yıkıp kalıcı güç kazan.
-• Günlük: her boss kırık aynanın bir sayfasını açar. 69 sayfalık gizem sonunda rakip cadının kim olduğunu ortaya çıkarır.
+• Her 3 adada bir korkunç canavar. Yenilen bosslar günde bir kez 3 kat güçlü "zor boss" olarak döner, büyük ganimet bırakır.
+• Karakter kartlarını topla: her düşmanın vurduğu ve zayıf olduğu hasar türünü öğren, koleksiyon ödülleri kazan.
+• Yönlendirme oku seni sıradaki düşmana götürür; 8 adımlık başlangıç görevleri ilk dakikalarda elinden tutar.
+• Günlük: her boss kırık aynanın bir sayfasını açar, önemli anlarda animasyonlu hikâye sahneleri izlersin. 69 sayfalık gizem sonunda rakip cadının kim olduğunu ortaya çıkarır.
 
 CADI EVİ
-• Kediyi sev, bahçeni sula, iksir demle: evde yaptığın işler kalıcı güç kazandırır.
-• Kazanın sen yokken ruh biriktirir; her gün gel, giriş serin büyüdükçe ödüller artar.
+• Kediyi sev, kedi maması al ve düzenli besle, bahçeni sula, iksir demle: evde yaptığın işler kalıcı güç kazandırır.
+• Kazan sen yokken ruh biriktirir; oyun açıkken de dururken azar azar kazanırsın. Her gün gel, giriş serin büyüdükçe ödüller artar.
+• Günlük 3 görev, bildirimlerle iksirin hazır olduğunda ve kedin acıktığında haber alırsın.
 
 DÖVÜŞ ARENASI
 • Street Fighter tarzı yan görünümlü dövüş: yumruk, tekme, büyü, blok, zıplama.
 • 12 efsane cadıyı sırayla yen. Arkadaşına gölge kodunu gönder, o senin gölgenle dövüşsün.
 • Her hafta yeni kurallı meydan okuma: blok yasak, yalnız büyü, cam top, hızlı hafta.
-• Kazandıkça cadı kıyafetlerini aç.
+• Kazandıkça cadı kıyafetlerini aç; her kıyafet küçük bir bonus verir (ruh kazancı, hız, menzil, kritik, can çalma, kaçınma).
 
 FİNAL
 • Devam paketleriyle 69. adaya kadar ilerle: her yeni ada öncekinden 3 kat zor. Sonunda seninle aynı güçte, farklı renkli rakip cadıyla düello.
 
 Şeref Salonu, 5 dil (Türkçe, English, Deutsch, Français, Español), ayarlanabilir ses ve titreşim.
 
-Oyun ücretsizdir. İsteğe bağlı uygulama içi satın almalar ve reklamlar içerir: güç paketleri, 40. adadan sonrası için devam paketleri ve ödüllü videolar.
+Oyun ücretsizdir. İsteğe bağlı uygulama içi satın almalar ve reklamlar içerir: güç paketleri, 40. adadan sonrası için devam paketleri ve ödüllü videolar. Bildirimler isteğe bağlıdır.
 
-## Sürüm notları (0.13.0)
-• Yeni: Cadı Evi (kedi, bahçe, iksir, kazan, günlük seri).
-• Yeni: 69 sayfalık günlük hikâyesi, büyü kombosu.
-• Yeni: Gölge Arenası (12 efsane cadı, gölge kodu), haftalık meydan okuma, kıyafetler.
-• 29 yeni ada (41–69) ve devam paketleri; 69. adadan sonra rakip cadıyla düello.
-• Satın alma onayı düzeltildi.
+## Sürüm notları (0.14.2)
+• Yeni: kedi maması, düzenli besleme serisi, kediye isim verme.
+• Yeni: başlangıç ve günlük görevler, düşman koleksiyonu, zor boss, kıyafet bonusları.
+• Yeni: hikâye ara sahneleri ve tüm panellerde yeni görseller.
+• Yeni: bekleme geliri ve iksir/kedi/kazan bildirimleri.
+• Düzeltme: kristal geliştirme için toz artık düşmanlardan ve görevlerden gelir.
+• Düzeltme: eski kayıttaki aynı eşyalar birleşir; karakter kartlarındaki ikonlar düzeltildi.
+• Bumerang süpürge %20 küçüldü; yönlendirme oku artık düşmanın kendisini gösterir.
