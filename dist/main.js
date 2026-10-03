@@ -3,7 +3,8 @@ import { audio } from './audio.js';
 import { N, T } from './i18n.js';
 import { changed, loadSettings, settings, vibrate } from './settings.js';
 import { BUILD, CODENAME, VERSION } from './version.js';
-import { PACKS, createBilling } from './billing.js';
+import { LEVEL_PACKS, PACKS, createBilling } from './billing.js';
+import { FightGame } from './fight.js';
 import { createAds } from './ads.js';
 import { CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, statIcon, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemAbility, itemUpgradeCost, itemValue, upgradeCost, } from './data.js';
 loadSettings();
@@ -272,6 +273,30 @@ function renderPanel() {
         msg.className = 'row';
         msg.innerHTML = `<small id="shop-msg">${billing.kind === 'none' ? L('Mağaza yalnızca mobil uygulamada kullanılabilir.') : billing.kind === 'dev' ? 'GELİŞTİRME MODU: sahte satın alma' : ''}</small>`;
         panel.append(msg);
+        // devam paketleri: 40. adadan sonrasını açar (kalıcı, bir kez alınır)
+        const lh = document.createElement('h3');
+        lh.textContent = L('Devam paketleri (40. adadan sonra)');
+        panel.append(lh);
+        const capInfo = document.createElement('div');
+        capInfo.className = 'row';
+        capInfo.innerHTML = `<small>${L('Açık ada sayısı')}: <b>${game.levelCap()}/${ZONES.length}</b></small>`;
+        panel.append(capInfo);
+        for (const p of LEVEL_PACKS) {
+            const owned = !!game.save.lvPacks[p.id];
+            const price = shopPrices[p.id] ?? p.fallbackPrice;
+            panel.append(row(ico('ui_skill', 36), p.name, owned ? L('Alındı') : `+${p.levels} ${L('ada')}`, btn(owned ? '✓' : price, '', !owned && billing.kind !== 'none', async () => {
+                const r = await billing.purchase(p.id);
+                const m = document.getElementById('shop-msg');
+                if (r.ok && billing.kind === 'dev')
+                    game.grantPurchase(p.id, r.receipt ?? 'dev');
+                else if (!r.ok && m)
+                    m.textContent = r.error ?? '';
+                renderPanel();
+            })));
+        }
+        const ph = document.createElement('h3');
+        ph.textContent = L('Güç paketleri');
+        panel.append(ph);
         for (const p of PACKS) {
             const have = game.save.shop[p.id] ?? 0;
             const price = shopPrices[p.id] ?? p.fallbackPrice;
@@ -279,7 +304,7 @@ function renderPanel() {
                 const r = await billing.purchase(p.id);
                 const m = document.getElementById('shop-msg');
                 if (r.ok && billing.kind === 'dev')
-                    game.grantPack(p.id, r.receipt ?? 'dev');
+                    game.grantPurchase(p.id, r.receipt ?? 'dev');
                 else if (!r.ok && m)
                     m.textContent = r.error ?? '';
                 renderPanel();
@@ -557,15 +582,28 @@ let last = performance.now();
 function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    game.update(dt);
-    game.render();
+    if (!fight.active) {
+        game.update(dt);
+        game.render();
+    }
     updateHints(now);
     masterBtn.style.display = !open && game.nearMaster() >= 0 && !game.mapOpen && mini.style.display !== 'flex' ? 'flex' : 'none';
     requestAnimationFrame(frame);
 }
 // ---------------- mağaza ----------------
 const ads = createAds();
-const billing = createBilling((id, receipt) => { game.grantPack(id, receipt); renderPanel(); });
+const billing = createBilling((id, receipt) => { game.grantPurchase(id, receipt); renderPanel(); });
+// son düello: street fighter tarzı ayrı dövüş oyunu
+const fight = new FightGame((n) => game.spr(n), () => ZONES[ZONES.length - 1].bg, () => game.save.hero.name);
+game.onDuel = () => {
+    if (fight.active || landingOpen || open)
+        return;
+    fight.start((won) => { game.finishDuel(won); renderPanel(); });
+};
+game.onPaywall = () => { if (!fight.active && !landingOpen) {
+    open = 'shop';
+    renderPanel();
+} };
 let shopPrices = {};
 billing.prices().then((p) => { shopPrices = p; if (open === 'shop')
     renderPanel(); }).catch((e) => console.error('fiyatlar alınamadı', e));

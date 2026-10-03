@@ -42,12 +42,15 @@ export const TIERS = {
     // boss gücü %45 azaltıldı: can ve hasar ×0.55 (güç = √(can×hasar) ≈ ×0.55)
     boss: { name: 'Boss', hp: 605 * BOSS_MUL, dmg: 6.6 * BOSS_MUL, count: 1, respawn: 1500, soul: 260, size: 2.7, color: '#b06cff', permanent: 'elite', weaponCopies: 16 },
 };
-export const ISLAND_COUNT = 40;
+/** ilk (ücretsiz) 40 ada; sonrasındaki 29 ada devam paketiyle açılır ve her biri öncekinden 3 kat zordur */
+export const BASE_ISLANDS = 40;
+export const ISLAND_COUNT = 69;
+export const PAID_STEP = 3;
 /** sayıyı okunur yazar: K, M, B, T, Q, Qi... */
 export function fmtNum(n) {
     if (!isFinite(n))
         return '∞';
-    const units = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx'];
+    const units = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd'];
     let u = 0;
     let v = Math.abs(n);
     while (v >= 1000 && u < units.length - 1) {
@@ -69,6 +72,7 @@ const BIOMES = [
 ];
 const VARIANTS = [
     { pre: '', hue: 0 }, { pre: 'Kadim ', hue: 55 }, { pre: 'Altın ', hue: 120 }, { pre: 'Buzul ', hue: 200 }, { pre: 'Efsanevi ', hue: 290 },
+    { pre: 'Kızıl ', hue: 20 }, { pre: 'Zümrüt ', hue: 160 }, { pre: 'Gece ', hue: 245 }, { pre: 'Ebedi ', hue: 335 },
 ];
 const MASTERS = ['Elmira', 'Zehra', 'Nilüfer', 'Melek', 'Sevgül', 'Aysel', 'Gülsüm', 'Esma', 'Fidan', 'Hümeyra', 'Perihan', 'Selma',
     'Nergis', 'Yıldız', 'Ayten', 'Gönül', 'Rana', 'Şule', 'Dilara', 'Filiz'];
@@ -77,14 +81,14 @@ function lcg(seed) {
     return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
 }
 /** hex ızgarada kendini kesmeyen bir yol: ardışık adalar komşudur ve yön sık değişir (farklı açılardan bağlanır) */
-function islandPath(count) {
+function islandPath(count, radius, seed, start) {
     const dirs = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
-    const rnd = lcg(20261002);
-    const inside = (q, r) => Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) <= 4;
+    const rnd = lcg(seed);
+    const inside = (q, r) => Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) <= radius;
     const key = (q, r) => q + ',' + r;
-    const path = [{ q: 0, r: 0 }];
-    const seen = new Set([key(0, 0)]);
-    const lastDir = [-1];
+    const path = start ? start.map((c) => ({ ...c })) : [{ q: 0, r: 0 }];
+    const seen = new Set(path.map((c) => key(c.q, c.r)));
+    const lastDir = path.map(() => -1);
     let guard = 0;
     const go = () => {
         if (path.length === count)
@@ -126,7 +130,8 @@ function islandPath(count) {
 const HARD_FROM = 3; // dizin: 4. ada
 const HARD_MUL = 2;
 function buildZones() {
-    const path = islandPath(ISLAND_COUNT);
+    // ilk 40 ada eski kayıtlarla aynı konumda kalır; sonraki 29 ada daha geniş ızgarada aynı yolun devamıdır
+    const path = islandPath(ISLAND_COUNT, 6, 20261003, islandPath(BASE_ISLANDS, 4, 20261002));
     const rnd = lcg(7742);
     const D = 4400;
     let power = 1;
@@ -134,7 +139,7 @@ function buildZones() {
     for (let i = 0; i < ISLAND_COUNT; i++) {
         const b = BIOMES[i % BIOMES.length];
         const v = VARIANTS[Math.floor(i / BIOMES.length)];
-        const base = i === 0 ? 1 : 1.2 + 0.6 * rnd(); // önceki adaya göre 1.2–1.8 kat
+        const base = i === 0 ? 1 : i >= BASE_ISLANDS ? PAID_STEP : 1.2 + 0.6 * rnd(); // önceki adaya göre 1.2–1.8 kat; 41. adadan sonra tam 3 kat
         // 4. adadan itibaren bütün adalar 2 kat daha zor (güç ×2; sonraki adımlar yine 1.2–1.8 kat)
         const step = i === HARD_FROM ? base * HARD_MUL : base;
         power *= step;

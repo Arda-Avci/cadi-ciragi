@@ -23,6 +23,16 @@ export const PACKS: Pack[] = [
   { id: 'hexling.power.xl', name: 'Efsane Güç Paketi', mul: 5, fallbackPrice: '—' },
 ];
 
+/** 40. adadan sonrası için devam paketleri: bir kez alınır, kalıcıdır, mağazadan geri yüklenebilir (NON_CONSUMABLE) */
+export interface LevelPack { id: string; name: string; levels: number; fallbackPrice: string }
+export const LEVEL_PACKS: LevelPack[] = [
+  { id: 'hexling.levels.5', name: 'Devam Paketi +5 Seviye', levels: 5, fallbackPrice: '—' },
+  { id: 'hexling.levels.10', name: 'Devam Paketi +10 Seviye', levels: 10, fallbackPrice: '—' },
+  { id: 'hexling.levels.20', name: 'Devam Paketi +20 Seviye', levels: 20, fallbackPrice: '—' },
+  { id: 'hexling.levels.30', name: 'Devam Paketi +30 Seviye', levels: 30, fallbackPrice: '—' },
+];
+const ALL_IDS = [...PACKS.map((p) => p.id), ...LEVEL_PACKS.map((p) => p.id)];
+
 export interface PurchaseResult { ok: boolean; error?: string; receipt?: string }
 
 export interface Billing {
@@ -44,7 +54,7 @@ const none: Billing = {
 /** localhost'ta sahte satın alma (yayında asla etkin değil) */
 const dev: Billing = {
   kind: 'dev',
-  prices: async () => Object.fromEntries(PACKS.map((p) => [p.id, 'TEST'])),
+  prices: async () => Object.fromEntries(ALL_IDS.map((id) => [id, 'TEST'])),
   purchase: async (id) => (confirm('GELİŞTİRME: ' + id + ' sahte olarak satın alınsın mı?') ? { ok: true, receipt: 'dev-' + Date.now() } : { ok: false, error: 'İptal edildi.' }),
   restore: async () => [],
 };
@@ -66,7 +76,10 @@ function native(cdv: CdvGlobal, onGrant: (id: string, receipt: string) => void):
   const init = (): Promise<unknown> => {
     if (ready) return ready;
     const platform = (window as unknown as { Capacitor?: { getPlatform?: () => string } }).Capacitor?.getPlatform?.() === 'ios' ? Platform.APPLE_APPSTORE : Platform.GOOGLE_PLAY;
-    store.register(PACKS.map((p) => ({ id: p.id, type: ProductType.CONSUMABLE, platform })));
+    store.register([
+      ...PACKS.map((p) => ({ id: p.id, type: ProductType.CONSUMABLE, platform })),
+      ...LEVEL_PACKS.map((p) => ({ id: p.id, type: ProductType.NON_CONSUMABLE, platform })),
+    ]);
     store.when().approved((t) => {
       for (const pr of t.products ?? []) onGrant(pr.id, 'native');
       t.finish();
@@ -79,7 +92,7 @@ function native(cdv: CdvGlobal, onGrant: (id: string, receipt: string) => void):
     prices: async () => {
       await init();
       const out: Record<string, string> = {};
-      for (const p of PACKS) { const pr = store.get(p.id)?.pricing?.price; if (pr) out[p.id] = pr; }
+      for (const id of ALL_IDS) { const pr = store.get(id)?.pricing?.price; if (pr) out[id] = pr; }
       return out;
     },
     purchase: async (id) => {

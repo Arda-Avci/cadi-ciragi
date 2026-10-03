@@ -1,6 +1,6 @@
-import { BOSS_MUL, BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, statIcon, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies, } from './data.js';
+import { BASE_ISLANDS, BOSS_MUL, BRIDGE_HALF_WIDTH, CRYSTAL_STATS, CSTAT_KEYS, statIcon, DTYPES, DTYPE_NAMES, ENEMIES, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, TIERS, UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies, } from './data.js';
 import { VERSION } from './version.js';
-import { PACKS } from './billing.js';
+import { LEVEL_PACKS, PACKS } from './billing.js';
 import { audio } from './audio.js';
 import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
 import { N, T } from './i18n.js';
@@ -47,6 +47,12 @@ export class Game {
         this.keys = new Set();
         this.joy = null;
         this.onChange = () => { };
+        /** 40. ada tamamlanınca (devam paketi gerekir) çağrılır: arayüz mağazayı açar */
+        this.onPaywall = () => { };
+        this.paywallT = 0;
+        this.rivalT = 0;
+        /** son adanın bossu yenilince: rakip cadıyla ayrı dövüş oyunu başlatılır */
+        this.onDuel = () => { };
         // animasyon / efekt durumu
         this.face = 0; // bakış yönü (radyan): haritadaki ok bunu gösterir
         this.moving = false;
@@ -193,7 +199,7 @@ export class Game {
     fresh() {
         return {
             essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
-            bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
+            bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, lvPacks: {}, rivalDown: 0, ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
             chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {},
         };
     }
@@ -208,6 +214,8 @@ export class Game {
                     s.extra = [];
                 if (!s.shop)
                     s.shop = {};
+                if (!s.lvPacks)
+                    s.lvPacks = {};
                 if (!s.ads)
                     s.ads = { day: 0, n: 0, last: {} };
                 return s;
@@ -375,7 +383,17 @@ export class Game {
         return null;
     }
     inHome() { return this.restAt() !== null; }
-    gateLocked(i) { return !this.save.bossDown[i]; }
+    /** erişilebilir son ada sayısı: 40 ücretsiz + satın alınan devam paketleri (en fazla 69) */
+    levelCap() {
+        let n = BASE_ISLANDS;
+        for (const p of LEVEL_PACKS)
+            if (this.save.lvPacks[p.id])
+                n += p.levels;
+        return Math.min(ZONES.length, n);
+    }
+    /** boss yenildi ama sonraki ada henüz satın alınmamış */
+    paywalled(i) { return i < ZONES.length - 1 && !!this.save.bossDown[i] && i + 1 >= this.levelCap(); }
+    gateLocked(i) { return !this.save.bossDown[i] || i + 1 >= this.levelCap(); }
     gatePos(i) {
         const b = this.bridge(i);
         return { x: b.ax + (b.bx - b.ax) * b.tGate, y: b.ay + (b.by - b.ay) * b.tGate };
@@ -769,6 +787,32 @@ export class Game {
         this.onChange();
         return true;
     }
+    /** devam paketi: ücretsiz 40 adanın ötesini açar (tekrar edilirse etkisiz: geri yükleme güvenli) */
+    grantLevelPack(id, receipt) {
+        const p = LEVEL_PACKS.find((x) => x.id === id);
+        if (!p)
+            return false;
+        if (!this.save.lvPacks[id]) {
+            this.save.lvPacks[id] = 1;
+            audio.play('gate');
+            vibrate([80, 60, 200]);
+            this.gain(p.name + ' etkinleştirildi', '#ffe36b', 'ui_skill');
+            this.say('Yeni adalar açıldı! Kapıdan geçebilirsin.');
+            for (let i = 0; i < ZONES.length - 1; i++)
+                if (this.save.bossDown[i] && i + 1 < this.levelCap() && i + 1 >= this.levelCap() - p.levels) {
+                    this.gateAnim = { i, t: 3.6 };
+                    break;
+                }
+            console.info('devam paketi', id, receipt);
+            this.persist();
+            this.onChange();
+        }
+        return true;
+    }
+    /** mağazadan gelen herhangi bir ürün (güç ya da devam paketi) */
+    grantPurchase(id, receipt) {
+        return LEVEL_PACKS.some((x) => x.id === id) ? this.grantLevelPack(id, receipt) : this.grantPack(id, receipt);
+    }
     maxHp() {
         return this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
             * (1 + (this.cb('hp') + this.helmetHp() + this.perm('elite.hpPct') + this.perm('train.hp')) / 100);
@@ -822,10 +866,15 @@ export class Game {
     /** Güç: kuşanılan büyülerin saniyelik hasarı ile savunma düzeltmeli canın geometrik ortalaması. */
     /** tam canla güç (sıralama için) */
     fullPower() { return this.power(this.maxHp()); }
-    power(hpNow = this.hp) {
+    /** kuşanılan büyülerin toplam saniyelik hasarı */
+    dps() {
         let dps = 0;
         for (const i of this.equippedWeapons())
             dps += (this.weaponDmg(i) * this.weaponCopies(i) * this.castSpeed()) / WEAPONS[i].cooldown;
+        return dps;
+    }
+    power(hpNow = this.hp) {
+        const dps = this.dps();
         const red = (this.typedReduction('cut') + this.typedReduction('pierce') + this.typedReduction('smash')) / 3 / 100;
         // can azaldıkça güç de azalır: mevcut can esas alınır
         const effHp = Math.max(1, Math.min(hpNow, this.maxHp())) / (this.armor() * (1 - Math.min(0.9, red)));
@@ -1138,7 +1187,9 @@ export class Game {
         }
         this.invuln = Math.max(0, this.invuln - dt);
         this.syncSpawners();
+        this.syncRival(dt);
         this.updateEnemies(dt);
+        this.checkPaywall(dt);
         this.castSpells(dt);
         this.updateProjs(dt);
         this.removeDead();
@@ -1396,6 +1447,47 @@ export class Game {
                 }
             }
         }
+    }
+    // ---- son düello: yapay zekanın yönettiği, oyuncuyla aynı güçte rakip cadı ----
+    /** 40. ada kapısına yaklaşan oyuncuya (devam paketi yoksa) mağaza hatırlatılır */
+    checkPaywall(dt) {
+        this.paywallT = Math.max(0, this.paywallT - dt);
+        if (this.paywallT > 0)
+            return;
+        const i = this.region;
+        if (!this.paywalled(i))
+            return;
+        const g = this.gatePos(i);
+        if (Math.hypot(g.x - this.px, g.y - this.py) > 260)
+            return;
+        this.paywallT = 120;
+        this.say('Yolculuğa devam etmek için bir devam paketi gerekir.');
+        this.onPaywall();
+    }
+    /** son adanın bossu yenilince rakip cadıyla düello (street fighter tarzı ayrı oyun, src/fight.ts) önerilir */
+    syncRival(dt) {
+        this.rivalT -= dt;
+        if (this.rivalT > 0)
+            return;
+        this.rivalT = 2;
+        const last = ZONES.length - 1;
+        if (this.region === last && this.save.bossDown[last] && !this.save.rivalDown && this.dead <= 0) {
+            this.rivalT = 45;
+            this.onDuel();
+        }
+    }
+    /** düello bitti: kazanılırsa kalıcı olarak kaydedilir */
+    finishDuel(won) {
+        if (!won)
+            return;
+        this.save.rivalDown = 1;
+        this.save.geodes += 10;
+        this.gain('+10 Jeod', '#7dffb0', 'icon_geode');
+        this.say('Rakip cadıyı yendin! Hexling efsanesi oldun!');
+        audio.play('beastdie');
+        vibrate([120, 60, 240]);
+        this.persist();
+        this.onChange();
     }
     // ---- büyüler ----
     /** en uzak kuşanılan büyünün nişan mesafesi */
@@ -1956,12 +2048,21 @@ export class Game {
                     this.gain('Yeni kristal yuvası kazanıldı!', '#c8b6ff', 'ui_crystal');
                     this.gain('Yeni ekipman yuvası kazanıldı!', '#ffe36b', 'ui_gear');
                 }
-                if (sp.reg < ZONES.length - 1) {
+                const lastIsland = sp.reg >= ZONES.length - 1;
+                if (!lastIsland && !this.paywalled(sp.reg)) {
                     this.gateAnim = { i: sp.reg, t: 3.6 };
                     audio.play('gate');
                     vibrate([80, 60, 200]);
                 }
-                this.say(ZONES[sp.reg].bossName + ' yenildi! ' + (sp.reg < ZONES.length - 1 ? 'Sonraki bölgenin kapısı açıldı.' : 'Dünyayı tamamladın!'));
+                if (lastIsland)
+                    this.say(ZONES[sp.reg].bossName + ' yenildi! Ama bir gölge seni bekliyor…');
+                else if (this.paywalled(sp.reg)) {
+                    this.say(ZONES[sp.reg].bossName + ' yenildi! Yolculuğa devam etmek için bir devam paketi al.');
+                    this.paywallT = 120;
+                    this.onPaywall();
+                }
+                else
+                    this.say(ZONES[sp.reg].bossName + ' yenildi! Sonraki bölgenin kapısı açıldı.');
             }
             else
                 this.say(ZONES[sp.reg].bossName + ' yenildi!');
@@ -2500,6 +2601,8 @@ export class Game {
             if (this.passedGate(reg))
                 return null; // kapı geçildi: ok kalkar
             const g = this.gatePos(reg);
+            if (this.paywalled(reg))
+                return { x: g.x, y: g.y, label: 'Devam paketi gerekli', color: '#ffd84a' };
             // kapıya yaklaşan oyuncuya eğitim hakkı varsa usta cadı işaret edilir
             if (this.masterOpen(reg) && Math.hypot(g.x - this.px, g.y - this.py) < 900) {
                 const m = this.masterPos(reg);

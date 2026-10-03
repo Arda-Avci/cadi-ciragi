@@ -12,6 +12,13 @@ export const PACKS = [
     { id: 'hexling.power.l', name: 'Büyük Güç Paketi', mul: 3, fallbackPrice: '—' },
     { id: 'hexling.power.xl', name: 'Efsane Güç Paketi', mul: 5, fallbackPrice: '—' },
 ];
+export const LEVEL_PACKS = [
+    { id: 'hexling.levels.5', name: 'Devam Paketi +5 Seviye', levels: 5, fallbackPrice: '—' },
+    { id: 'hexling.levels.10', name: 'Devam Paketi +10 Seviye', levels: 10, fallbackPrice: '—' },
+    { id: 'hexling.levels.20', name: 'Devam Paketi +20 Seviye', levels: 20, fallbackPrice: '—' },
+    { id: 'hexling.levels.30', name: 'Devam Paketi +30 Seviye', levels: 30, fallbackPrice: '—' },
+];
+const ALL_IDS = [...PACKS.map((p) => p.id), ...LEVEL_PACKS.map((p) => p.id)];
 const none = {
     kind: 'none',
     prices: async () => ({}),
@@ -21,7 +28,7 @@ const none = {
 /** localhost'ta sahte satın alma (yayında asla etkin değil) */
 const dev = {
     kind: 'dev',
-    prices: async () => Object.fromEntries(PACKS.map((p) => [p.id, 'TEST'])),
+    prices: async () => Object.fromEntries(ALL_IDS.map((id) => [id, 'TEST'])),
     purchase: async (id) => (confirm('GELİŞTİRME: ' + id + ' sahte olarak satın alınsın mı?') ? { ok: true, receipt: 'dev-' + Date.now() } : { ok: false, error: 'İptal edildi.' }),
     restore: async () => [],
 };
@@ -33,7 +40,10 @@ function native(cdv, onGrant) {
         if (ready)
             return ready;
         const platform = window.Capacitor?.getPlatform?.() === 'ios' ? Platform.APPLE_APPSTORE : Platform.GOOGLE_PLAY;
-        store.register(PACKS.map((p) => ({ id: p.id, type: ProductType.CONSUMABLE, platform })));
+        store.register([
+            ...PACKS.map((p) => ({ id: p.id, type: ProductType.CONSUMABLE, platform })),
+            ...LEVEL_PACKS.map((p) => ({ id: p.id, type: ProductType.NON_CONSUMABLE, platform })),
+        ]);
         store.when().approved((t) => {
             for (const pr of t.products ?? [])
                 onGrant(pr.id, 'native');
@@ -47,10 +57,10 @@ function native(cdv, onGrant) {
         prices: async () => {
             await init();
             const out = {};
-            for (const p of PACKS) {
-                const pr = store.get(p.id)?.pricing?.price;
+            for (const id of ALL_IDS) {
+                const pr = store.get(id)?.pricing?.price;
                 if (pr)
-                    out[p.id] = pr;
+                    out[id] = pr;
             }
             return out;
         },
