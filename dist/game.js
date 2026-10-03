@@ -123,6 +123,8 @@ export class Game {
         this.nestCache = new Map();
         /** dev yılan: çok bölümlü; her bölümün canı farklı; ana karakterin etrafını sarar; bütün bölümler vurulunca ölür */
         this.snakes = new Map();
+        /** dev yılanın tükürdüğü zehir topları (uzaktan saldırı) */
+        this.venoms = [];
         this.snakeGid = 0;
         this.snakeDone = new Set();
         // ---- yardımcı karakter: beyaz kaplan ----
@@ -1060,7 +1062,7 @@ export class Game {
                 phase: 0, dashT: 0, dvx: 0, dvy: 0, flip: 1, flash: 0, lunge: 0, moving: true, seg: { gid, idx: i, f }, rot: 0,
             });
         }
-        this.snakes.set(gid, { reg, trail: [{ x, y }], ang: Math.atan2(y - this.py, x - this.px), ringR: 170, phase: 'chase', tick: 0, hdx: 1, hdy: 0, wrapped: false });
+        this.snakes.set(gid, { reg, trail: [{ x, y }], ang: Math.atan2(y - this.py, x - this.px), ringR: 170, phase: 'chase', tick: 0, hdx: 1, hdy: 0, wrapped: false, age: 0, spit: 1.2 });
         this.say('Dev yılan kuleden çıktı!');
         audio.play('roar');
         vibrate([90, 40, 160]);
@@ -1068,6 +1070,27 @@ export class Game {
     }
     updateSnakes(dt) {
         this.wrapT = Math.max(0, this.wrapT - dt);
+        for (const v of this.venoms) {
+            v.t -= dt;
+            v.x += v.vx * dt;
+            v.y += v.vy * dt;
+            if (v.t > 0 && Math.hypot(v.x - this.px, v.y - this.py) < 24) {
+                v.t = 0;
+                if (this.invuln <= 0 && this.flyT <= 0 && this.dead <= 0) {
+                    const hit = v.dmg * this.armor() * (1 - Math.min(0.9, this.typedReduction('pierce') / 100));
+                    this.hp -= hit;
+                    this.hurtFlash = 0.25;
+                    this.invuln = 0.35;
+                    this.shake = Math.max(this.shake, 4);
+                    audio.play('hurt');
+                    vibrate(30);
+                    this.float(0, 0, '-' + this.fmt(hit) + ' zehir', '#9dff7a');
+                    if (this.hp <= 0)
+                        this.die();
+                }
+            }
+        }
+        this.venoms = this.venoms.filter((v) => v.t > 0);
         for (const [gid, S] of this.snakes) {
             const segs = this.enemies.filter((e) => e.seg && e.seg.gid === gid && e.hp > 0).sort((a, b) => a.seg.idx - b.seg.idx);
             if (!segs.length) {
@@ -1078,6 +1101,8 @@ export class Game {
             const dx = this.px - head.x;
             const dy = this.py - head.y;
             const d = Math.hypot(dx, dy) || 1;
+            S.age += dt;
+            const rage = 1 + Math.min(1, S.age / 60); // zamanla hızlanır ve sertleşir
             if (S.phase === 'chase' && d < 280)
                 S.phase = 'coil';
             else if (S.phase === 'coil' && d > 520) {
@@ -1086,24 +1111,38 @@ export class Game {
             }
             let tx = this.px;
             let ty = this.py;
-            let sp = 140;
+            let sp = 140 * rage;
             if (S.phase === 'coil') {
-                S.ang += 1.5 * dt;
+                S.ang += 1.5 * dt * (0.7 + 0.3 * rage);
                 S.ringR = Math.max(64, S.ringR - 11 * dt); // halka yavaşça daralır
                 tx = this.px + Math.cos(S.ang) * S.ringR;
                 ty = this.py + Math.sin(S.ang) * S.ringR;
-                sp = 280;
+                sp = 280 * (0.8 + 0.2 * rage);
             }
             S.wrapped = S.phase === 'coil' && S.ringR < 135; // halka kapanana (kahramanı sarana) kadar zırhlıdır
             const hx = tx - head.x;
             const hy = ty - head.y;
             const hd = Math.hypot(hx, hy) || 1;
             const step = Math.min(hd, sp * dt);
-            head.x += (hx / hd) * step;
-            head.y += (hy / hd) * step;
+            // kıvrılarak ilerler (Snake Shooter gibi dalgalı yol): kavisli hareket, gövde başın izini takip eder
+            const lat = S.phase === 'chase' ? Math.sin(S.age * 2.4) * 0.9 : 0;
+            let mx = hx / hd + lat * (-hy / hd);
+            let my = hy / hd + lat * (hx / hd);
+            const ml = Math.hypot(mx, my) || 1;
+            mx /= ml;
+            my /= ml;
+            head.x += mx * step;
+            head.y += my * step;
             if (step > 0.01) {
-                S.hdx = hx / hd;
-                S.hdy = hy / hd;
+                S.hdx = mx;
+                S.hdy = my;
+            }
+            // uzaktan zehir tükürür (aralıkla; zamanla sıklaşır)
+            S.spit -= dt;
+            if (S.phase === 'chase' && d > 240 && d < 560 && S.spit <= 0 && this.dead <= 0) {
+                S.spit = Math.max(1.8, 3.6 - S.age / 40);
+                this.venoms.push({ x: head.x, y: head.y, vx: (dx / d) * 320, vy: (dy / d) * 320, t: 2.2, dmg: this.enemyDmg(head) * 0.2 });
+                audio.play('cast');
             }
             const last = S.trail[0];
             if (!last || Math.hypot(head.x - last.x, head.y - last.y) > 4) {
@@ -1112,7 +1151,7 @@ export class Game {
                     S.trail.length = 700;
             }
             // gövde: baş izini 30 px aralıkla izler (yaşayan bölümler sıkışır)
-            const SP = 30;
+            const SP = 42; // bölümler birbirine değen boncuklar gibi dizilir
             let acc = 0;
             let need = SP;
             let rank = 1;
@@ -1196,6 +1235,19 @@ export class Game {
         this.persist();
         this.onChange();
     }
+    drawVenoms() {
+        const c = this.ctx;
+        for (const v of this.venoms) {
+            const g = c.createRadialGradient(v.x, v.y, 2, v.x, v.y, 20);
+            g.addColorStop(0, 'rgba(230,255,200,0.95)');
+            g.addColorStop(0.5, 'rgba(110,230,80,0.6)');
+            g.addColorStop(1, 'rgba(110,230,80,0)');
+            c.fillStyle = g;
+            c.beginPath();
+            c.arc(v.x, v.y, 20, 0, Math.PI * 2);
+            c.fill();
+        }
+    }
     drawSegment(e) {
         const seg = e.seg;
         if (!seg)
@@ -1209,7 +1261,7 @@ export class Game {
                 hi = Math.max(hi, x.seg.idx);
             }
         const role = seg.idx === lo ? 'head' : seg.idx === hi ? 'tail' : 'body';
-        const size = role === 'head' ? 78 : role === 'tail' ? 52 : 40 + seg.f * 14;
+        const size = role === 'head' ? 90 : role === 'tail' ? 60 : 48 + seg.f * 12;
         c.fillStyle = 'rgba(0,0,0,0.25)';
         c.beginPath();
         c.ellipse(e.x, e.y + 8, size * 0.38, size * 0.16, 0, 0, Math.PI * 2);
@@ -1241,25 +1293,27 @@ export class Game {
             c.stroke();
         }
         const r = size * 0.4;
+        // bölümün dayanıklılığı: üzerinde büyük sayı; kalan cana göre yeşilden kırmızıya
         const hf = Math.max(0, e.hp) / e.maxHp;
-        c.fillStyle = 'rgba(0,0,0,0.55)';
-        c.fillRect(e.x - r, e.y - r - 12, r * 2, 5);
-        c.fillStyle = hf <= 0.3 ? '#ff5a5a' : '#5fe07a';
-        c.fillRect(e.x - r + 1, e.y - r - 11, (r * 2 - 2) * hf, 3);
-        c.font = `bold ${Math.round((role === 'head' ? 12 : 10) * this.lk())}px sans-serif`;
+        const num = this.fmt(Math.max(1, e.hp));
         c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.font = `bold ${Math.round(Math.max(11, size * (num.length > 5 ? 0.24 : 0.3)) * this.lk())}px sans-serif`;
+        c.lineWidth = 4;
+        c.strokeStyle = 'rgba(0,0,0,0.85)';
+        c.fillStyle = hf <= 0.3 ? '#ff8a8a' : hf <= 0.6 ? '#ffe36b' : '#ffffff';
+        const ny = e.y + (role === 'head' ? size * 0.08 : 0);
+        c.strokeText(num, e.x, ny);
+        c.fillText(num, e.x, ny);
+        c.textBaseline = 'alphabetic';
         c.lineWidth = 3;
         c.strokeStyle = 'rgba(0,0,0,0.7)';
-        const pw = '⚔ ' + this.fmt(this.enemyPower(e));
-        const ratio = this.enemyPower(e) / Math.max(1, this.power());
-        c.strokeText(pw, e.x, e.y - r - 16);
-        c.fillStyle = ratio < 0.6 ? '#7bff9a' : ratio < 1.6 ? '#ffe36b' : '#ff6b6b';
-        c.fillText(pw, e.x, e.y - r - 16);
+        c.font = 'bold ' + Math.round(13 * this.lk()) + 'px sans-serif';
         if (role === 'head') {
             const lab = T(shielded ? 'ZIRHLI — sarmasını bekle' : 'DEV YILAN');
             c.fillStyle = shielded ? '#c8b6ff' : '#ffb347';
-            c.strokeText(lab, e.x, e.y - r - 30);
-            c.fillText(lab, e.x, e.y - r - 30);
+            c.strokeText(lab, e.x, e.y - r - 26);
+            c.fillText(lab, e.x, e.y - r - 26);
         }
     }
     /** bu seviye (ada) için kaplan bedeli ödendi mi (ya da ücretsiz mi) */
@@ -3373,6 +3427,7 @@ export class Game {
             if (this.inView(e.x, e.y, 140, camX, camY))
                 this.drawEnemy(e);
         this.drawTiger();
+        this.drawVenoms();
         this.drawPlayer();
         this.drawObstacles(camX, camY, true);
         for (const p of this.projs)

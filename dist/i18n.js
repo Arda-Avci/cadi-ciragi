@@ -96,6 +96,7 @@ const RULES = [
     [/^\+(.+) Can kazanıldı \(kalıcı, yapı\)$/, '+$1 Health gained (permanent, structure)'],
     [/^(.+) bulundu!$/, '$1 found!'],
     [/^\+(\d+) Kaplan sağlığı$/, '+$1 Tiger health'],
+    [/^(-[\d.,]+[KMBTQa-z]*) zehir$/, '$1 venom'],
     [/^(.+) açıldı!$/, '$1 unlocked!'],
     [/^(.+) yenildi! Ama bir gölge seni bekliyor…$/, '$1 defeated! But a shadow awaits you…'],
     [/^(.+) yenildi! Yolculuğa devam etmek için bir devam paketi al\.$/, '$1 defeated! Get a continuation pack to keep going.'],
