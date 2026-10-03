@@ -2500,6 +2500,19 @@ export class Game {
     return c;
   }
 
+  /** bütün jeodları açar; açılan sayıyı ve en nadir çıkan nadirliği döner */
+  openAllGeodes(): { n: number; best: number } {
+    let n = 0;
+    let best = -1;
+    while (this.save.geodes >= 1) {
+      const c = this.openGeode();
+      if (!c) break;
+      n++;
+      best = Math.max(best, c.rarity);
+    }
+    return { n, best };
+  }
+
   /** aynı türden (özellik + nadirlik) kristaller otomatik birleştirilir: gelişim seviyeleri toplanır, azami aşan kısım ruh tozuna döner; birleştirilen sayıyı döner */
   static mergeCrystals(s: SaveData): number {
     const keep = new Map<string, Crystal>();

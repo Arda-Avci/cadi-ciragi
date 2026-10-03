@@ -11,7 +11,7 @@ const EN = {
     'Yetenek Ağacı': 'Skill Tree', 'Kristaller': 'Crystals', 'Statlar': 'Stats', 'Karakter Kartları': 'Character Cards',
     'Buraya tıkla!': 'Tap here!', 'Usta Cadı: Eğitim': 'Master Witch: Training', 'dokun: harita': 'tap: map',
     'Kuşan': 'Equip', 'Çıkar': 'Unequip', 'Tak': 'Wear', 'Sat': 'Sell', 'Aç': 'Unlock', '▲ Yükselt': '▲ Upgrade', 'Oyna': 'Play', 'Yarın': 'Tomorrow',
-    'KUŞANILDI': 'EQUIPPED', 'Jeod aç': 'Open geode', 'boş': 'empty', 'Kapat': 'Close', 'Ödülü al': 'Claim reward',
+    'KUŞANILDI': 'EQUIPPED', 'Jeod aç': 'Open geode', 'Tümünü aç': 'Open all', 'jeod açıldı': 'geodes opened', 'en iyi': 'best', 'Bu kristal kullanımda. Yine de satılsın mı?': 'This crystal is in use. Sell anyway?', 'boş': 'empty', 'Kapat': 'Close', 'Ödülü al': 'Claim reward',
     'Güç': 'Power', 'Azami can': 'Max health', 'Yenilenme': 'Regen', 'Hasar çarpanı': 'Damage multiplier', 'Alınan hasar çarpanı': 'Damage taken multiplier',
     'Eğitim (usta cadı)': 'Training (master witch)', 'Kesme': 'Cut', 'Delme': 'Pierce', 'Ezme': 'Smash',
     'Sağlam Pelerin': 'Sturdy Cloak', 'Şifalı Çay': 'Healing Tea', 'Tılsımlı Broş': 'Charm Brooch', 'Parlak Büyü': 'Bright Spell', 'Hızlı Büyü': 'Quick Cast',

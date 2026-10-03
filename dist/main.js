@@ -426,6 +426,12 @@ function renderPanel() {
                 note = L(RARITIES[c.rarity].name) + ' ' + L(CRYSTAL_STATS[c.stat].name) + '!';
             renderPanel();
         }));
+        info.append(btn('Tümünü aç', '', game.save.geodes >= 2, () => {
+            const r = game.openAllGeodes();
+            if (r.n)
+                note = `${r.n} ${L('jeod açıldı')} · ${L('en iyi')}: ${L(RARITIES[r.best].name)}`;
+            renderPanel();
+        }));
         panel.append(info);
         const list = [...game.save.crystals].sort((a, b) => Number(game.save.equipped.includes(b.id)) - Number(game.save.equipped.includes(a.id)) || b.rarity - a.rarity || b.enchant - a.enchant);
         for (const c of list.slice(0, 40)) {
@@ -433,12 +439,17 @@ function renderPanel() {
             const st = CRYSTAL_STATS[c.stat];
             const val = crystalValue(c.stat, c.rarity, c.enchant);
             const cost = enchantCost(c.enchant);
-            panel.append(row(`<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico(statIcon(c.stat), 34)}</span>`, `<span style="color:${RARITIES[c.rarity].color}">${L(RARITIES[c.rarity].name)} ${L(st.name)}</span> +${c.enchant}`, `+${val.toFixed(st.unit === '/sn' ? 2 : 1)}${st.unit} ${L(st.name)}` + (c.enchant < MAX_ENCHANT && game.save.dust < cost ? ` · ${L('Toz yetmiyor')} (${Math.floor(game.save.dust)}/${cost})` : ''), btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => { if (!game.toggleCrystal(c.id))
+            panel.append(row(`<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico(statIcon(c.stat), 34)}</span>`, `${eq ? '<b style="color:#7bff9a">✓</b> ' : ''}<span style="color:${RARITIES[c.rarity].color}">${L(RARITIES[c.rarity].name)} ${L(st.name)}</span> +${c.enchant}`, `+${val.toFixed(st.unit === '/sn' ? 2 : 1)}${st.unit} ${L(st.name)}` + (c.enchant < MAX_ENCHANT && game.save.dust < cost ? ` · ${L('Toz yetmiyor')} (${Math.floor(game.save.dust)}/${cost})` : ''), btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => { if (!game.toggleCrystal(c.id))
                 note = L('Boş yuva yok.'); renderPanel(); }), btn(c.enchant >= MAX_ENCHANT ? 'MAX' : `✦ ${cost} · %${Math.round(enchantChance(c.enchant) * 100)}`, '', c.enchant < MAX_ENCHANT && game.save.dust >= cost, () => {
                 const r = game.enchantCrystal(c.id);
                 note = r === 'ok' ? 'Başarılı!' : r === 'fail' ? 'Başarısız, toz gitti.' : '';
                 renderPanel();
-            }), btn('Sat', 'danger', true, () => { game.sellCrystal(c.id); renderPanel(); }))));
+            }), btn('Sat', 'danger', true, () => {
+                if (eq && !window.confirm(L('Bu kristal kullanımda. Yine de satılsın mı?')))
+                    return;
+                game.sellCrystal(c.id);
+                renderPanel();
+            }))));
         }
         if (!list.length)
             panel.append(row(ico('icon_geode', 30), 'Kristalin yok', 'Elit/boss kamplarından ve sandıklardan jeod düşer; jeod açınca kristal çıkar.', null));
