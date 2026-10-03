@@ -153,6 +153,9 @@ export class Game {
         this.venoms = [];
         this.snakeGid = 0;
         this.snakeDone = new Set();
+        /** peş peşe dev yılan: kule kimliği -> kalan yılan sayısı ve çıkış noktası */
+        this.snakeQueue = new Map();
+        this.snakePending = [];
         /** dev yılan savaşı: yılan yakındayken kamera yaklaşır, diğer düşmanlar/kamplar durur, yalnız yılana odaklanılır */
         this.snakeFight = false;
         this.wrapNoteT = -9;
@@ -846,7 +849,7 @@ export class Game {
                 if (obstacles.some((o) => Math.hypot(o.x - x, o.y - y) < o.r + r + 70))
                     continue;
                 obstacles.push({
-                    id: reg * 100 + obstacles.length, div: bld ? (k - nRocks) % 5 === 0 ? 1 : 2 + ((k - nRocks) % 4) : 1, x, y, r, kind: bld ? 'bld' : 'rock', art: bld ? zone.art.bld[k % 3] : zone.art.rock, size: bld ? 170 : r * 3.6, flip: orng() < 0.5 ? 1 : -1, brk: !bld && k % 3 === 0,
+                    id: reg * 100 + obstacles.length, div: bld ? (k - nRocks) % 5 === 0 ? 1 : 2 + ((k - nRocks) % 4) : 1, x, y, r, kind: bld ? 'bld' : 'rock', art: bld ? zone.art.bld[k % 3] : zone.art.rock, size: bld ? 170 : r * 3.6, flip: orng() < 0.5 ? 1 : -1, brk: !bld && (reg >= 39 || k % 3 === 0),
                 });
                 break;
             }
@@ -1203,6 +1206,9 @@ export class Game {
             const ids = this.zoneWorld(reg).obstacles.filter((x) => x.kind === 'bld').map((x) => x.id).sort((a, b) => a - b);
             const giant = new Set();
             const small = new Set();
+            if (reg >= 39)
+                for (const id of ids)
+                    giant.add(id); // 40. seviyeden itibaren bütün kulelerden dev yılan çıkar
             if (reg >= 3 && ids.length)
                 giant.add(ids[reg % ids.length]);
             if (reg >= 15 && ids.length > 3)
@@ -1222,6 +1228,8 @@ export class Game {
         const reg = Math.floor(o.id / 100);
         if (k === 'giant') {
             this.spawnGiant(o.x, o.y, reg, o.id);
+            if (reg >= 49)
+                this.snakeQueue.set(o.id, { left: 2, x: o.x, y: o.y, reg }); // 50. seviyeden sonra bir önceki ölünce sıradaki çıkar (toplam 3)
             return;
         }
         const n = 5 + Math.min(9, Math.floor(reg / 3));
@@ -1943,6 +1951,12 @@ export class Game {
     }
     updateSnakes(dt) {
         this.wrapT = Math.max(0, this.wrapT - dt);
+        for (const q of this.snakePending) {
+            q.t -= dt;
+            if (q.t <= 0)
+                this.spawnGiant(q.x, q.y, q.reg, q.nest);
+        }
+        this.snakePending = this.snakePending.filter((q) => q.t > 0);
         for (const v of this.venoms) {
             v.t -= dt;
             v.x += v.vx * dt;
@@ -2051,6 +2065,26 @@ export class Game {
             segs[0].rot = Math.atan2(S.hdy, S.hdx);
             for (let i = 1; i < segs.length; i++)
                 segs[i].rot = Math.atan2(segs[i - 1].y - segs[i].y, segs[i - 1].x - segs[i].x);
+            // dev yılana her temas (bölüm gövdesine değmek) azami sağlığın %10'unu götürür; zırh ve seviye etkilemez
+            if (this.dead <= 0 && this.invuln <= 0 && this.flyT <= 0) {
+                for (const s of segs) {
+                    if (Math.hypot(s.x - this.px, s.y - this.py) < s.def.r * TIERS[s.tier].size + 14) {
+                        const hit = this.maxHp() * 0.1;
+                        this.hp -= hit;
+                        this.invuln = 0.6;
+                        this.hurtFlash = 0.25;
+                        this.shake = Math.max(this.shake, 6);
+                        audio.play('hurt');
+                        vibrate(35);
+                        this.float(this.px, this.py - 20, '-' + this.fmt(hit), '#ff6b6b');
+                        if (this.hp <= 0) {
+                            this.die();
+                            return;
+                        }
+                        break;
+                    }
+                }
+            }
             // sarma: halka daralınca yakındaki bölümler can götürür, kahraman yavaşlar; bölümler vurulunca azalır
             S.tick -= dt;
             if (S.phase === 'coil' && S.ringR < 110 && this.dead <= 0) {
@@ -2092,6 +2126,11 @@ export class Game {
             return;
         }
         this.snakeDone.add(seg.gid);
+        const q = this.snakeQueue.get(this.snakes.get(seg.gid)?.nest ?? -1);
+        if (q && q.left > 0) {
+            q.left--;
+            this.snakePending.push({ t: 2.5, x: q.x, y: q.y, reg: q.reg, nest: this.snakes.get(seg.gid)?.nest ?? -1 });
+        }
         const tigerHelped = this.enemies.some((x) => x.seg && x.seg.gid === seg.gid && x.tg);
         // dev yılan büyük ödül verir: bol jeod/toz/ruh, destansı eşyalar ve (her kule için ilk yenişte) kalıcı güç artışı
         const nest = this.snakes.get(seg.gid)?.nest ?? -1;
