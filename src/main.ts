@@ -1074,6 +1074,7 @@ document.getElementById('btn-shop')?.addEventListener('click', () => { open = op
 /** bu cihazdaki kahramanların sıralaması: aşılan ada > güç > öldürme */
 function hofList(max: number): HTMLElement {
   const wrap = document.createElement('div');
+  Game.refreshHof(() => { if (open === 'hof' || open === 'stats') renderPanel(); }); // sunucudaki kalıcı liste gelince panel yenilenir
   const list = Game.hofRanking().slice(0, max);
   if (!list.length) { wrap.innerHTML = `<div class="row"><small>${L('Henüz kayıt yok')}</small></div>`; return wrap; }
   list.forEach((e, i) => {

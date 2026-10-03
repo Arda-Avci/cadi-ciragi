@@ -9,6 +9,7 @@ import { ENERGY_MAX, FEED_SECONDS, LEVEL_COST, LEVEL_GROWTH, LEVEL_KILLS, MAX_TI
 import { audio } from './audio.js';
 import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
 import { N, T } from './i18n.js';
+import { cachedRemoteHof, fetchRemoteHof, pushHof, pushOldHeroes } from './hof.js';
 import { changed as settingsChanged, settings, vibrate } from './settings.js';
 const HOF_KEY = 'cadi-ciragi-hof';
 /** adaya özel görseller (bellekte yalnızca yüklü adaların görselleri tutulur) */
@@ -478,7 +479,30 @@ export class Game {
     }
     /** sıralama: önce aşılan ada, sonra güç, sonra öldürme */
     static hofRanking() {
-        return Game.loadHof().sort((a, b) => b.islands - a.islands || b.power - a.power || b.kills - a.kills).slice(0, 20);
+        // sunucudaki kalıcı liste + bu cihazın yerel listesi, kahraman kimliğine göre birleştirilir (aynı kimlikte en yüksek değerler)
+        const byId = new Map();
+        for (const e of [...Game.remoteHof, ...Game.loadHof()]) {
+            const o = byId.get(e.id);
+            if (!o) {
+                byId.set(e.id, e);
+                continue;
+            }
+            byId.set(e.id, { ...(e.updated >= o.updated ? e : o), islands: Math.max(e.islands, o.islands), power: Math.max(e.power, o.power), kills: Math.max(e.kills, o.kills), deaths: Math.max(e.deaths, o.deaths), maxHp: Math.max(e.maxHp, o.maxHp) });
+        }
+        return [...byId.values()].sort((a, b) => b.islands - a.islands || b.power - a.power || b.kills - a.kills).slice(0, 50);
+    }
+    /** sunucudaki listeyi (en çok 20 sn'de bir) yeniler; yenilenince done çağrılır */
+    static refreshHof(done) {
+        const now = Date.now();
+        if (now - Game.hofFetchedAt < 20000)
+            return;
+        Game.hofFetchedAt = now;
+        void fetchRemoteHof().then((list) => { if (list) {
+            Game.remoteHof = list;
+            done();
+        } });
+        if (!TEST_LEVEL)
+            void pushOldHeroes(Game.loadHof());
     }
     updateHof() {
         if (this.save.kills === 0 && this.bossesDown() === 0)
@@ -500,6 +524,8 @@ export class Game {
         catch (err) {
             console.error('şeref salonu yazılamadı', err);
         }
+        if (!TEST_LEVEL)
+            pushHof(e); // test modu kahramanları kalıcı listeye girmez
     }
     persist() {
         try {
@@ -6026,6 +6052,8 @@ export class Game {
         c.fillText('Ok: bakış yönün · Kapatmak için dokun', this.w / 2, my + mh + 50);
     }
 }
+Game.remoteHof = cachedRemoteHof();
+Game.hofFetchedAt = 0;
 // ---- ödüllü reklam ödülleri ----
 Game.AD_DAILY = 10;
 Game.AD_COOLDOWN = 180; // sn, ödül türü başına

@@ -1,0 +1,19 @@
+[Unit]
+Description=Hexling Seref Salonu API (SQLite)
+After=network.target
+
+[Service]
+ExecStart=/opt/hexling-hof/node --disable-warning=ExperimentalWarning /opt/hexling-hof/server.mjs
+Environment=PORT=8787
+Environment=DB_FILE=/var/lib/hexling-hof/hof.db
+DynamicUser=yes
+StateDirectory=hexling-hof
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
