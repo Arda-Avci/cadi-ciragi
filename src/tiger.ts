@@ -15,6 +15,8 @@ export const LEVEL_KILLS = 12;
 export const LEVEL_GROWTH = 1.07;
 /** yaralıyken güç en çok bu orana kadar düşer (%40) */
 export const WOUND_FLOOR = 0.4;
+/** ana karakterle birlikte kendiliğinden yenilenme sınırı (can oranı); fazlası ruh tozuyla */
+export const TIGER_REGEN_CAP = 0.75;
 /** kaplanı bir seviyede (adada) kullanmanın ruh tozu bedeli; ilk seviye ücretsizdir */
 export const LEVEL_COST = 40;
 

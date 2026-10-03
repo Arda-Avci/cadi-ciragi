@@ -9,7 +9,7 @@ import { FEED_GAP, HOUSE_DMG_CAP, HOUSE_HP_CAP, HouseState, TaskId, TaskInfo, da
 import { DailyState, DailyType, TUTORIAL, TutStep, dailyText, makeDaily } from './quests.js';
 import { scheduleHouse } from './notify.js';
 import { OUTFITS, weekly } from './meta.js';
-import { ENERGY_MAX, FEED_SECONDS, LEVEL_COST, LEVEL_GROWTH, LEVEL_KILLS, MAX_TIGER_ITEM_LEVEL, TIGER_POWER, WOUND_FLOOR, TIGER_SLOTS, TIGER_SLOT_LIST, TigerItem, TigerSave, freshTiger, tigerBonus } from './tiger.js';
+import { ENERGY_MAX, FEED_SECONDS, LEVEL_COST, LEVEL_GROWTH, LEVEL_KILLS, MAX_TIGER_ITEM_LEVEL, TIGER_POWER, WOUND_FLOOR, TIGER_REGEN_CAP, TIGER_SLOTS, TIGER_SLOT_LIST, TigerItem, TigerSave, freshTiger, tigerBonus } from './tiger.js';
 import { audio } from './audio.js';
 import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
 import { N, T } from './i18n.js';
@@ -510,8 +510,9 @@ export class Game {
     return false;
   }
 
-  walkable(x: number, y: number, ignoreGates = false): boolean {
-    if (this.blocked(x, y)) return false;
+  /** ignoreObstacles: kaya/bina engelleri yok sayılır (yalnız kara ve köprü şartı kalır; kaplan engellere takılmasın diye) */
+  walkable(x: number, y: number, ignoreGates = false, ignoreObstacles = false): boolean {
+    if (!ignoreObstacles && this.blocked(x, y)) return false;
     for (let i = 0; i < ZONES.length; i++) {
       const c = this.regionCenter(i);
       if (Math.hypot(x - c.x, y - c.y) <= c.r - 18) return true;
@@ -1040,7 +1041,8 @@ export class Game {
   /** ana karakter iyileşirken kaplan da aynı oranda iyileşir (can oranı ortak yenilenir) */
   private tigerHeal(frac: number): void {
     const t = this.save.tiger;
-    if (t.frac < 1) t.frac = Math.min(1, t.frac + frac * 0.25); // ana karakterle birlikte ama yavaş; ruh tozu hızlandırır
+    // ana karakterle aynı hızda (aynı oranda) yenilenir ama yalnızca %75'e kadar; gerisi ruh tozuyla iyileştirilir
+    if (t.frac < TIGER_REGEN_CAP) t.frac = Math.min(TIGER_REGEN_CAP, t.frac + frac);
   }
   /** bir porsiyon: ruh + toz harcar, 10 dk saldırı enerjisi verir */
   feedCost(): { souls: number; dust: number } { return { souls: Math.max(30, this.soupYield(0.4 * 3.6e6)), dust: 1 + Math.floor(this.bossesDown() / 8) }; }
@@ -1115,9 +1117,9 @@ export class Game {
     if (speed > 0 && d > 8) {
       const nx = g.x + (dx / d) * speed * dt;
       const ny = g.y + (dy / d) * speed * dt;
-      if (this.walkable(nx, ny, true)) { g.x = nx; g.y = ny; }
-      else if (this.walkable(nx, g.y, true)) g.x = nx;
-      else if (this.walkable(g.x, ny, true)) g.y = ny;
+      if (this.walkable(nx, ny, true, true)) { g.x = nx; g.y = ny; }
+      else if (this.walkable(nx, g.y, true, true)) g.x = nx;
+      else if (this.walkable(g.x, ny, true, true)) g.y = ny;
       g.moving = true;
     }
     // düşman teması: kaplan da hasar alır (ana karakterin dayanıklılığının %60'ı kadar yumuşak)
@@ -1125,9 +1127,10 @@ export class Game {
       for (const e of this.enemies) {
         if (e.hp <= 0 || e.state === 'return') continue;
         if (Math.hypot(e.x - g.x, e.y - g.y) > e.def.r * TIERS[e.tier].size + 16) continue;
-        const hit = this.enemyDmg(e) * 0.6;
+        // ana karakterin zırhını ve hasar türü direncini miras alır, üstüne %70 daha az hasar yer
+        const hit = this.enemyDmg(e) * this.armor() * (1 - Math.min(0.9, this.typedReduction(e.def.atk) / 100)) * 0.3;
         t.frac = Math.max(0, t.frac - hit / this.tigerMaxHp());
-        g.inv = 0.6;
+        g.inv = 0.8;
         g.flash = 0.2;
         this.float(g.x, g.y - 30, '-' + this.fmt(hit), '#ffb0b0');
         break;
@@ -1141,7 +1144,7 @@ export class Game {
     const c = this.ctx;
     const t = this.save.tiger;
     c.fillStyle = 'rgba(0,0,0,0.25)';
-    c.beginPath(); c.ellipse(g.x, g.y + 16, 24, 7, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(g.x, g.y + 17, 25.2, 7.4, 0, 0, Math.PI * 2); c.fill();
     const has = (n: string): boolean => !!this.spr(n);
     let frame = 'tiger_walk1';
     if (g.down) frame = has('tiger_down1') ? 'tiger_down1' : 'tiger';
@@ -1149,16 +1152,21 @@ export class Game {
     else if (g.moving && has('tiger_walk4')) frame = 'tiger_walk' + (1 + (Math.floor(g.t * 9) % 4));
     else if (!has('tiger_walk1')) frame = 'tiger';
     const bob = g.moving ? -Math.abs(Math.sin(g.t * 10)) * 3 : Math.sin(g.t * 2) * 1;
-    if (!this.drawSprX(frame, g.x, g.y - 4, 76, { flip: g.face, bob, flash: g.flash > 0, alpha: g.down ? 0.7 : 1 })) {
+    if (!this.drawSprX(frame, g.x, g.y - 4, 79.8, { flip: g.face, bob, flash: g.flash > 0, alpha: g.down ? 0.7 : 1 })) {
       c.fillStyle = '#f4f4f4'; c.beginPath(); c.ellipse(g.x, g.y, 18, 12, 0, 0, Math.PI * 2); c.fill();
       c.fillStyle = '#222'; c.fillRect(g.x - 10, g.y - 6, 4, 10); c.fillRect(g.x + 2, g.y - 6, 4, 10);
     }
     // can çubuğu ve enerji durumu
-    c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(g.x - 22, g.y - 52, 44, 6);
-    c.fillStyle = t.frac <= 0.25 ? '#ff7a7a' : '#8fe8ff'; c.fillRect(g.x - 21, g.y - 51, 42 * Math.max(0, t.frac), 4);
+    c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(g.x - 23, g.y - 55, 46, 6);
+    c.fillStyle = t.frac <= 0.25 ? '#ff7a7a' : '#8fe8ff'; c.fillRect(g.x - 22, g.y - 54, 44 * Math.max(0, t.frac), 4);
+    // gücü üstünde yazar (düşman etiketleri gibi)
+    c.font = `bold ${Math.round(12 * this.lk())}px sans-serif`; c.textAlign = 'center';
+    c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.7)';
+    const pt = '⚔ ' + this.fmt(this.tigerPower());
+    c.strokeText(pt, g.x, g.y - 59); c.fillStyle = '#8fe8ff'; c.fillText(pt, g.x, g.y - 59);
     if (t.energy <= 0 || g.down) {
-      c.font = `bold ${Math.round(11 * this.lk())}px sans-serif`; c.textAlign = 'center'; c.fillStyle = '#cfd8ff';
-      c.fillText(g.down ? 'Zzz' : T('enerji yok'), g.x, g.y - 58);
+      c.font = `bold ${Math.round(11 * this.lk())}px sans-serif`; c.fillStyle = '#cfd8ff';
+      c.fillText(g.down ? 'Zzz' : T('enerji yok'), g.x, g.y - 73);
     }
   }
 

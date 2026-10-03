@@ -183,7 +183,7 @@ function renderHouse(): void {
       btn(settings.companion ? 'Açık' : 'Kapalı', settings.companion ? 'sel' : '', true, () => { const r = game.setCompanion(!settings.companion); if (r !== 'ok') msgEl.textContent = L(r); else renderPanel(); })));
     const msgEl = document.createElement('div');
     msgEl.className = 'row';
-    msgEl.innerHTML = `<small>${L('Düşman ekrandaysa kendiliğinden saldırır; saldırırken enerji harcar. Canı ana karakterle birlikte yenilenir.')}<br><b>${L('İlk seviye ücretsiz; sonraki her seviye geçişinde Kaplan için ruh tozu')} −${LEVEL_COST}.</b> ${game.tigerPaid() ? L('Bu seviye için ödendi.') : L('Bu seviye için henüz ödenmedi.')}</small>`;
+    msgEl.innerHTML = `<small>${L('Düşman ekrandaysa kendiliğinden saldırır; saldırırken enerji harcar. Canı ana karakterle aynı hızda %75 oranına kadar yenilenir; fazlası için ruh tozu gerekir.')}<br><b>${L('İlk seviye ücretsiz; sonraki her seviye geçişinde Kaplan için ruh tozu')} −${LEVEL_COST}.</b> ${game.tigerPaid() ? L('Bu seviye için ödendi.') : L('Bu seviye için henüz ödenmedi.')}</small>`;
     panel.append(msgEl);
     const canFeed = sv.essence >= c.souls && sv.dust >= c.dust && tg.energy < ENERGY_MAX - 1;
     panel.append(row(emoji('⚡'), `${L('Enerji')}: ${energyTxt}`, `${L('Bir porsiyon: +10 dk')} · ${c.souls} ${L('ruh')} + ${c.dust} ${L('toz')}`,
