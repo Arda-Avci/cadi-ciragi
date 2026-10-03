@@ -3479,6 +3479,12 @@ export class Game {
             let nx = e.x + vx * dt;
             let ny = e.y + vy * dt;
             if (e.sp === BONUS_SP) {
+                // bonus düşmanı kendi adasından çıkmaz (köprüye / sonraki adaya geçmez)
+                const bc = this.regionCenter(e.reg);
+                if (Math.hypot(nx - bc.x, ny - bc.y) > bc.r - 40) {
+                    nx = e.x;
+                    ny = e.y;
+                }
                 // bonus düşmanı, bir komşusuna 130 px'den fazla yaklaşacaksa o yöne ilerlemez (yan yana kayabilir)
                 for (const o of this.enemies) {
                     if (o === e || o.sp !== BONUS_SP)
@@ -3615,11 +3621,12 @@ export class Game {
                         const push = (MIN - d) / 2 + 0.5;
                         const ux = (dx / d) * push;
                         const uy = (dy / d) * push;
-                        if (this.walkable(a.x - ux, a.y - uy, true)) {
+                        const bc = this.regionCenter(a.reg);
+                        if (this.walkable(a.x - ux, a.y - uy, true) && Math.hypot(a.x - ux - bc.x, a.y - uy - bc.y) <= bc.r - 40) {
                             a.x -= ux;
                             a.y -= uy;
                         }
-                        if (this.walkable(b.x + ux, b.y + uy, true)) {
+                        if (this.walkable(b.x + ux, b.y + uy, true) && Math.hypot(b.x + ux - bc.x, b.y + uy - bc.y) <= bc.r - 40) {
                             b.x += ux;
                             b.y += uy;
                         }
@@ -3658,13 +3665,20 @@ export class Game {
         const maxHp = Math.max(1, this.dps() * 0.25); // karakterin saniyelik hasarının dörtte biri: kısa sürede ölür, can ve hasar karakterin %4 gücünü verir
         const dmgE = (0.6 * (target / 10) ** 2) / maxHp;
         const lvB = Math.max(1, (dmgE / dmg0) ** 2); // enemyDmg ∝ √lv
+        // oyuncu adanın ortasına alınır, bütün düşmanlar aynı adada doğar
+        const c = this.regionCenter(i);
+        this.px = c.x;
+        this.py = c.y;
+        if (!this.walkable(this.px, this.py))
+            this.snapToLand();
+        this.ensureLoaded(i);
         let placed = 0;
         const spots = [];
         for (let k = 0; k < 60000 && placed < BONUS_COUNT; k++) {
             const a = Math.random() * Math.PI * 2;
-            const r = 260 + Math.random() * (1900 + k / 30);
-            const x = this.px + Math.cos(a) * r;
-            const y = this.py + Math.sin(a) * r;
+            const r = 200 + Math.sqrt(Math.random()) * Math.max(0, c.r - 260);
+            const x = c.x + Math.cos(a) * r;
+            const y = c.y + Math.sin(a) * r;
             if (!this.walkable(x, y, true))
                 continue;
             if (spots.some((s) => Math.hypot(s.x - x, s.y - y) < 130))
