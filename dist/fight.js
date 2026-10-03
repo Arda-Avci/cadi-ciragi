@@ -90,6 +90,12 @@ export class FightGame {
             throw new Error('canvas yok');
         this.c = ctx;
         this.buildPad();
+        if (!window.matchMedia('(pointer: coarse)').matches) {
+            const hint = document.createElement('div');
+            hint.textContent = T('A D: hareket · W: zıpla · J: yumruk · K: tekme · U: büyü · L: blok');
+            hint.style.cssText = 'position:absolute;left:50%;bottom:10px;transform:translateX(-50%);color:rgba(255,255,255,.6);font:13px sans-serif;pointer-events:none;white-space:nowrap';
+            this.root.append(hint);
+        }
         this.cv.addEventListener('pointerdown', () => { if (this.phase === 'over')
             this.finish(); });
         document.body.append(this.root);

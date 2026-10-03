@@ -212,7 +212,7 @@ function renderHouse(): void {
     for (const i of open0.slice(0, 30)) {
       const pg = pageFor(i);
       const el = document.createElement('div');
-      el.className = 'row';
+      el.className = 'row page';
       el.innerHTML = `${hasScene(i) ? `<img class="scene" src="assets/story_${i}.jpg" alt="" onerror="this.style.display='none'">` : ''}<div><b>${pg.title}</b><br><small>${pg.text}</small></div>`;
       panel.append(el);
     }
@@ -810,7 +810,7 @@ function showScene(i: number): void {
   const pg = pageFor(i);
   const wrap = document.createElement('div');
   wrap.className = 'scene-ov';
-  wrap.innerHTML = `<img src="assets/story_${i}.jpg" alt="" onerror="this.style.display='none'"><div class="scene-txt"><b>${L(pg.title)}</b><p>${pg.text}</p><small>${L('Devam etmek için dokun')}</small></div>`;
+  wrap.innerHTML = `<div class="scene-img"><img src="assets/story_${i}.jpg" alt="" onerror="this.parentElement.style.display='none'"></div><div class="scene-txt"><b>${L(pg.title)}</b><p>${pg.text}</p><small>${L('Devam etmek için dokun')}</small></div>`;
   wrap.addEventListener('click', () => { wrap.classList.add('out'); setTimeout(() => wrap.remove(), 500); game.paused = false; });
   document.body.append(wrap);
   game.paused = true;
