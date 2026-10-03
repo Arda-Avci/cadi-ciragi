@@ -69,3 +69,11 @@ Satın alma, geri yükleme, banner ve ödüllü reklam akışları yalnızca der
 - Yumuşak sınır: `softCap(reg)` 101. adadan itibaren ücretsiz kalıcı güç tavanını her adada %6 düşürür (`SOFT_CAP_FROM`, `SOFT_CAP_DECAY` data.ts); açığı güç paketleri kapatır. Ada girişinde ekipman yetmiyorsa mağaza ipucu çıkar.
 - Performans: `Game.winRange()` çevredeki 10 adayı verir; fizik, çizim, minimap ve büyük harita yalnız bu pencereye bakar.
 - Yeni devam paketleri: `hexling.levels.50` (+50), `hexling.levels.100` (+100); mağaza konsolunda ürün oluşturulmalı, fiyatlar tahmindir.
+
+## İksir kazanı, kışkırtma, devler (04-10-2026)
+- **Yeniden doğuş parayla:** `hexling.rebirth` (consumable, `billing.ts` REBIRTH). Ruh ücreti kalktı; satın alınca `Game.rebirth()` çalışır. Mağaza konsolunda tüketilebilir ürün olarak oluşturulmalı (fiyat belirlenmedi).
+- **İksir kazanı** (Cadı Evi → İksir): 8 malzeme + karıştırma mini oyunu; dev (can ×1+0,8s, hasar ×1+0,25s, hız ×1−0,2s, boy ×1+0,8s), cüce (can ×1−0,25s, hasar ×1+0,6s, hız ×1+0,4s, kaçınma +%25s, boy ×1−0,4s), dengeli (can/hasar ×1+0,15s). 5 dk sürer, bekleme 2 dk, ödül 1-2 jeod + toz.
+- **Eski oyunlar:** 60. adadan sonra (`Game.OLD_GAMES_END`; yeniden doğuşta korunur) maden, usta eğitimi ve arena kapanır; iksir kazanı tek mini oyun. Bonus tur ve final düellosu devam eder.
+- **Kışkırtma yayları** (`story.ts` provokeArcs): her 6-8 adada bir başlar, 2-3 ada aynı tonda sürer (zayıf/güçlü/paketli/geri dönen/final). Yay son adımında iki yayda bir usta cadı büyü yapar: güç %60 düşer, 60 sn (`CURSE_*`).
+- **Devler:** 35. adadan itibaren sarsıntılar ve hikâye sahneleri (g1..g4: 35, 40, 45, 49. adalar), 50. adada devler gelir: düşman yarıçapı ×1,5 (`Game.GIANT_FROM = 49`).
+- **Görseller (Gemini/agy):** `tools/agy_rival.py` (rival_*.jpg), `tools/agy_brewstory.py` (story_brew1/giant/dwarf/rebirth/closing/curse/giants1-5.jpg).

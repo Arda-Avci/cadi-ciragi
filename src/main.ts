@@ -3,13 +3,13 @@ import { audio } from './audio.js';
 import { N, T } from './i18n.js';
 import { changed, loadSettings, settings, vibrate } from './settings.js';
 import { BUILD, CODENAME, VERSION } from './version.js';
-import { ARCHER, LEVEL_PACKS, PACKS, createBilling } from './billing.js';
+import { ARCHER, LEVEL_PACKS, PACKS, REBIRTH, createBilling } from './billing.js';
 import { FightGame, FightOpts } from './fight.js';
 import { catFull, fmtWait } from './house.js';
 import { TUTORIAL } from './quests.js';
 import { ENERGY_MAX, LEVEL_COST, TIGER_SLOTS, tigerItemPct } from './tiger.js';
 import { Ghost, LEGENDS, OUTFITS, RIVAL_HUE, ghostCode, heroLevel, parseGhostCode, weekly } from './meta.js';
-import { INTRO, MINE_ENTER, MINE_FOUND, hasScene, pageFor } from './story.js';
+import { INTRO, MINE_ENTER, MINE_FOUND, NARRATIVES, hasScene, pageFor } from './story.js';
 import { playMine } from './mine.js';
 import { TESTING, createAds, testRewarded } from './ads.js';
 import {
@@ -28,7 +28,7 @@ const masterBtn = document.getElementById('master-btn') as HTMLButtonElement;
 const archerBtn = document.getElementById('archer-btn') as HTMLButtonElement;
 archerBtn.addEventListener('click', () => game.toggleArcher());
 let open: 'tree' | 'weapons' | 'crystals' | 'gear' | 'stats' | 'cards' | 'train' | 'settings' | 'hof' | 'shop' | 'house' | null = null;
-let houseTab: 'home' | 'quests' | 'tiger' | 'story' | 'arena' | 'wardrobe' | 'explorer' = 'home';
+let houseTab: 'home' | 'quests' | 'tiger' | 'story' | 'arena' | 'wardrobe' | 'explorer' | 'brew' = 'home';
 let settingsNote = '';
 let landingOpen = true;
 let note = '';
@@ -79,7 +79,7 @@ function setPanelTitle(t: string, iconName: string): void {
   head.append(btn('✕', 'x', true, () => { open = null; renderPanel(); }));
   panel.append(head);
   // panel başlık görseli (varsa): yavaşça kayan/yakınlaşan animasyon
-  const art = open === 'house' ? ({ home: 'house', quests: 'quests', tiger: 'tiger', story: 'story', arena: 'arena', wardrobe: 'wardrobe', explorer: 'explorer' } as Record<string, string>)[houseTab] : open;
+  const art = open === 'house' ? ({ home: 'house', quests: 'quests', tiger: 'tiger', story: 'story', arena: 'arena', wardrobe: 'wardrobe', explorer: 'explorer', brew: 'house' } as Record<string, string>)[houseTab] : open;
   if (art) {
     const ban = document.createElement('div');
     ban.className = 'banner';
@@ -126,7 +126,7 @@ function startDuel(opts: FightOpts, done: (won: boolean) => void): void {
 
 function renderHouse(): void {
   setPanelTitle('Cadı Evi', 'home');
-  const tabs: [typeof houseTab, string][] = [['home', 'Ev'], ['quests', 'Görev'], ['tiger', 'Kaplan'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop'], ['explorer', 'Kaşif']];
+  const tabs: [typeof houseTab, string][] = [['home', 'Ev'], ['quests', 'Görev'], ['tiger', 'Kaplan'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop'], ['explorer', 'Kaşif'], ['brew', 'İksir']];
   const tabRow = document.createElement('div');
   tabRow.style.cssText = 'display:flex;gap:6px;margin:6px 0';
   for (const [k, name] of tabs) {
@@ -220,6 +220,12 @@ function renderHouse(): void {
       panel.append(el);
     }
     if (!open0.length) panel.append(row(emoji('📖'), 'Günlük boş', 'İlk adanın bossunu yen', null));
+  } else if (houseTab === 'arena' && game.oldGamesClosed()) {
+    panel.append(row(emoji('🥊', 'arena'), L('Arena kapandı'), L('Eski oyuncaklar kapandı: yalnızca iksir kazanı kaldı.'), null));
+  } else if (houseTab === 'explorer' && game.oldGamesClosed()) {
+    panel.append(row(emoji('🧭', 'explorer'), L('Maden kapandı'), L('Eski oyuncaklar kapandı: yalnızca iksir kazanı kaldı.'), null));
+  } else if (houseTab === 'brew') {
+    renderBrew();
   } else if (houseTab === 'arena') {
     const lvl = heroLevel(game.bossesDown(), ZONES.length);
     const mine: Ghost = { name: sv.hero.name, level: lvl, hue: sv.outfit };
@@ -580,20 +586,19 @@ function renderPanel(): void {
     msg.className = 'row';
     msg.innerHTML = `<small id="shop-msg">${TESTING ? L('TEST: satın alma 3 sn test reklamıyla yapılır') : billing.kind === 'none' ? L('Mağaza yalnızca mobil uygulamada kullanılabilir.') : billing.kind === 'dev' ? 'GELİŞTİRME MODU: sahte satın alma' : ''}</small>`;
     panel.append(msg);
-    // yeniden doğuş: paket almadan devam yolu (seviye sıfırlanır, güç korunur, ruh ücreti)
+    // yeniden doğuş: paket almadan devam yolu (seviye sıfırlanır, güç korunur); her sıfırlama mağazadan satın alınır
     const rh = document.createElement('h3');
     rh.textContent = L('Paket almadan devam: Yeniden doğuş');
     panel.append(rh);
-    const rbCost = game.rebirthCost();
-    const rbOk = game.canRebirth() && game.save.essence >= rbCost;
+    const rbOk = game.canRebirth() && (billing.kind !== 'none' || TESTING);
     panel.append(row(ico('ui_soul', 36), `${L('Yeniden doğuş')} (${game.rebirthCount()})`,
-      `${L('Seviyen 1\'e döner, gücün korunur; adaları baştan yaparak gücün yine artar.')} ${L('Ücret')}: ${fmt(rbCost)} ${L('Ruh')}${game.bossesDown() < 10 ? ' · ' + L('en az 10 ada aşılmalı') : ''}`,
-      btn(fmt(rbCost), 'danger', rbOk, () => {
-        if (!confirm(L('Seviyen 1\'e döner, gücün korunur. Ücret ödenir. Devam edilsin mi?'))) return;
-        const r = game.rebirth();
+      `${L('Seviyen 1\'e döner, gücün korunur; adaları baştan yaparak gücün yine artar.')}${game.bossesDown() < 10 ? ' · ' + L('en az 10 ada aşılmalı') : ''}`,
+      btn(shopPrices[REBIRTH.id] ?? REBIRTH.fallbackPrice, 'danger', rbOk, async () => {
+        if (!confirm(L('Seviyen 1\'e döner, gücün korunur. Her yeniden doğuş satın alınır. Devam edilsin mi?'))) return;
+        const r = await buy(REBIRTH.id);
         const mm = document.getElementById('shop-msg');
-        if (r && mm) mm.textContent = L(r);
-        open = null;
+        if (!r.ok && mm) mm.textContent = r.error ?? '';
+        if (r.ok) open = null;
         renderPanel();
       })));
     // devam paketleri: 40. adadan sonrasını açar (kalıcı, bir kez alınır)
@@ -1037,6 +1042,40 @@ function showScene(i: number): void {
   game.paused = true;
 }
 game.onStory = (i) => setTimeout(() => showScene(i), 1800);
+/** rakip cadının kışkırtma mesajı: güzel arka plan + cadı portresi (assets/rival_<ton>.jpg); hikâye sahnesi kapandıktan sonra, dokununca kapanır.
+ *  büyü varsa (curse) ikinci bir sahne (story_curse) ve ardından gücün 1 dk alınması gösterilir. */
+function showProvoke(title: string, text: string, tone: string, curse: string | null): void {
+  if (document.querySelector('.scene-ov') || document.querySelector('.provoke-ov')) { setTimeout(() => showProvoke(title, text, tone, curse), 2500); return; }
+  const wrap = document.createElement('div');
+  wrap.className = 'provoke-ov';
+  wrap.style.cssText = 'position:fixed;inset:0;z-index:240;background:radial-gradient(circle at 50% 30%,#1b3a26,#050a07);display:flex;align-items:center;justify-content:center;padding:12px';
+  let stage = 0;
+  const render = (): void => {
+    const cursing = stage === 1 && !!curse;
+    const img = cursing ? 'assets/story_curse.jpg' : `assets/rival_${tone}.jpg`;
+    const body = cursing ? curse : text;
+    // yatay ekranda görsel solda, metin sağda (yüz metinle örtülmesin); dikey ekranda görsel üstte, metin altta
+    const land = window.innerWidth > window.innerHeight;
+    const pos = cursing ? 'center' : 'top';
+    wrap.innerHTML = `<div style="display:flex;flex-direction:${land ? 'row' : 'column'};width:min(94vw,${land ? 760 : 420}px);height:min(92vh,${land ? 360 : 600}px);border-radius:16px;overflow:hidden;border:2px solid #6fe06f99;box-shadow:0 0 40px #3fdc6f66;background:#07120a">`
+      + `<div style="flex:${land ? '0 0 44%' : '1 1 62%'};background:#0a1a10 url(${img}) center ${pos}/cover no-repeat"></div>`
+      + `<div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;padding:14px 16px;background:linear-gradient(${land ? '90deg' : '180deg'},rgba(5,15,8,.55),rgba(5,15,8,.97) 30%);color:#e8ffe8;text-align:center;font:15px sans-serif">`
+      + `<b style="color:#9dff9d;font-size:17px">${cursing ? L('Cadının büyüsü') : L(title)}</b><p style="margin:8px 0 10px;line-height:1.35">“${L(body ?? '')}”</p>`
+      + `<small style="opacity:.75">${L('Devam etmek için dokun')}</small></div></div>`;
+  };
+  wrap.addEventListener('click', () => {
+    if (stage === 0 && curse) { stage = 1; render(); return; }
+    wrap.remove();
+    game.paused = false;
+    if (curse) game.applyCurse();
+  });
+  render();
+  document.body.append(wrap);
+  game.paused = true;
+}
+game.onProvoke = (title, text, tone, curse) => setTimeout(() => showProvoke(title, text, tone, curse), 4500);
+/** yeni sistemlerin hikâye anlatımı: kazan, dev, cüce, yeniden doğuş, eski oyunların kapanışı */
+game.onNarrate = (key) => { const pages = NARRATIVES[key]; if (pages) setTimeout(() => showIntro(() => undefined, pages), key === 'closing' ? 4500 : 1200); };
 /** yeni oyunun açılış hikâyesi: sırayla birkaç sahne, her dokunuşta bir sonrakine geçer */
 function showIntro(done: () => void, pages: { img: string; title: string; text: string }[] = INTRO): void {
   let n = 0;
@@ -1085,6 +1124,92 @@ setInterval(() => {
   if (open === 'house' && (houseTab === 'home' || houseTab === 'explorer')) renderPanel();
 }, 1000);
 document.getElementById('btn-shop')?.addEventListener('click', () => { open = open === 'shop' ? null : 'shop'; renderPanel(); });
+
+
+// ---------------- iksir kazanı ----------------
+const BREW_ING: { id: string; icon: string; name: string; tilt: number; spark: number; hint: string }[] = [
+  { id: 'dev', icon: '🍄', name: 'Dev Mantarı', tilt: 2, spark: 0, hint: 'Devleştirir' },
+  { id: 'cuce', icon: '🌸', name: 'Cüce Çiçeği', tilt: -2, spark: 0, hint: 'Cüceleştirir' },
+  { id: 'ay', icon: '💧', name: 'Ay Suyu', tilt: 0, spark: 0, hint: 'Dengeler (eğilimi sıfıra çeker)' },
+  { id: 'kivilcim', icon: '✨', name: 'Kıvılcım', tilt: 0, spark: 1, hint: 'Karıştırma alanını genişletir' },
+];
+const brewUI = { n: 0, sum: 0, sparks: 0, stage: 'pick' as 'pick' | 'stir' | 'done', msg: '' };
+let brewRaf = 0;
+function renderBrew(): void {
+  cancelAnimationFrame(brewRaf);
+  if (!game.save.first['narbrew']) { game.save.first['narbrew'] = 1; showIntro(() => renderPanel(), NARRATIVES.brew); }
+  const wait = game.brewReadyInMs();
+  const info = document.createElement('div');
+  info.className = 'row';
+  info.innerHTML = `<small>${L('En fazla 8 malzeme ekle, sonra karıştır. Dev Mantarı seni dev, Cüce Çiçeği cüce yapar; eşit karışım dengeli bırakır.')} ${game.oldGamesClosed() ? L('Artık tek mini oyun bu.') : ''}</small>`;
+  panel.append(info);
+  if (game.brewT > 0) {
+    const kind = game.brewKind === 'giant' ? L('Dev') : game.brewKind === 'dwarf' ? L('Cüce') : L('Dengeli');
+    panel.append(row(emoji('🧪', 'explorer'), `${L('Etki')}: ${kind}`, `${Math.ceil(game.brewT)} ${L('sn kaldı')}`, null));
+  }
+  if (brewUI.stage === 'done') {
+    panel.append(row(emoji('⚗️', 'explorer'), L('İksir hazır'), brewUI.msg, btn('Yeni karışım', '', wait <= 0, () => { brewUI.n = 0; brewUI.sum = 0; brewUI.sparks = 0; brewUI.stage = 'pick'; brewUI.msg = ''; renderPanel(); })));
+    if (wait > 0) { const w = document.createElement('div'); w.className = 'row'; w.innerHTML = `<small>${L('Yeni iksir için bekle')}: ${Math.ceil(wait / 1000)} ${L('sn')}</small>`; panel.append(w); }
+    return;
+  }
+  if (wait > 0) {
+    const w = document.createElement('div');
+    w.className = 'row';
+    w.innerHTML = `<small>${L('Kazan dinleniyor')}: ${Math.ceil(wait / 1000)} ${L('sn')}</small>`;
+    panel.append(w);
+    return;
+  }
+  // eğilim göstergesi: cüce ◀ ● ▶ dev
+  const pos = Math.max(0, Math.min(1, (brewUI.sum + 12) / 24));
+  const gauge = document.createElement('div');
+  gauge.className = 'row';
+  gauge.innerHTML = `<div style="width:100%"><div style="display:flex;justify-content:space-between;font-size:12px"><span>🌸 ${L('Cüce')}</span><span>⚖️</span><span>${L('Dev')} 🍄</span></div>`
+    + `<div style="position:relative;height:14px;border-radius:7px;background:linear-gradient(90deg,#4aa8ff,#7be07b 50%,#ff9a3c)"><div style="position:absolute;top:-3px;left:calc(${(pos * 100).toFixed(1)}% - 10px);width:20px;height:20px;border-radius:50%;background:#fff;border:2px solid #000"></div></div>`
+    + `<small>${L('Malzeme')}: ${brewUI.n}/8 · ${L('Kıvılcım')}: ${brewUI.sparks}</small></div>`;
+  panel.append(gauge);
+  if (brewUI.stage === 'pick') {
+    for (const ing of BREW_ING) {
+      panel.append(row(emoji(ing.icon, 'explorer'), L(ing.name), L(ing.hint), btn('Ekle', '', brewUI.n < 8, () => {
+        brewUI.n++;
+        if (ing.id === 'ay') brewUI.sum -= Math.sign(brewUI.sum) * Math.min(Math.abs(brewUI.sum), 2);
+        else brewUI.sum += ing.tilt;
+        brewUI.sparks += ing.spark;
+        renderPanel();
+      })));
+    }
+    const go = document.createElement('div');
+    go.className = 'row';
+    go.append(btn('Karıştırmaya başla', '', brewUI.n >= 3, () => { brewUI.stage = 'stir'; renderPanel(); }), btn('Boşalt', 'danger', brewUI.n > 0, () => { brewUI.n = 0; brewUI.sum = 0; brewUI.sparks = 0; renderPanel(); }));
+    panel.append(go);
+    return;
+  }
+  // karıştırma: işaretçi gidip gelir, yeşil alana denk gelince bas (kıvılcım alanı genişletir)
+  const zone = Math.min(0.5, 0.22 + 0.06 * brewUI.sparks);
+  const bar = document.createElement('div');
+  bar.className = 'row';
+  bar.innerHTML = `<div style="width:100%"><div id="stir-bar" style="position:relative;height:26px;border-radius:13px;background:#2a1f45;border:1px solid #b07cff88;overflow:hidden">`
+    + `<div style="position:absolute;top:0;bottom:0;left:${((0.5 - zone / 2) * 100).toFixed(1)}%;width:${(zone * 100).toFixed(1)}%;background:rgba(123,224,123,.55)"></div>`
+    + `<div id="stir-mark" style="position:absolute;top:2px;bottom:2px;width:8px;border-radius:4px;background:#fff;left:0"></div></div></div>`;
+  panel.append(bar);
+  const mark = bar.querySelector('#stir-mark') as HTMLElement;
+  const t0 = performance.now();
+  let p = 0;
+  const loop = (): void => {
+    const tt = (performance.now() - t0) / 1000;
+    p = 0.5 + 0.5 * Math.sin(tt * (2.4 + 0.15 * brewUI.n));
+    mark.style.left = `calc(${(p * 100).toFixed(1)}% - 4px)`;
+    brewRaf = requestAnimationFrame(loop);
+  };
+  loop();
+  panel.append(btn('Şimdi karıştır!', '', true, () => {
+    cancelAnimationFrame(brewRaf);
+    const q = Math.max(0.4, Math.min(1, 1 - Math.abs(p - 0.5) * 1.2 + (Math.abs(p - 0.5) <= zone / 2 ? 0.1 : 0)));
+    const r = game.brew(brewUI.sum, q);
+    brewUI.stage = 'done';
+    brewUI.msg = r ? `${r.kind === 'giant' ? L('Dev') : r.kind === 'dwarf' ? L('Cüce') : L('Dengeli')} · ${L('kalite')} %${Math.round(q * 100)} · +${r.geodes} ${L('jeod')} · +${r.dust} ${L('toz')}` : L('Kazan hazır değil');
+    renderPanel();
+  }));
+}
 
 // ---------------- Şeref Salonu ----------------
 /** bu cihazdaki kahramanların sıralaması: aşılan ada > güç > öldürme */

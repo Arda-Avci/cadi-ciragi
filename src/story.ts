@@ -64,3 +64,99 @@ export function pageFor(i: number): Page {
   const text = lines[Math.floor(i / 8) % lines.length];
   return { title: `Sayfa ${i + 1} · ${z.name}`, text: `${text} (Usta ${z.master} bu adada bana kısa bir not bıraktı.)` };
 }
+
+// ---- kışkırtma yayları: her 6-8 adada bir, 2-3 ada boyunca aynı tonda devam eden rakip cadı mesajları ----
+export type Tone = 'weak' | 'strong' | 'paid' | 'back' | 'final';
+export interface Arc { start: number; len: number }
+let arcCache: Arc[] | null = null;
+/** yay başlangıçları (boss'u yenilen ada dizini): 6, 7 ya da 8 ada arayla; her yay 2 ya da 3 ada sürer */
+export function provokeArcs(): Arc[] {
+  if (arcCache) return arcCache;
+  const out: Arc[] = [];
+  let at = 5;
+  let k = 0;
+  while (at < ZONES.length) {
+    const len = 2 + ((k * 7 + 1) % 2);
+    out.push({ start: at, len });
+    at += 6 + ((k * 5 + 2) % 3);
+    k++;
+  }
+  arcCache = out;
+  return out;
+}
+/** boss'u yenilen ada bir yayın içindeyse: yay ve kaçıncı adım (0 tabanlı) */
+export function arcAt(reg: number): { arc: Arc; step: number; index: number } | null {
+  const arcs = provokeArcs();
+  for (let i = 0; i < arcs.length; i++) {
+    const a = arcs[i];
+    if (reg >= a.start && reg < a.start + a.len) return { arc: a, step: reg - a.start, index: i };
+  }
+  return null;
+}
+export const TONES: Tone[] = ['weak', 'strong', 'paid', 'back', 'final'];
+export const PROVOKE_TITLE = 'Yeşil gözlü cadı';
+/** ton başına 3 adım: aynı havada devam eder */
+export const PROVOKE: Record<Tone, string[]> = {
+  weak: [
+    'İyi gidiyorsun, bunu kabul ediyorum. Ama sen hâlâ bir öğrencisin: beni görecek kadar iyi değilsin.',
+    'Benim seviyemde bir cadı olmak için çok uğraşman lazım, çırak. Bu adımlarla yetmez.',
+    'Bir ada daha geçtin, güzel. Ama bana yetişmek ömür ister. Çalışmaya devam et.',
+  ],
+  strong: [
+    'Güçlendin, görüyorum. Ama güç tek başına yetmez, çırak: sen hâlâ bir öğrencisin.',
+    'Hızlısın. Fazla hızlı. Usta olmak için çok uğraşman lazım; ben seni izliyorum.',
+    'Beni hafife alma. Sen güçlendikçe ben de büyüyorum; bana yetişmek için daha çok terlemelisin.',
+  ],
+  paid: [
+    'Güç satın alınır, ustalık alınmaz. Bunu bana kanıtlayabilecek misin, öğrenci?',
+    'Cebindeki güç sana ait değil. Benim seviyemde bir cadı olmak için çok uğraşman lazım.',
+    'Satın aldığın her şey beni biraz daha güldürüyor. Sen hâlâ bir öğrencisin.',
+  ],
+  back: [
+    'Geri mi döndün? Kaçmak yok: aynı yoldan yine geçeceksin. Hâlâ bir öğrencisin.',
+    'Baştan başladın ama ben unutmadım. Bana yetişmek için çok uğraşman lazım.',
+    'Yeniden doğmak yetmez. Beni görecek kadar hazır mısın bu sefer, çırak?',
+  ],
+  final: [
+    'Kapıya çok yaklaştın. Burada seni bekliyorum; ama sen hâlâ bir öğrencisin.',
+    'Duyuyorum adımlarını. Bir tane kaldı, çırak. Benim seviyeme çıkmak kolay değil.',
+    'Hazır ol. Bu kez yan yana değil, karşı karşıyayız.',
+  ],
+};
+/** usta cadı bazen güçlerini bir dakikalığına alır (büyü); mesajın altında gösterilir */
+export const CURSE_TEXT = 'Şimdi küçük bir ders, öğrenci: gücünü bir dakikalığına alıyorum. Hissediyor musun? Ustalık böyle sınanır.';
+export const CURSE_SEC = 60;
+export const CURSE_MUL = 0.4;
+/** eski oyunların kapandığı an gösterilen mesaj */
+export const OLD_GAMES_CLOSED_TEXT = 'Eski oyuncakların işi bitti: maden, usta cadıların eğitimi ve arena kapandı. Artık yalnızca iksir kazanı kaldı. Karışımını iyi seç: dev mi olacaksın, cüce mi?';
+
+/** yeni sistemlerin hikâye anlatımları: sırayla gösterilen sahneler (assets/story_<img>.jpg) */
+export const NARRATIVES: Record<string, { img: string; title: string; text: string }[]> = {
+  brew: [
+    { img: 'brew1', title: 'Kazanın çağrısı', text: 'Kulenin tepesinde eski bir kazan kaynıyor. Ustan Elmira\'nın notu yanında: "Her karışım seni başka biri yapar. Malzemeni dikkatle seç, çırak."' },
+    { img: 'giant', title: 'Dev mi, cüce mi?', text: 'Dev Mantarı seni adaların üstüne çıkarır: ağır, güçlü, yer sarsılır. Cüce Çiçeği ise küçültür: hızlı, çevik, vurucu. Karar senin.' },
+  ],
+  giant: [{ img: 'giant', title: 'Dev', text: 'Kazanın dumanı yükseldi ve adalar küçüldü. Artık dev bir cadısın: her adımda yer sarsılıyor, vuruşların ağır. Ama dar yollarda yavaşsın.' }],
+  dwarf: [{ img: 'dwarf', title: 'Cüce', text: 'Mantarlar bir ormana dönüştü! Küçüldün: hızlı ve çevikçe, düşmanların darbelerini kolayca ıskalatıyorsun. Ama sana tek isabet daha çok yakar.' }],
+  rebirth: [{ img: 'rebirth', title: 'Aynadan geri dönüş', text: 'Aynaya adım attın. Adalar bir rüya gibi silindi ama gücün göğsünde parlamaya devam ediyor. Ustan fısıldadı: "Baştan başlamak, güçsüz kalmak demek değildir."' }],
+  closing: [
+    { img: 'closing', title: 'Kapanan kapılar', text: OLD_GAMES_CLOSED_TEXT },
+    { img: 'brew1', title: 'Tek oyun: kazan', text: 'Maden, usta cadıların eğitimi ve arena sessizliğe gömüldü. Yeşil gözlü cadı aynadan gülümsüyor: "Artık yalnızca kazan var, çırak. Karışımını iyi seç."' },
+  ],
+  g1: [{ img: 'giants1', title: 'Uzaktan bir gümbürtü', text: 'Ustan Elmira fısıldadı: "Duyuyor musun? Yer her akşam biraz daha titriyor. Bu bir fırtına değil, çırak. Bu ayak sesleri."' }],
+  g2: [{ img: 'giants2', title: 'Geliyorlar', text: 'Su birikintileri her adımda sarsılıyor, kuşlar adadan kaçıyor. Aynanın öte yüzünden bir ordu yaklaşıyor: devler. "Hazırlan," diyor Elmira. "Küçük düşmanlarla işimiz bitti."' }],
+  g3: [{ img: 'giants3', title: 'Çok yakındalar', text: 'Ufukta bir gölge yükseldi: bir diz, bir omuz, dağdan büyük bir siluet. Yeşil gözlü cadı aynadan gülümsüyor: "Sana söylemiştim. Ben seni beklerken onlar seni karşılayacak."' }],
+  g4: [{ img: 'giants4', title: 'Neredeyse vardılar', text: 'Toprak her saniye sarsılıyor, kulelerden toz yağıyor. Bir sonraki adada devlerin gölgesi seni bekliyor. Kazanını hazırla: dev ya da cüce, seçmek zorundasın.' }],
+  g5: [{ img: 'giants5', title: 'Devler geldi', text: 'Dev ayaklar adaya bastı. Artık düşmanların boyu bir kule kadar: iri, ağır ve acımasız. Vuruşlarını bilerek yap, çırak; bu adalardan sonra küçük olan sensin.' }],
+  curse: [{ img: 'curse', title: 'Cadının büyüsü', text: 'Yeşil gözlü cadı elini kaldırdı. Altın bir ışık göğsünden süzülüp aynaya aktı. Gücün bir dakikalığına ondaydı.' }],
+};
+
+/** devlerin gelişi: 35. adadan itibaren yer sarsılır; ada dizini eşikleri ve anlatım anahtarları (49 = 50. ada: devler geldi) */
+export const GIANT_STAGES: [number, string][] = [[34, 'g1'], [39, 'g2'], [44, 'g3'], [48, 'g4'], [49, 'g5']];
+/** sarsıntı anında gösterilen kısa ifadeler (aşama 0-3) */
+export const TREMOR_TEXT: string[][] = [
+  ['Uzaktan bir gümbürtü… ayak sesi mi bu?', 'Yer hafifçe titredi. Biri yürüyor.'],
+  ['Geliyorlar. Yer her adımda sarsılıyor.', 'Kuşlar adadan kaçıyor: devler yaklaşıyor.'],
+  ['Çok yakındalar! Kulelerden toz yağıyor.', 'Her adım adayı sarsıyor. Çok yakındalar.'],
+  ['Neredeyse vardılar! Yer inliyor.', 'Bir sonraki adım adaya basacak: neredeyse vardılar.'],
+];

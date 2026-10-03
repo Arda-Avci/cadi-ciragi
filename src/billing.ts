@@ -35,7 +35,9 @@ export const LEVEL_PACKS: LevelPack[] = [
 ];
 /** okçu: tek seferlik (non-consumable) özel ürün; oyuncu elle nişan alıp atar, ayarlardan açılıp kapatılır */
 export const ARCHER = { id: 'hexling.archer', name: 'Okçu', fallbackPrice: '—' };
-const ALL_IDS = [...PACKS.map((p) => p.id), ...LEVEL_PACKS.map((p) => p.id), ARCHER.id];
+/** yeniden doğuş: her seferinde satın alınır (consumable); seviye 1'e döner, güç korunur */
+export const REBIRTH = { id: 'hexling.rebirth', name: 'Yeniden Doğuş', fallbackPrice: '—' };
+const ALL_IDS = [...PACKS.map((p) => p.id), ...LEVEL_PACKS.map((p) => p.id), ARCHER.id, REBIRTH.id];
 
 export interface PurchaseResult { ok: boolean; error?: string; receipt?: string }
 
@@ -108,6 +110,7 @@ function native(cdv: CdvGlobal, onGrant: (id: string, receipt: string) => void):
       ...PACKS.map((p) => ({ id: p.id, type: ProductType.CONSUMABLE, platform })),
       ...LEVEL_PACKS.map((p) => ({ id: p.id, type: ProductType.NON_CONSUMABLE, platform })),
       { id: ARCHER.id, type: ProductType.NON_CONSUMABLE, platform },
+      { id: REBIRTH.id, type: ProductType.CONSUMABLE, platform },
     ]);
     store.when().approved((t) => {
       for (const pr of t.products ?? []) onGrant(pr.id, 'native');

@@ -4,7 +4,7 @@ import {
   enchantChance, enchantCost, fmtNum, itemUpgradeCost, itemValue, upgradeCost, weaponLevelCopies,
 } from './data.js';
 import { VERSION } from './version.js';
-import { ARCHER, LEVEL_PACKS, PACKS } from './billing.js';
+import { ARCHER, LEVEL_PACKS, PACKS, REBIRTH } from './billing.js';
 import { FEED_GAP, HOUSE_DMG_CAP, HOUSE_HP_CAP, HouseState, TaskId, TaskInfo, dayNumber, freshHouse, soupMs, tasks } from './house.js';
 import { DailyState, DailyType, TUTORIAL, TutStep, dailyText, extendDaily, makeDaily } from './quests.js';
 import { scheduleHouse } from './notify.js';
@@ -13,6 +13,7 @@ import { ENERGY_MAX, FEED_SECONDS, LEVEL_COST, LEVEL_GROWTH, LEVEL_KILLS, MAX_TI
 import { audio } from './audio.js';
 import { Ambient, drawBridge, drawGateArt, drawShore, drawVignette, shade } from './scenery.js';
 import { N, T } from './i18n.js';
+import { CURSE_MUL, CURSE_SEC, CURSE_TEXT, GIANT_STAGES, PROVOKE, PROVOKE_TITLE, TONES, TREMOR_TEXT, arcAt, Tone } from './story.js';
 import { cachedRemoteHof, fetchRemoteHof, pushHof, pushOldHeroes } from './hof.js';
 import { changed as settingsChanged, settings, vibrate } from './settings.js';
 
@@ -30,6 +31,7 @@ export interface Item { id: number; type: SlotType; rarity: number; level: numbe
 export interface Rebirth { n: number; p0: number; floor: number }
 export interface SaveData {
   rebirth?: Rebirth;
+  brewAt?: number;
   essence: number;
   upgrades: Record<string, number>;
   weapons: number[];
@@ -1053,15 +1055,10 @@ export class Game {
   // ---- yeniden doğuş: paket almadan devam yolu ----
   static readonly RB_G = 3;
   rebirthCount(): number { return this.save.rebirth?.n ?? 0; }
-  /** ücret: 1 günlük boştayken ruh geliri x (1 + önceki yeniden doğuş sayısı); her sıfırlama bir öncekinden pahalıdır */
-  rebirthCost(): number { return Math.max(100, this.soupYield(24 * 3.6e6)) * (1 + this.rebirthCount()); }
   canRebirth(): boolean { return this.bossesDown() >= 10 && this.dead <= 0 && !this.bonus && !this.snakeFight; }
-  /** seviyeyi (ada ilerlemesini) sıfırlar, gücü korur; ücret ruh olarak ödenir. Boss/kamp/ağaç ilerlemesi baştan yapılır, bir kez verilen ödüller (sandık, kule, bonus, yılan) tekrar verilmez. */
+  /** seviyeyi (ada ilerlemesini) sıfırlar, gücü korur; her sıfırlama mağazadan satın alınır (REBIRTH, consumable). Boss/kamp/ağaç ilerlemesi baştan yapılır, bir kez verilen ödüller (sandık, kule, bonus, yılan) tekrar verilmez. */
   rebirth(): string {
     if (!this.canRebirth()) return 'Şu an yapılamaz';
-    const cost = this.rebirthCost();
-    if (this.save.essence < cost) return 'Ruh yetmiyor';
-    this.save.essence -= cost;
     const prev = this.save.rebirth;
     const p0 = Math.max(1, this.fullPower() / this.shopMul());
     this.save.rebirth = { n: (prev?.n ?? 0) + 1, p0: Math.max(p0, prev?.p0 ?? 0), floor: Math.max(this.bossesDown(), prev?.floor ?? 0) };
@@ -1081,6 +1078,7 @@ export class Game {
     this.persist();
     this.onChange();
     this.say('Yeniden doğdun: seviyen sıfırlandı, gücün korundu');
+    this.narrate('rebirth');
     audio.play('boss');
     vibrate([90, 40, 160]);
     return '';
@@ -1260,6 +1258,151 @@ export class Game {
   /** kaşif ilk madeni buldu (hikâye sahnesi için) */
   onMineFound: (reg: number) => void = () => {};
   private exploreMs(): number { return TEST_LEVEL ? 10 * 1000 : Game.EXPLORE_MS; }
+  // ---- iksir kazanı: yalnız kalan mini oyun. Karışım karakteri dev, cüce ya da dengeli yapar (5 dk) ----
+  brewT = 0;
+  brewKind: 'giant' | 'dwarf' | 'balanced' = 'balanced';
+  brewS = 0;
+  static readonly BREW_SEC = 300;
+  static readonly BREW_CD_MS = 120 * 1000;
+  static readonly OLD_GAMES_END = 60;
+  /** 60. adadan sonra maden, usta eğitimi ve arena kapanır; iksir kazanı tek mini oyun kalır */
+  oldGamesClosed(): boolean { return this.bdFloor() >= Game.OLD_GAMES_END; }
+  brewReadyInMs(): number { return Math.max(0, (this.save.brewAt ?? 0) + Game.BREW_CD_MS - Date.now()); }
+  private brewHpMul(): number { return this.brewT <= 0 ? 1 : this.brewKind === 'giant' ? 1 + 0.8 * this.brewS : this.brewKind === 'dwarf' ? 1 - 0.25 * this.brewS : 1 + 0.15 * this.brewS; }
+  private brewDmgMul(): number { return this.brewT <= 0 ? 1 : this.brewKind === 'giant' ? 1 + 0.25 * this.brewS : this.brewKind === 'dwarf' ? 1 + 0.6 * this.brewS : 1 + 0.15 * this.brewS; }
+  private brewSpeedMul(): number { return this.brewT <= 0 ? 1 : this.brewKind === 'giant' ? 1 - 0.2 * this.brewS : this.brewKind === 'dwarf' ? 1 + 0.4 * this.brewS : 1; }
+  private brewEva(): number { return this.brewT > 0 && this.brewKind === 'dwarf' ? 0.25 * this.brewS : 0; }
+  private brewScale(): number { return this.brewT <= 0 ? 1 : this.brewKind === 'giant' ? 1 + 0.8 * this.brewS : this.brewKind === 'dwarf' ? 1 - 0.4 * this.brewS : 1; }
+  /** karışım: sum > 0 dev, sum < 0 cüce (|sum| < 2 dengeli); q 0.4–1 karıştırma ustalığı. Sonuç ve ödül döner. */
+  brew(sum: number, q: number): { kind: 'giant' | 'dwarf' | 'balanced'; s: number; geodes: number; dust: number } | null {
+    if (this.brewReadyInMs() > 0 || this.dead > 0) return null;
+    const kind = Math.abs(sum) < 2 ? 'balanced' : sum > 0 ? 'giant' : 'dwarf';
+    const s = kind === 'balanced' ? q : Math.min(1, Math.max(0.25, Math.abs(sum) / 8)) * q;
+    this.brewKind = kind; this.brewS = s; this.brewT = Game.BREW_SEC;
+    const geodes = 1 + (q >= 0.85 ? 1 : 0);
+    const dust = Math.ceil(q * 20 * (1 + this.bdFloor() / 10));
+    this.save.geodes += geodes; this.save.dust += dust;
+    this.save.brewAt = Date.now();
+    this.hp = this.maxHp();
+    if (kind !== 'balanced') this.narrate(kind);
+    this.say(kind === 'giant' ? 'Dev oldun! Güçlüsün ama yavaşsın' : kind === 'dwarf' ? 'Cüce oldun! Küçük, hızlı ve vurucusun' : 'Dengeli iksir: hafif güç artışı');
+    audio.play('boss');
+    vibrate([60, 40, 120]);
+    this.persist();
+    this.onChange();
+    return { kind, s, geodes, dust };
+  }
+  private tickBrew(dt: number): void {
+    if (this.brewT <= 0) return;
+    this.brewT = Math.max(0, this.brewT - dt);
+    if (this.brewT <= 0) { this.hp = Math.min(this.hp, this.maxHp()); this.say('İksirin etkisi geçti'); }
+  }
+  private drawBrewHud(): void {
+    if (this.brewT <= 0) return;
+    const c = this.ctx;
+    c.textAlign = 'center';
+    c.font = 'bold ' + Math.round(14 * this.lk()) + 'px sans-serif';
+    c.lineWidth = 4; c.strokeStyle = '#000'; c.fillStyle = this.brewKind === 'giant' ? '#ffb36b' : this.brewKind === 'dwarf' ? '#7be0ff' : '#c8ffa0';
+    const txt = (this.brewKind === 'giant' ? '🍄 DEV' : this.brewKind === 'dwarf' ? '🌸 CÜCE' : '⚗️ DENGELİ') + ' · ' + Math.ceil(this.brewT) + ' sn';
+    c.strokeText(txt, this.w / 2, 138 * this.lk());
+    c.fillText(txt, this.w / 2, 138 * this.lk());
+  }
+
+  // ---- devlerin gelişi: 35. adadan itibaren sarsıntılar, 50. adada devler gelir (düşmanlar 1,5 kat büyür) ----
+  static readonly GIANT_FROM = 49;
+  private giantK(reg: number): number { return reg >= Game.GIANT_FROM ? 1.5 : 1; }
+  /** düşman yarıçapı (çarpışma ve çizim): 50. adadan sonra devler; dev yılan bölümleri etkilenmez */
+  private erad(e: Enemy): number { return e.def.r * TIERS[e.tier].size * (e.seg ? 1 : this.giantK(e.reg)); }
+  private tremorT = 0;
+  private tremorNext = 25;
+  private tickTremor(dt: number): void {
+    const r = this.region;
+    if (r < 34 || r >= Game.GIANT_FROM || this.dead > 0) return;
+    const st = r < 39 ? 0 : r < 44 ? 1 : r < 48 ? 2 : 3;
+    if (this.tremorT > 0) {
+      this.tremorT -= dt;
+      this.shake = Math.max(this.shake, 3.5 + st * 1.8);
+      return;
+    }
+    this.tremorNext -= dt;
+    if (this.tremorNext > 0) return;
+    this.tremorNext = 75 - st * 14 + Math.random() * 25; // devler yaklaştıkça sarsıntılar sıklaşır
+    this.tremorT = 2.2 + st * 0.5;
+    const lines = TREMOR_TEXT[st];
+    this.say(lines[Math.floor(Math.random() * lines.length)]);
+    audio.play('gate');
+    vibrate([90, 40, 90, 40, 140]);
+  }
+  /** adaya girişte, ulaşılan en yüksek devler aşaması bir kez hikâye olarak anlatılır (alttakiler atlanır) */
+  private giantStage(): void {
+    const r = this.region;
+    for (let i = GIANT_STAGES.length - 1; i >= 0; i--) {
+      const [th, key] = GIANT_STAGES[i];
+      if (r < th) continue;
+      if (this.save.first['nar' + key]) return;
+      for (let j = 0; j < i; j++) this.save.first['nar' + GIANT_STAGES[j][1]] = 1;
+      this.narrate(key);
+      return;
+    }
+  }
+
+  // ---- kışkırtma yayı: boss yenilince rakip cadı 2-3 ada boyunca aynı tonda konuşur ----
+  onProvoke: (title: string, text: string, tone: Tone, curse: string | null) => void = () => undefined;
+  /** hikâye anlatımı (brew, giant, dwarf, rebirth, closing, curse): her biri bir kez gösterilir */
+  onNarrate: (key: string) => void = () => undefined;
+  private narrate(key: string): void {
+    if (this.save.first['nar' + key]) return;
+    this.save.first['nar' + key] = 1;
+    this.onNarrate(key);
+  }
+  /** usta cadının büyüsü: gücün (can ve hasar) 1 dakikalığına %60 düşer */
+  curseT = 0;
+  private curseMul(): number { return this.curseT > 0 ? CURSE_MUL : 1; }
+  applyCurse(): void {
+    this.curseT = CURSE_SEC;
+    this.hp = Math.min(this.hp, this.maxHp());
+    audio.play('hurt');
+    vibrate([60, 40, 160]);
+  }
+  private tickCurse(dt: number): void {
+    if (this.curseT <= 0) return;
+    this.curseT = Math.max(0, this.curseT - dt);
+    if (this.curseT <= 0) this.say('Büyü bozuldu: gücün geri geldi');
+  }
+  private drawCurseHud(): void {
+    if (this.curseT <= 0) return;
+    const c = this.ctx;
+    c.textAlign = 'center';
+    c.font = 'bold ' + Math.round(14 * this.lk()) + 'px sans-serif';
+    c.lineWidth = 4; c.strokeStyle = '#000'; c.fillStyle = '#9dff7a';
+    const txt = '🔮 LANET: güç %' + Math.round((1 - CURSE_MUL) * 100) + ' düştü · ' + Math.ceil(this.curseT) + ' sn';
+    c.strokeText(txt, this.w / 2, 158 * this.lk());
+    c.fillText(txt, this.w / 2, 158 * this.lk());
+  }
+  private toneNow(): Tone {
+    const reg = this.region;
+    if (reg >= ZONES.length - 12) return 'final';
+    if (this.shopMul() >= 1.5) return 'paid';
+    if (this.rebirthCount() > 0 && this.bossesDown() < (this.save.rebirth?.floor ?? 0)) return 'back';
+    const r = this.fullPower() / Math.max(1, this.bossPower(reg) * Game.MARGIN);
+    return r < 1.2 ? 'weak' : 'strong';
+  }
+  private provoke(reg: number): void {
+    // eski oyunların kapandığı an
+    if (this.bdFloor() === Game.OLD_GAMES_END && !this.save.first['oldEnd']) {
+      this.save.first['oldEnd'] = 1;
+      this.narrate('closing');
+      return;
+    }
+    const a = arcAt(reg);
+    if (!a) return;
+    const key = 'tn' + a.arc.start;
+    if (a.step === 0 || !this.save.first[key]) this.save.first[key] = TONES.indexOf(this.toneNow()) + 1;
+    const tone = TONES[(this.save.first[key] ?? 1) - 1];
+    const curse = a.step === a.arc.len - 1 && a.index % 2 === 0 ? CURSE_TEXT : null; // yayın son adımında (iki yayda bir) usta cadı büyü yapar
+    this.onProvoke(PROVOKE_TITLE, PROVOKE[tone][Math.min(a.step, 2)], tone, curse);
+  }
+
   /** madende bulunan gizli iksir: kalan süre (sn); süresince can ve hasar ×10 (güç ×10) */
   potionT = 0;
   private potionMul(): number { return this.potionT > 0 ? 10 : 1; }
@@ -1295,6 +1438,7 @@ export class Game {
   }
   /** kaşifi keşfe gönderir: 'ok' ya da nedeni */
   sendExplorer(): string {
+    if (this.oldGamesClosed()) return 'Maden kapandı: yalnızca iksir kazanı kaldı';
     const st = this.explorerState();
     if (st.away) return 'Kaşif zaten yolda';
     if (st.target < 0) return 'Bu seviyeden sonra keşfedilecek maden yok';
@@ -1890,7 +2034,7 @@ export class Game {
       // dev yılana her temas (bölüm gövdesine değmek) azami sağlığın %10'unu götürür; zırh ve seviye etkilemez
       if (this.dead <= 0 && this.invuln <= 0 && this.flyT <= 0) {
         for (const s of segs) {
-          if (Math.hypot(s.x - this.px, s.y - this.py) < s.def.r * TIERS[s.tier].size + 14) {
+          if (Math.hypot(s.x - this.px, s.y - this.py) < this.erad(s) + 14) {
             const hit = this.maxHp() * 0.1;
             this.hp -= hit;
             this.invuln = 0.6;
@@ -2198,7 +2342,7 @@ export class Game {
     let speed: number;
     if (target && t.energy > 0) {
       g.dry = false;
-      const reach = target.def.r * TIERS[target.tier].size + 26;
+      const reach = this.erad(target) + 26;
       const dx = target.x - g.x;
       const dy = target.y - g.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -2245,7 +2389,7 @@ export class Game {
     if (g.inv <= 0) {
       for (const e of this.enemies) {
         if (e.hp <= 0 || e.state === 'return') continue;
-        if (Math.hypot(e.x - g.x, e.y - g.y) > e.def.r * TIERS[e.tier].size + 16) continue;
+        if (Math.hypot(e.x - g.x, e.y - g.y) > this.erad(e) + 16) continue;
         // ana karakterin zırhını ve hasar türü direncini miras alır, üstüne %70 daha az hasar yer
         const hit = this.enemyDmg(e) * this.armor() * (1 - Math.min(0.9, this.typedReduction(e.def.atk) / 100)) * 0.3 * DMG_TAKEN;
         t.frac = Math.max(0, t.frac - hit / this.tigerMaxHp());
@@ -2484,24 +2628,25 @@ export class Game {
       if (!this.save.archer) { this.save.archer = 1; this.say('Okçu artık yanında! Sağ alttaki 🏹 ile seç'); console.info('okçu', receipt); this.persist(); this.onChange(); }
       return true;
     }
+    if (id === REBIRTH.id) { console.info('yeniden doğuş', receipt); return this.rebirth() === ''; }
     return LEVEL_PACKS.some((x) => x.id === id) ? this.grantLevelPack(id, receipt) : this.grantPack(id, receipt);
   }
 
   maxHp(): number {
-    return (TEST_LEVEL ? 0.5 : 1) * this.potionMul() * this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
+    return (TEST_LEVEL ? 0.5 : 1) * this.potionMul() * this.brewHpMul() * this.curseMul() * this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
       * (1 + (this.cb('hp') + this.helmetHp() + this.perm('elite.hpPct') + this.perm('train.hp') + this.save.house.hp + this.perm('col.hp')) / 100);
   }
   regen(): number { return 0.6 * this.lv('regen') + this.cb('regen') + this.helmetRegen() + this.perm('tree.regen') + this.perm('train.regen'); }
   armor(): number { return Math.max(0.2, 1 - 0.04 * this.lv('armor')); }
-  dmgMul(): number { return this.testDmgF * this.potionMul() * this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
+  dmgMul(): number { return this.testDmgF * this.potionMul() * this.brewDmgMul() * this.curseMul() * this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
   castSpeed(): number { return 1 + 0.08 * this.lv('spin'); }
   reachMul(): number { return 1 + 0.06 * this.lv('reach') + this.outfitBonus('reach') / 100; }
   magnet(): number { return 70 + 25 * this.lv('magnet') + this.cb('magnet'); }
   yieldMul(): number { return (1 + 0.1 * this.lv('yield')) * (1 + this.cb('yield') / 100) * (1 + this.outfitBonus('yield') / 100); }
-  speed(): number { return 150 * (1 + 0.04 * this.lv('speed')) * (1 + this.cb('speed') / 100) * (1 + this.outfitBonus('speed') / 100) * (this.flyT > 0 ? 1.35 : 1) * (this.wrapT > 0 ? 0.55 : 1); }
+  speed(): number { return 150 * (1 + 0.04 * this.lv('speed')) * (1 + this.cb('speed') / 100) * (1 + this.outfitBonus('speed') / 100) * (this.flyT > 0 ? 1.35 : 1) * (this.wrapT > 0 ? 0.55 : 1) * this.brewSpeedMul(); }
   critChance(): number { return Math.min(0.75, (this.cb('crit') + this.outfitBonus('crit')) / 100); }
   lifesteal(): number { return Math.min(0.5, (this.cb('lifesteal') + this.outfitBonus('lifesteal')) / 100); }
-  evasion(): number { return Math.min(0.6, (this.cb('evasion') + this.outfitBonus('evasion')) / 100); }
+  evasion(): number { return Math.min(0.6, (this.cb('evasion') + this.outfitBonus('evasion')) / 100 + this.brewEva()); }
   weaponDmg(i: number): number {
     return (WEAPONS[i].baseDmg * (1 + 0.15 * (this.save.weapons[i] - 1)) + this.perm('normal.dmg') + this.perm('elite.dmg')) * this.dmgMul();
   }
@@ -2856,7 +3001,7 @@ export class Game {
     this.updateZoom(dt);
     const reg0 = this.region;
     this.region = this.regionAt(this.px, this.py);
-    if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); this.tigerEnterRegion(this.region); this.softCapHint(); }
+    if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); this.tigerEnterRegion(this.region); this.softCapHint(); this.giantStage(); }
     const calm = !this.enemies.some((e) => e.state === 'chase');
     const atHome = this.inHome();
     const before = this.hp;
@@ -2897,6 +3042,9 @@ export class Game {
     this.archerCd = Math.max(0, this.archerCd - dt);
     this.tickExplorer();
     this.tickPotion(dt);
+    this.tickBrew(dt);
+    this.tickTremor(dt);
+    this.tickCurse(dt);
     if (this.archerSel && !this.archerOn()) { this.archerSel = false; this.aim = null; }
     if (this.archerSel && this.aim) { const t = this.aimWorld(); if (t) this.archerShoot(t.x, t.y); } // basılı tutuldukça seri atış
     this.updateHole(dt);
@@ -3109,7 +3257,7 @@ export class Game {
       } else { e.stuckT = 0; e.chkX = e.x; e.chkY = e.y; }
       e.moving = Math.abs(vx) + Math.abs(vy) > 14;
       if (Math.abs(vx) > 4) e.flip = vx > 0 ? 1 : -1;
-      if (d < e.def.r * TIERS[e.tier].size + 14 && this.invuln <= 0 && this.flyT <= 0) {
+      if (d < this.erad(e) + 14 && this.invuln <= 0 && this.flyT <= 0) {
         e.lunge = 0.25;
         if (Math.random() < this.blockChance()) {
           this.invuln = 0.6;
@@ -3491,7 +3639,7 @@ export class Game {
       return Math.abs(da) < 1.0;
     };
     for (const e of this.enemies) {
-      if (apply(e.x, e.y, e.def.r * TIERS[e.tier].size)) this.hitEnemy(e, p.dmg, p.dtype);
+      if (apply(e.x, e.y, this.erad(e))) this.hitEnemy(e, p.dmg, p.dtype);
     }
     for (const t of this.treesNear(p.x, p.y, p.r + 40)) {
       if (!this.isCleared('t' + t.id) && apply(t.x, t.y, 24)) this.hitTree(t, p.dmg);
@@ -3546,7 +3694,7 @@ export class Game {
   private arrowCollide(p: Proj, enemies: Enemy[]): void {
     for (const e of enemies) {
       if (p.hit.has(e) || e.hp <= 0) continue;
-      if (Math.hypot(e.x - p.x, e.y - p.y) < e.def.r * TIERS[e.tier].size + 14) {
+      if (Math.hypot(e.x - p.x, e.y - p.y) < this.erad(e) + 14) {
         p.hit.add(e);
         // boss ve zor bosslara ok daha çok işler (zırh deliciliği)
         this.hitEnemy(e, p.dmg * (e.tier === 'boss' ? 2 : 1), p.dtype);
@@ -3568,7 +3716,7 @@ export class Game {
   private projCollide(p: Proj, enemies: Enemy[], trees: ResTree[], r: number, once = false): void {
     for (const e of enemies) {
       if (p.hit.has(e)) continue;
-      if (Math.hypot(e.x - p.x, e.y - p.y) < e.def.r * TIERS[e.tier].size + r) {
+      if (Math.hypot(e.x - p.x, e.y - p.y) < this.erad(e) + r) {
         p.hit.add(e);
         this.hitEnemy(e, p.dmg, p.dtype);
         if (!once) { p.pierce--; if (p.pierce < 0) return; }
@@ -3619,7 +3767,7 @@ export class Game {
     const cm = this.comboMark.get(e);
     const combo = !!cm && cm.d !== dtype && this.time - cm.t < 1.2;
     this.comboMark.set(e, { d: dtype, t: this.time });
-    if (combo && cm) { this.float(e.x, e.y - e.def.r * TIERS[e.tier].size - 44, 'KOMBO ' + T(this.comboName(cm.d, dtype)), '#ffb347'); audio.play('gain'); this.shake = Math.max(this.shake, 2.5); this.bumpDaily('combo'); }
+    if (combo && cm) { this.float(e.x, e.y - this.erad(e) - 44, 'KOMBO ' + T(this.comboName(cm.d, dtype)), '#ffb347'); audio.play('gain'); this.shake = Math.max(this.shake, 2.5); this.bumpDaily('combo'); }
     const rs = e.tier === 'boss' ? Math.max(0.4, e.def.resist[dtype]) : e.def.resist[dtype]; // bosslarda direnç çarpanı en az 0,4: yanlış türle savaş uzamasın
     const dmg = Math.max(1, raw * rs * DMG_DEALT * (crit ? 3 : 1) * (combo ? 1.3 : 1));
     e.hp -= dmg;
@@ -3812,7 +3960,7 @@ export class Game {
     this.save.essence += value;
     this.gain('+' + this.fmt(value) + ' Ruh', '#8fdcff', 'ui_soul', { key: 'soul', amount: value, fmt: (n) => '+' + this.fmt(n) + ' Ruh' });
     this.deathFx.push({ x: e.x, y: e.y, t: 0.45, name: e.beast && this.spr(ZONES[e.reg].art.beast) ? ZONES[e.reg].art.beast : e.tier === 'boss' ? ZONES[e.reg].art.boss : e.def.id,
-      size: e.def.r * TIERS[e.tier].size * 3.3, flip: e.flip });
+      size: this.erad(e) * 3.3, flip: e.flip });
     this.onChange();
   }
 
@@ -3910,6 +4058,7 @@ export class Game {
         this.save.bossDown[sp.reg] = true;
         this.gain('Günlüğe yeni sayfa eklendi', '#ffe9a0', 'ui_skill');
         this.onStory(sp.reg);
+        this.provoke(sp.reg);
         this.unlockOutfits();
         if (this.bossesDown() % 10 === 0) {
           this.gain('Yeni kristal yuvası kazanıldı!', '#c8b6ff', 'ui_crystal');
@@ -4018,7 +4167,7 @@ export class Game {
     return -1;
   }
   /** usta cadı yalnızca o seviyenin boss'u yenilince ortaya çıkar */
-  masterOpen(i: number): boolean { return !!this.save.bossDown[i] && this.trainPlaysLeft(i) > 0; }
+  masterOpen(i: number): boolean { return !this.oldGamesClosed() && !!this.save.bossDown[i] && this.trainPlaysLeft(i) > 0; }
   static readonly TRAIN_PER_DAY = 2;
   /** denge: kalıcı kazanç ve ruh çarpanları (tools/bot.js ile ölçülür) */
   static YIELD = 1;
@@ -4079,6 +4228,7 @@ export class Game {
       const sy = this.h / 2 + (m.y - this.py) * this.zoom;
       if (Math.hypot(x - sx, y - (sy - 30 * this.zoom)) < 80 * this.zoom + 20) {
         if (Math.hypot(m.x - this.px, m.y - this.py) > 260) { this.say('Madene yaklaş, sonra dokun'); return true; }
+        if (this.oldGamesClosed()) { this.say('Maden kapandı: yalnızca iksir kazanı kaldı'); return true; }
         const left = this.mineCdLeftMs(r);
         if (left > 0) { this.say('Maden dinleniyor: ' + Math.ceil(left / 60000) + ' dk sonra yeniden girilir'); return true; }
         this.onMine(r);
@@ -4134,6 +4284,8 @@ export class Game {
     drawVignette(c, this.w, this.h);
     this.drawFocusVignette();
     this.drawPotion();
+    this.drawBrewHud();
+    this.drawCurseHud();
     this.drawGains();
     this.drawFeed();
     this.drawGateBanner();
@@ -4641,7 +4793,7 @@ export class Game {
     else if (cast > 0 && has('witch_cast1') && has('witch_cast2')) frame = cast > 0.5 ? 'witch_cast2' : 'witch_cast1';
     else if (cast > 0 && has('witch_cast')) frame = 'witch_cast';
     else if (this.moving && has('witch_walk4')) frame = 'witch_walk' + (1 + (Math.floor(t * 9) % 4));
-    const drawn = this.drawSprX(this.save.outfit ? frame + '@' + this.save.outfit : frame, this.px, this.py - 8, flying ? 99.5 : 85.7, {
+    const drawn = this.drawSprX(this.save.outfit ? frame + '@' + this.save.outfit : frame, this.px, this.py - 8, (flying ? 99.5 : 85.7) * this.brewScale(), {
       flip, rot: o.rot + cast * 0.12 * flip, sx: o.sx * sc, sy: o.sy * sc, bob: o.bob + lift, flash: this.hurtFlash > 0,
     });
     if (!drawn) {
@@ -4687,8 +4839,7 @@ export class Game {
   private drawEnemy(e: Enemy): void {
     if (e.seg) { this.drawSegment(e); return; }
     const c = this.ctx;
-    const tier = TIERS[e.tier];
-    const r = e.def.r * tier.size;
+    const r = this.erad(e);
     const t = e.phase;
     const boss = e.tier === 'boss';
     const size = e.def.id === 'snake' ? r * 6.4 : r * 3.3; // yılan görseli ince ve uzun: büyük çizilir

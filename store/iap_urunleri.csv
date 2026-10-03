@@ -10,3 +10,4 @@ hexling.levels.30,Devam Paketi +30 Seviye,Tüketilemez (non-consumable),Açık a
 hexling.levels.50,Devam Paketi +50 Seviye,Tüketilemez (non-consumable),Açık ada sayısı +50,11.99
 hexling.levels.100,Devam Paketi +100 Seviye,Tüketilemez (non-consumable),Açık ada sayısı +100 (hepsi alınınca 250. adaya ve final düellosuna kadar),19.99
 hexling.archer,Okçu,Tüketilemez (non-consumable),Elle nişan alınan okçu; 3 isabetle kara deliği 30 sn kapatır (ayarlardan açılıp kapatılır),2.99
+hexling.rebirth,Yeniden Doğuş,Tüketilebilir (consumable),Seviye 1e döner gücün korunur; her seferinde satın alınır,TBD
