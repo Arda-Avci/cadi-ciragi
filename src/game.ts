@@ -2944,13 +2944,13 @@ export class Game {
         // bonus düşmanı kendi adasından çıkmaz (köprüye / sonraki adaya geçmez)
         const bc = this.regionCenter(e.reg);
         if (Math.hypot(nx - bc.x, ny - bc.y) > bc.r - 40) { nx = e.x; ny = e.y; }
-        // bonus düşmanı, bir komşusuna 130 px'den fazla yaklaşacaksa o yöne ilerlemez (yan yana kayabilir)
+        // bonus düşmanı, bir komşusuna bonusGap'ten fazla yaklaşacaksa o yöne ilerlemez (yan yana kayabilir)
         for (const o of this.enemies) {
           if (o === e || o.sp !== BONUS_SP) continue;
           const dOld = Math.hypot(o.x - e.x, o.y - e.y);
           if (dOld > 400) continue;
           const dNew = Math.hypot(o.x - nx, o.y - ny);
-          if (dNew < 130 && dNew < dOld) {
+          if (dNew < this.bonusGap && dNew < dOld) {
             const ux = (o.x - e.x) / (dOld || 1);
             const uy = (o.y - e.y) / (dOld || 1);
             const along = Math.max(0, (nx - e.x) * ux + (ny - e.y) * uy); // komşuya doğru bileşen çıkarılır
@@ -3023,9 +3023,12 @@ export class Game {
   // ---- bonus tur: 5'in katı adalara geçmeden önce 120 sn'de 400 zayıf düşman ----
   bonus: { t: number; kills: number; total: number; reg: number } | null = null;
 
-  /** bonus düşmanları birbirine en az 130 px yaklaşamaz: ızgarayla komşular itilir */
+  /** bonus düşmanları arası asgari mesafe: 400 düşman adaya sığana kadar 130'dan 70'e indirilir (sprite boyu ~70, üst üste binmez) */
+  private bonusGap = 130;
+
+  /** bonus düşmanları birbirine en az bonusGap kadar yaklaşamaz: ızgarayla komşular itilir */
   private separateBonus(): void {
-    const MIN = 130;
+    const MIN = this.bonusGap;
     const grid = new Map<number, Enemy[]>();
     const list = this.enemies.filter((e) => e.sp === BONUS_SP && e.hp > 0);
     const key = (cx: number, cy: number): number => cx * 100003 + cy;
@@ -3090,16 +3093,23 @@ export class Game {
     if (!this.walkable(this.px, this.py)) this.snapToLand();
     this.ensureLoaded(i);
     let placed = 0;
-    const spots: { x: number; y: number }[] = [];
-    for (let k = 0; k < 60000 && placed < BONUS_COUNT; k++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 200 + Math.sqrt(Math.random()) * Math.max(0, c.r - 260);
-      const x = c.x + Math.cos(a) * r;
-      const y = c.y + Math.sin(a) * r;
-      if (!this.walkable(x, y, true)) continue;
-      if (spots.some((s) => Math.hypot(s.x - x, s.y - y) < 130)) continue; // doğarken de 130 px aralık
-      spots.push({ x, y });
-      this.enemies.push({ def, tier: 'easy', lv: lvB, reg: i, sp: BONUS_SP, x, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
+    let spots: { x: number; y: number }[] = [];
+    for (const gap of [130, 115, 100, 90, 80, 70]) {
+      this.bonusGap = gap;
+      spots = [];
+      for (let k = 0; k < 40000 && spots.length < BONUS_COUNT; k++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = 200 + Math.sqrt(Math.random()) * Math.max(0, c.r - 260);
+        const x = c.x + Math.cos(a) * r;
+        const y = c.y + Math.sin(a) * r;
+        if (!this.walkable(x, y, true)) continue;
+        if (spots.some((q) => Math.hypot(q.x - x, q.y - y) < gap)) continue;
+        spots.push({ x, y });
+      }
+      if (spots.length >= BONUS_COUNT) break;
+    }
+    for (const q of spots) {
+      this.enemies.push({ def, tier: 'easy', lv: lvB, reg: i, sp: BONUS_SP, x: q.x, y: q.y, hx: q.x, hy: q.y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
         phase: Math.random() * 6, dashT: 3, dvx: 0, dvy: 0, flip: Math.random() < 0.5 ? 1 : -1, flash: 0, lunge: 0, moving: false });
       placed++;
     }
