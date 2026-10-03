@@ -3070,11 +3070,14 @@ export class Game {
       if (b.t <= 0 || left === 0) this.endBonus();
       return;
     }
-    const i = this.region;
-    if ((i + 2) % 5 !== 0 || i >= ZONES.length - 1 || this.save.first['bonus' + i] || this.snakeFight || this.dead > 0 || !this.bridgeOpen(i)) return;
-    const g = this.gatePos(i);
-    if (Math.hypot(g.x - this.px, g.y - this.py) > 520) return;
-    this.startBonus(i);
+    if (this.snakeFight || this.dead > 0) return;
+    // köprü bekçileri yenilince oyuncu köprünün çıkış kapısına yakındır (bölge bu ada ya da karşı ada sayılır): ikisine de bakılır
+    for (const i of [this.region, this.region - 1]) {
+      if (i < 0 || (i + 2) % 5 !== 0 || i >= ZONES.length - 1 || this.save.first['bonus' + i] || !this.bridgeOpen(i)) continue;
+      const br = this.bridge(i);
+      const near = (t: number): boolean => Math.hypot(br.ax + (br.bx - br.ax) * t - this.px, br.ay + (br.by - br.ay) * t - this.py) < 650;
+      if (near(br.tGate) || near(br.tExit)) { this.startBonus(i); return; }
+    }
   }
 
   private startBonus(i: number): void {
