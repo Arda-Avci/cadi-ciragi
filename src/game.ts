@@ -174,6 +174,9 @@ const TREE_RESPAWN = 120;
 /** canavar: boss'a göre can ve hasar ×2 → güç ×2 */
 const BEAST_MUL = 2;
 /** zor boss: ada bossu yenildikten sonra günde bir kez, güç ×3 */
+/** tüm karakterler (düşmanlar, kahraman, kaplan) biraz daha kolay hasar alır: düşmanlar +%25, kahraman ve kaplan +%20 */
+const DMG_DEALT = 1.25;
+const DMG_TAKEN = 1.2;
 const HARD_BOSS_MUL = 2.4; // zor boss: boss'un 2,4 katı (eskiden 3; %20 düşürüldü)
 /** bu adadan itibaren (dizin) daha sık kamp: komşu kampların bölgeleri iç içe geçer */
 const DENSE_FROM = 10;
@@ -1675,7 +1678,7 @@ export class Game {
       if (v.t > 0 && Math.hypot(v.x - this.px, v.y - this.py) < 24) {
         v.t = 0;
         if (this.invuln <= 0 && this.flyT <= 0 && this.dead <= 0) {
-          const hit = v.dmg * this.armor() * (1 - Math.min(0.9, this.typedReduction('pierce') / 100));
+          const hit = v.dmg * this.armor() * (1 - Math.min(0.9, this.typedReduction('pierce') / 100)) * DMG_TAKEN;
           this.hp -= hit;
           this.hurtFlash = 0.25;
           this.invuln = 0.35;
@@ -1763,7 +1766,7 @@ export class Game {
           let dmg = 0;
           for (const s of segs) if (Math.hypot(s.x - this.px, s.y - this.py) < 130) dmg += this.enemyDmg(s) * 0.12;
           if (dmg > 0 && this.invuln <= 0 && this.flyT <= 0) {
-            const hit = dmg * this.armor() * (1 - Math.min(0.9, this.typedReduction('pierce') / 100));
+            const hit = dmg * this.armor() * (1 - Math.min(0.9, this.typedReduction('pierce') / 100)) * DMG_TAKEN;
             this.hp -= hit;
             this.hurtFlash = 0.2;
             this.shake = Math.max(this.shake, 3);
@@ -2089,7 +2092,7 @@ export class Game {
         if (e.hp <= 0 || e.state === 'return') continue;
         if (Math.hypot(e.x - g.x, e.y - g.y) > e.def.r * TIERS[e.tier].size + 16) continue;
         // ana karakterin zırhını ve hasar türü direncini miras alır, üstüne %70 daha az hasar yer
-        const hit = this.enemyDmg(e) * this.armor() * (1 - Math.min(0.9, this.typedReduction(e.def.atk) / 100)) * 0.3;
+        const hit = this.enemyDmg(e) * this.armor() * (1 - Math.min(0.9, this.typedReduction(e.def.atk) / 100)) * 0.3 * DMG_TAKEN;
         t.frac = Math.max(0, t.frac - hit / this.tigerMaxHp());
         g.inv = 0.8;
         g.flash = 0.2;
@@ -2921,7 +2924,7 @@ export class Game {
           this.float(this.px, this.py - 20, 'KAÇTI', '#c8b6ff');
           continue;
         }
-        const hit = this.enemyDmg(e) * this.armor() * (1 - Math.min(0.9, this.typedReduction(e.def.atk) / 100));
+        const hit = this.enemyDmg(e) * this.armor() * (1 - Math.min(0.9, this.typedReduction(e.def.atk) / 100)) * DMG_TAKEN;
         this.hp -= hit;
         this.hurtFlash = 0.25;
         this.shake = Math.max(this.shake, e.tier === 'boss' ? 9 : 4);
@@ -3236,7 +3239,7 @@ export class Game {
     this.comboMark.set(e, { d: dtype, t: this.time });
     if (combo && cm) { this.float(e.x, e.y - e.def.r * TIERS[e.tier].size - 44, 'KOMBO ' + T(this.comboName(cm.d, dtype)), '#ffb347'); audio.play('gain'); this.shake = Math.max(this.shake, 2.5); this.bumpDaily('combo'); }
     const rs = e.tier === 'boss' ? Math.max(0.4, e.def.resist[dtype]) : e.def.resist[dtype]; // bosslarda direnç çarpanı en az 0,4: yanlış türle savaş uzamasın
-    const dmg = Math.max(1, raw * rs * (crit ? 3 : 1) * (combo ? 1.3 : 1));
+    const dmg = Math.max(1, raw * rs * DMG_DEALT * (crit ? 3 : 1) * (combo ? 1.3 : 1));
     e.hp -= dmg;
     e.flash = 0.14;
     audio.play('hit');
