@@ -119,6 +119,9 @@ export class Game {
         this.h = 0;
         this.sprites = new Map();
         this.tinted = new Map();
+        // ---- kayıt ----
+        /** test modu hasarı: tipik bir kampın ~30 sn'de temizlenmesi için saniyelik hasar hedeflenir (fazlaysa hasar kısılır, azsa düz hasar eklenir) */
+        this.testDmgF = 1;
         this.rests = null;
         // ---- dünya: yalnızca önceki, şimdiki ve sonraki ada yüklüdür ----
         this.zoneCache = new Map();
@@ -184,6 +187,7 @@ export class Game {
         c2.strokeText = (t, x, y, w) => st(N(T(String(t))), x, y, w);
         this.loadSprites();
         this.save = this.load();
+        this.calibrateTest();
         this.px = this.save.x;
         this.py = this.save.y;
         this.hp = this.maxHp();
@@ -266,7 +270,27 @@ export class Game {
         c.restore();
         return true;
     }
-    // ---- kayıt ----
+    calibrateTest() {
+        if (!TEST_LEVEL)
+            return;
+        const z = ZONES[TEST_LEVEL - 1];
+        const target = (ENEMIES.mushroom.hp * TIERS.easy.hp * z.scale * 3) / 100;
+        this.testDmgF = 1;
+        this.save.perm['elite.dmg'] = 0;
+        let s0 = 0;
+        let s1 = 0;
+        for (const i of this.equippedWeapons()) {
+            const k = (this.weaponCopies(i) * this.castSpeed()) / WEAPONS[i].cooldown;
+            s0 += WEAPONS[i].baseDmg * (1 + 0.15 * (this.save.weapons[i] - 1)) * k;
+            s1 += k;
+        }
+        const need = target / this.dmgMul();
+        if (need >= s0)
+            this.save.perm['elite.dmg'] = (need - s0) / s1;
+        else
+            this.testDmgF = need / s0;
+        this.hp = this.maxHp();
+    }
     fresh() {
         const s = this.freshBase();
         return TEST_LEVEL ? this.testSave(s, TEST_LEVEL) : s;
@@ -315,8 +339,8 @@ export class Game {
         t.nextItem = 4;
         // güç: adanın ölçeğine göre (düşman canı ∝ scale, hasarı ∝ dmgScale)
         const z = ZONES[idx];
-        s.perm['elite.hp'] = 100 * z.dmgScale * 3;
-        s.perm['elite.dmg'] = 3 * z.scale;
+        s.perm['elite.hp'] = 100 * z.dmgScale * 2;
+        s.perm['elite.dmg'] = 0; // gerçek değer calibrateTest() ile kamp süresine göre hesaplanır
         const rp = this.restPoints()[idx];
         s.x = rp.x;
         s.y = rp.y + 70;
@@ -453,6 +477,7 @@ export class Game {
         this.save = this.fresh();
         this.fogSets.clear();
         this.fogFade.clear();
+        this.calibrateTest();
         this.tg = null;
         this.enemies = [];
         this.projs = [];
@@ -1278,7 +1303,7 @@ export class Game {
                 return;
             this.holeSpawn();
             if (this.hole) {
-                this.say('Kara delik belirdi! Kahramanı ve kaplanı ondan uzak tut');
+                this.say('Kara delik belirdi! Kahramanı ondan uzak tut');
                 audio.play('boss');
                 vibrate(120);
             }
@@ -1291,14 +1316,9 @@ export class Game {
             this.holeHits = 0;
         if (this.holeFreeze > 0)
             return; // okçu dondurdu: kımıldamaz, çekmez, yutmaz
-        // yavaşça en yakın hedefe (kahraman ya da kaplan) süzülür
-        const tg = this.tg && settings.companion ? this.tg : null;
-        let tx = this.px;
-        let ty = this.py;
-        if (tg && Math.hypot(tg.x - h.x, tg.y - h.y) < Math.hypot(tx - h.x, ty - h.y)) {
-            tx = tg.x;
-            ty = tg.y;
-        }
+        // yavaşça kahramana süzülür
+        const tx = this.px; // delik yalnız kahramanı kovalar: kaplan savaşırken kaçırılamadığı için deliğe karışmaz
+        const ty = this.py;
         const dx = tx - h.x;
         const dy = ty - h.y;
         const dl = Math.max(1, Math.hypot(dx, dy));
@@ -1309,7 +1329,7 @@ export class Game {
             h.x = nx;
             h.y = ny;
         }
-        // çekim alanı: kahramanı ve kaplanı yavaşça içeri çeker (kaçmak mümkün: çekim hızdan zayıf)
+        // çekim alanı: kahramanı yavaşça içeri çeker (kaçmak mümkün: çekim hızdan zayıf)
         const PULL = 180;
         const pull = (x, y, ign) => {
             const d = Math.hypot(h.x - x, h.y - y);
@@ -1323,17 +1343,10 @@ export class Game {
         const hp = pull(this.px, this.py, false);
         this.px = hp.x;
         this.py = hp.y;
-        if (tg) {
-            const tp = pull(tg.x, tg.y, true);
-            tg.x = tp.x;
-            tg.y = tp.y;
-        }
         if (this.holeGrace > 0)
             return;
         if (Math.hypot(h.x - this.px, h.y - this.py) < Game.HOLE_R * 0.6)
             this.holeSwallow('hero');
-        else if (tg && Math.hypot(h.x - tg.x, h.y - tg.y) < Game.HOLE_R * 0.6)
-            this.holeSwallow('tiger');
     }
     toggleArcher() {
         this.archerSel = !this.archerSel && this.archerOn();
@@ -1385,14 +1398,12 @@ export class Game {
     }
     holeSwallow(who) {
         this.hp = Math.max(1, this.hp - this.maxHp() * 0.02);
-        if (who === 'tiger')
-            this.save.tiger.frac = Math.max(0.05, this.save.tiger.frac - 0.02);
         this.holeTrap = who;
         this.hurtFlash = 0.5;
         this.shake = Math.max(this.shake, 10);
         vibrate([100, 50, 200]);
         audio.play('hurt');
-        this.say(who === 'hero' ? 'Kara delik seni yuttu! −%2 can' : 'Kara delik kaplanı yuttu! −%2 can');
+        this.say('Kara delik seni yuttu! −%2 can');
         this.onHoleTrap(who);
     }
     /** reklam izlendi: yutulan kurtarılır, delik uzakta yeniden belirir */
@@ -2407,12 +2418,12 @@ export class Game {
         return LEVEL_PACKS.some((x) => x.id === id) ? this.grantLevelPack(id, receipt) : this.grantPack(id, receipt);
     }
     maxHp() {
-        return this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
+        return (TEST_LEVEL ? 0.5 : 1) * this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
             * (1 + (this.cb('hp') + this.helmetHp() + this.perm('elite.hpPct') + this.perm('train.hp') + this.save.house.hp + this.perm('col.hp')) / 100);
     }
     regen() { return 0.6 * this.lv('regen') + this.cb('regen') + this.helmetRegen() + this.perm('tree.regen') + this.perm('train.regen'); }
     armor() { return Math.max(0.2, 1 - 0.04 * this.lv('armor')); }
-    dmgMul() { return this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
+    dmgMul() { return this.testDmgF * this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
     castSpeed() { return 1 + 0.08 * this.lv('spin'); }
     reachMul() { return 1 + 0.06 * this.lv('reach') + this.outfitBonus('reach') / 100; }
     magnet() { return 70 + 25 * this.lv('magnet') + this.cb('magnet'); }
@@ -5291,7 +5302,7 @@ Game.AD_DAILY = 10;
 Game.AD_COOLDOWN = 180; // sn, ödül türü başına
 // ---- sis/bulut: ada ilk girişte bulutlarla kaplıdır; oyuncu gezdikçe çevresindeki 500 px çaplı daire açılır (haritada değil, oyun ekranında) ----
 Game.FOG_CELL = 100;
-Game.FOG_R = 250;
+Game.FOG_R = 600;
 Game.HOLE_FROM = 2;
 Game.HOLE_AFTER = 20;
 Game.HOLE_R = 56;

@@ -845,7 +845,7 @@ game.onHoleTrap = (who) => {
   wrap.style.cssText = 'position:fixed;inset:0;z-index:250;background:rgba(10,0,25,.82);display:flex;align-items:center;justify-content:center;padding:16px';
   const box = document.createElement('div');
   box.style.cssText = 'background:#241a40;color:#fff;border:1px solid #b07cff88;border-radius:14px;padding:18px;max-width:320px;text-align:center;font:15px sans-serif';
-  box.innerHTML = `<div style="font-size:42px">🕳️</div><b>${L(who === 'hero' ? 'Kara delik seni yuttu!' : 'Kara delik kaplanı yuttu!')}</b><p>${L('%2 can kaybettin. Ne yapmak istersin?')}</p>`;
+  box.innerHTML = `<div style="font-size:42px">🕳️</div><b>${L('Kara delik seni yuttu!')}</b><p>${L('%2 can kaybettin. Ne yapmak istersin?')}</p>`;
   const mk = (label: string, bg: string, fn: () => void, off = false): HTMLButtonElement => {
     const b = document.createElement('button');
     b.textContent = L(label);

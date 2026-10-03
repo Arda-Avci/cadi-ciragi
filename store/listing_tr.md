@@ -53,6 +53,7 @@ FİNAL
 Oyun ücretsizdir. İsteğe bağlı uygulama içi satın almalar ve reklamlar içerir: güç paketleri, 40. adadan sonrası için devam paketleri ve ödüllü videolar. Bildirimler isteğe bağlıdır.
 
 ## Sürüm notları (0.16.0)
+• v0.17.1: kara delik artık yalnız kahramanı kovalar (kaplan deliğe karışmaz); bulutlar 1200 px çapında açılır; test modu daha zor.
 • v0.17.0 Yeni: 3. adadan itibaren adalarda kara delik (20. saniyede belirir, yutarsa %2 can; reklamla kurtar ya da adaya baştan başla; ilk boss yenilince kaybolur).
 • v0.17.0 Yeni: satın alınabilir Okçu (arbalet, seri atış, 3 isabet kara deliği 30 sn dondurur; Ayarlar'dan açılıp kapatılır).
 • v0.17.0 Yeni: adalar bulutlarla kaplı başlar, gezdikçe açılır; dev yılan savaşında zoom ve odak; zemin %10 daha saydam.
