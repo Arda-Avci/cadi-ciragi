@@ -32,7 +32,7 @@ const TREE_RESPAWN = 120;
 /** canavar: boss'a göre can ve hasar ×2 → güç ×2 */
 const BEAST_MUL = 2;
 /** zor boss: ada bossu yenildikten sonra günde bir kez, güç ×3 */
-const HARD_BOSS_MUL = 3;
+const HARD_BOSS_MUL = 2.4; // zor boss: boss'un 2,4 katı (eskiden 3; %20 düşürüldü)
 /** bu adadan itibaren (dizin) daha sık kamp: komşu kampların bölgeleri iç içe geçer */
 const DENSE_FROM = 10;
 /** dev yılanın bir bölümü (can çarpanı bölüme göre değişir) */
@@ -774,7 +774,7 @@ export class Game {
                 if (obstacles.some((o) => Math.hypot(o.x - x, o.y - y) < o.r + r + 70))
                     continue;
                 obstacles.push({
-                    id: reg * 100 + obstacles.length, div: bld ? (k - nRocks) % 5 === 0 ? 1 : 2 + ((k - nRocks) % 4) : 1, x, y, r, kind: bld ? 'bld' : 'rock', art: bld ? zone.art.bld[k % 3] : zone.art.rock, size: bld ? 170 : r * 3.6, flip: orng() < 0.5 ? 1 : -1,
+                    id: reg * 100 + obstacles.length, div: bld ? (k - nRocks) % 5 === 0 ? 1 : 2 + ((k - nRocks) % 4) : 1, x, y, r, kind: bld ? 'bld' : 'rock', art: bld ? zone.art.bld[k % 3] : zone.art.rock, size: bld ? 170 : r * 3.6, flip: orng() < 0.5 ? 1 : -1, brk: !bld && k % 3 === 0,
                 });
                 break;
             }
@@ -1149,7 +1149,7 @@ export class Game {
             return;
         const reg = Math.floor(o.id / 100);
         if (k === 'giant') {
-            this.spawnGiant(o.x, o.y, reg);
+            this.spawnGiant(o.x, o.y, reg, o.id);
             return;
         }
         const n = 5 + Math.min(9, Math.floor(reg / 3));
@@ -1617,7 +1617,7 @@ export class Game {
         c.fillStyle = g;
         c.fillRect(0, 0, this.w, this.h);
     }
-    spawnGiant(x, y, reg) {
+    spawnGiant(x, y, reg, nest) {
         const gid = ++this.snakeGid;
         const rr = rng(gid * 7919 + reg);
         const n = Math.min(36, 14 + Math.floor((reg - 3) * 0.9)); // ilerledikçe uzar
@@ -1631,7 +1631,7 @@ export class Game {
                 phase: 0, dashT: 0, dvx: 0, dvy: 0, flip: 1, flash: 0, lunge: 0, moving: true, seg: { gid, idx: i, f }, rot: 0,
             });
         }
-        this.snakes.set(gid, { reg, trail: [{ x, y }], ang: Math.atan2(y - this.py, x - this.px), ringR: 170, phase: 'chase', tick: 0, hdx: 1, hdy: 0, wrapped: false, age: 0, spit: 1.2 });
+        this.snakes.set(gid, { reg, trail: [{ x, y }], ang: Math.atan2(y - this.py, x - this.px), ringR: 170, phase: 'chase', tick: 0, hdx: 1, hdy: 0, wrapped: false, age: 0, spit: 1.2, nest });
         this.say('Dev yılan kuleden çıktı!');
         audio.play('roar');
         vibrate([90, 40, 160]);
@@ -1789,17 +1789,34 @@ export class Game {
         }
         this.snakeDone.add(seg.gid);
         const tigerHelped = this.enemies.some((x) => x.seg && x.seg.gid === seg.gid && x.tg);
-        const ess = this.soupYield(8 * 3.6e6);
-        const dust = Math.round(20 * (1 + e.reg / 10));
-        this.save.geodes += 4;
+        // dev yılan büyük ödül verir: bol jeod/toz/ruh, destansı eşyalar ve (her kule için ilk yenişte) kalıcı güç artışı
+        const nest = this.snakes.get(seg.gid)?.nest ?? -1;
+        const ess = this.soupYield(24 * 3.6e6);
+        const dust = Math.round(60 * (1 + e.reg / 10));
+        this.save.geodes += 8;
         this.save.dust += dust;
         this.save.essence += ess;
-        this.gain('+4 Jeod', '#7dffb0', 'icon_geode');
+        this.gain('+8 Jeod', '#7dffb0', 'icon_geode');
         this.gain('+' + dust + ' Toz', '#ffd1f0', 'ui_dust');
         this.gain('+' + this.fmt(ess) + ' Ruh', '#8fdcff', 'ui_soul');
         this.gainItem('helmet', 3);
         this.gainItem('shield', 3);
+        this.gainItem('helmet', 2);
+        this.gainItem('shield', 2);
         this.gainTigerItem(3);
+        this.gainTigerItem(2);
+        const firstSnake = nest >= 0 && !this.save.first['sn' + nest];
+        if (firstSnake) {
+            this.save.first['sn' + nest] = 1;
+            const before = this.fullPower();
+            const f = Math.max(this.grantFraction(e.reg, 8), 0.08); // en az +%8 can ve hasar (kalıcı)
+            this.addPerm('elite.hp', f * this.hpPool());
+            this.addPerm('elite.dmg', f * this.dmgPool());
+            this.hp = this.maxHp();
+            const gain = this.fullPower() - before;
+            if (gain > 0)
+                this.gain('+' + this.fmt(gain) + ' Güç (kalıcı, dev yılan)', '#ffe36b', 'ui_power');
+        }
         if (tigerHelped) {
             this.tigerCredit(LEVEL_KILLS);
             this.save.tiger.frac = Math.min(1, this.save.tiger.frac + 0.5);
@@ -1957,8 +1974,17 @@ export class Game {
     }
     /** yara: güç, seviyesinin en çok %40'ına kadar düşer */
     tigerWound() { return WOUND_FLOOR + (1 - WOUND_FLOOR) * this.save.tiger.frac; }
-    tigerMaxHp() { this.tigerInit(); return this.save.tiger.hpBase * (1 + tigerBonus(this.save.tiger, 'helm') / 100); }
-    tigerDps() { this.tigerInit(); return this.save.tiger.dpsBase * (1 + tigerBonus(this.save.tiger, 'fang') / 100) * this.tigerWound(); }
+    /** kaplanın ham can ve hasarı (eşya bonuslu, taban çarpansız) */
+    tigerRawHp() { this.tigerInit(); return this.save.tiger.hpBase * (1 + tigerBonus(this.save.tiger, 'helm') / 100); }
+    tigerRawDps() { this.tigerInit(); return this.save.tiger.dpsBase * (1 + tigerBonus(this.save.tiger, 'fang') / 100); }
+    /** kaplanın gücü ana karakterin %80'inin altına düşmez: gerekiyorsa can ve hasar birlikte yükseltilir (güç = √(can × hasar)) */
+    tigerFloor() {
+        const eff = Math.sqrt(this.tigerRawHp() * Math.max(1, this.tigerRawDps())) * 10 * this.tigerWound();
+        const want = 0.8 * this.fullPower();
+        return eff > 0 && eff < want ? want / eff : 1;
+    }
+    tigerMaxHp() { return this.tigerRawHp() * this.tigerFloor(); }
+    tigerDps() { return this.tigerRawDps() * this.tigerFloor() * this.tigerWound(); }
     /** ruh tozuyla iyileştirme bedeli: yara ne kadar derinse o kadar */
     tigerHealCost() { return Math.max(1, Math.ceil((1 - this.save.tiger.frac) * (2 + this.bossesDown() / 4))); }
     healTiger() {
@@ -3673,11 +3699,11 @@ export class Game {
         const sp = this.zoneWorld(reg).spawners.find((x) => x.reg === reg && x.tier === 'boss' && x.bridge === undefined);
         if (!sp)
             return 1e9;
-        return (ENEMIES[sp.kind].hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv) / (o.div * BOSS_MUL); // yapı canı değişmedi
+        return (ENEMIES[sp.kind].hp * TIERS.boss.hp * ZONES[reg].scale * sp.lv) / ((o.kind === 'rock' ? 8 : o.div) * BOSS_MUL); // yapı canı değişmedi; kırılabilir kaya boss/8
     }
-    bldDown(o) { return o.kind === 'bld' && this.isCleared('o' + o.id); }
+    bldDown(o) { return (o.kind === 'bld' || !!o.brk) && this.isCleared('o' + o.id); }
     liveBlds() {
-        return this.world ? this.world.obstacles.filter((o) => o.kind === 'bld' && !this.bldDown(o)) : [];
+        return this.world ? this.world.obstacles.filter((o) => (o.kind === 'bld' || !!o.brk) && !this.bldDown(o)) : [];
     }
     hitBld(o, raw) {
         const max = this.bldMaxHp(o);
@@ -3690,6 +3716,19 @@ export class Game {
             return;
         }
         this.bldHp.delete(o.id);
+        if (o.kind === 'rock') {
+            // kırılabilir kaya: parçalanır, küçük toz ve can verir, 3 dk sonra yeniden belirir (kalıcı kazanç yok)
+            this.save.spawn['o' + o.id] = this.now() + 180 * 1000;
+            const dust = Math.max(1, Math.round(2 * (1 + o.id / 100 / 10)));
+            this.save.dust += dust;
+            this.hp = Math.min(this.maxHp(), this.hp + this.maxHp() * 0.01);
+            audio.play('kill');
+            this.deathFx.push({ x: o.x, y: o.y, t: 0.45, name: o.art, size: o.size, flip: o.flip });
+            this.gain('+' + dust + ' Toz (kaya parçalandı)', '#ffd1f0', 'ui_dust');
+            this.persist();
+            this.onChange();
+            return;
+        }
         this.save.spawn['o' + o.id] = this.now() + 600 * 1000; // 10 dk sonra yeniden kurulur
         const firstDown = !this.save.first['o' + o.id];
         this.save.first['o' + o.id] = 1;
@@ -4384,7 +4423,7 @@ export class Game {
             c.beginPath();
             c.ellipse(o.x + 4, o.y + o.r * 0.5, o.r * 1.15, o.r * 0.42, 0, 0, Math.PI * 2);
             c.fill();
-            const fl = o.kind === 'bld' && (this.bldFlash.get(o.id) ?? 0) > 0;
+            const fl = (o.kind === 'bld' || !!o.brk) && (this.bldFlash.get(o.id) ?? 0) > 0;
             if (!this.drawSprX(o.art, o.x, o.y - o.size * 0.3, o.size, { flip: o.flip, flash: fl })) {
                 c.fillStyle = o.kind === 'bld' ? '#7a5a3a' : '#6e7480';
                 c.beginPath();
@@ -4406,6 +4445,28 @@ export class Game {
                     c.fillRect(o.x - bw / 2 - 1, o.y - o.size * 0.95 - 1, bw + 2, 8);
                     c.fillStyle = f <= 0.2 ? '#ff5a5a' : f <= 0.5 ? '#ffd84a' : '#5fe07a';
                     c.fillRect(o.x - bw / 2, o.y - o.size * 0.95, bw * f, 6);
+                }
+            }
+            if (o.brk) { // kırılabilir kaya: çatlak işareti ve can çubuğu
+                c.strokeStyle = 'rgba(255,230,160,0.85)';
+                c.lineWidth = 2;
+                c.lineCap = 'round';
+                const cy0 = o.y - o.r * 0.5;
+                c.beginPath();
+                c.moveTo(o.x - o.r * 0.4, cy0 - o.r * 0.3);
+                c.lineTo(o.x - o.r * 0.1, cy0);
+                c.lineTo(o.x - o.r * 0.3, cy0 + o.r * 0.25);
+                c.moveTo(o.x - o.r * 0.1, cy0);
+                c.lineTo(o.x + o.r * 0.3, cy0 + o.r * 0.1);
+                c.stroke();
+                const cur = this.bldHp.get(o.id);
+                if (cur !== undefined) {
+                    const f = Math.max(0, cur / this.bldMaxHp(o));
+                    const bw = 50;
+                    c.fillStyle = 'rgba(0,0,0,0.55)';
+                    c.fillRect(o.x - bw / 2 - 1, o.y - o.size * 0.7 - 1, bw + 2, 8);
+                    c.fillStyle = f <= 0.2 ? '#ff5a5a' : f <= 0.5 ? '#ffd84a' : '#5fe07a';
+                    c.fillRect(o.x - bw / 2, o.y - o.size * 0.7, bw * f, 6);
                 }
             }
         }

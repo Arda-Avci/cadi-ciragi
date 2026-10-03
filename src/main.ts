@@ -866,8 +866,9 @@ game.onHoleTrap = (who) => {
   const close = (): void => { wrap.remove(); renderPanel(); };
   box.append(
     mk('Reklam izle ve kurtar', '#d9822b', async () => {
+      close(); // modal hemen kapanır; reklam izlenir, bitince kurtarılır (izlenmezse seçenekler yeniden açılır)
       const ok = await (ads.kind === 'none' ? testRewarded() : ads.showRewarded());
-      if (ok) { game.holeRescue(); close(); }
+      if (ok) game.holeRescue(); else game.onHoleTrap('hero');
     }),
     mk('Adaya baştan başla', '#6a3fc4', () => { game.holeRestart(); close(); }),
   );

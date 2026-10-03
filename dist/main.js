@@ -919,11 +919,12 @@ game.onHoleTrap = (who) => {
     };
     const close = () => { wrap.remove(); renderPanel(); };
     box.append(mk('Reklam izle ve kurtar', '#d9822b', async () => {
+        close(); // modal hemen kapanır; reklam izlenir, bitince kurtarılır (izlenmezse seçenekler yeniden açılır)
         const ok = await (ads.kind === 'none' ? testRewarded() : ads.showRewarded());
-        if (ok) {
+        if (ok)
             game.holeRescue();
-            close();
-        }
+        else
+            game.onHoleTrap('hero');
     }), mk('Adaya baştan başla', '#6a3fc4', () => { game.holeRestart(); close(); }));
     wrap.append(box);
     document.body.append(wrap);
