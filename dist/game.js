@@ -3879,7 +3879,8 @@ export class Game {
             this.shake = Math.max(this.shake, 2.5);
             this.bumpDaily('combo');
         }
-        const dmg = Math.max(1, raw * e.def.resist[dtype] * (crit ? 3 : 1) * (combo ? 1.3 : 1));
+        const rs = e.tier === 'boss' ? Math.max(0.4, e.def.resist[dtype]) : e.def.resist[dtype]; // bosslarda direnç çarpanı en az 0,4: yanlış türle savaş uzamasın
+        const dmg = Math.max(1, raw * rs * (crit ? 3 : 1) * (combo ? 1.3 : 1));
         e.hp -= dmg;
         e.flash = 0.14;
         audio.play('hit');

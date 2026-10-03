@@ -3235,7 +3235,8 @@ export class Game {
     const combo = !!cm && cm.d !== dtype && this.time - cm.t < 1.2;
     this.comboMark.set(e, { d: dtype, t: this.time });
     if (combo && cm) { this.float(e.x, e.y - e.def.r * TIERS[e.tier].size - 44, 'KOMBO ' + T(this.comboName(cm.d, dtype)), '#ffb347'); audio.play('gain'); this.shake = Math.max(this.shake, 2.5); this.bumpDaily('combo'); }
-    const dmg = Math.max(1, raw * e.def.resist[dtype] * (crit ? 3 : 1) * (combo ? 1.3 : 1));
+    const rs = e.tier === 'boss' ? Math.max(0.4, e.def.resist[dtype]) : e.def.resist[dtype]; // bosslarda direnç çarpanı en az 0,4: yanlış türle savaş uzamasın
+    const dmg = Math.max(1, raw * rs * (crit ? 3 : 1) * (combo ? 1.3 : 1));
     e.hp -= dmg;
     e.flash = 0.14;
     audio.play('hit');
