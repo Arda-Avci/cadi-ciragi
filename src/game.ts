@@ -169,6 +169,8 @@ const TEST_LEVEL = ((): number => {
     return v >= 1 && v <= ZONES.length ? v : 0;
   } catch (e) { console.error('test parametresi okunamadı', e); return 0; }
 })();
+/** test parametresi: ?level=N&mine=1 madeni başlangıçta keşfedilmiş verir (giriş başlangıç noktasının yanındadır) */
+const TEST_MINE = TEST_LEVEL > 0 && location.search.includes("mine=1");
 const SAVE_KEY = TEST_LEVEL ? 'cadi-ciragi-test' : 'cadi-ciragi-v6'; // v6: 40 adalık yeni dünya
 const TREE_RESPAWN = 120;
 /** canavar: boss'a göre can ve hasar ×2 → güç ×2 */
@@ -414,6 +416,7 @@ export class Game {
     s.perm['elite.dmg'] = 0; // gerçek değer calibrateTest() ile kamp süresine göre hesaplanır
     const rp = this.restPoints()[idx];
     s.x = rp.x; s.y = rp.y + 70;
+    if (TEST_MINE) { s.mines = [idx]; s.first['mineIn'] = 1; } // ?mine=1: bu adanın madeni keşfedilmiş, girişi başlangıcın yanında
     return s;
   }
 
@@ -1262,6 +1265,7 @@ export class Game {
   private mineSpots = new Map<number, { x: number; y: number }>();
   /** maden girişinin konumu: adanın içinde, engellerden uzak, sabit (ada dizinine bağlı) */
   mineSpot(reg: number): { x: number; y: number } {
+    if (TEST_MINE && reg === TEST_LEVEL - 1) { const rp = this.restPoints()[reg]; return { x: rp.x + 150, y: rp.y + 20 }; }
     const hit = this.mineSpots.get(reg);
     if (hit) return hit;
     const z = ZONES[reg];
