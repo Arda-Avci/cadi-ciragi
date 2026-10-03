@@ -32,6 +32,8 @@ export interface Rebirth { n: number; p0: number; floor: number }
 export interface SaveData {
   rebirth?: Rebirth;
   brewAt?: number;
+  /** son cüce iksirinin içildiği ada dizini: bir sonraki adada dev olmak zorunludur (aynanın dengesi) */
+  dwarfAt?: number;
   essence: number;
   upgrades: Record<string, number>;
   weapons: number[];
@@ -1061,6 +1063,7 @@ export class Game {
     if (!this.canRebirth()) return 'Şu an yapılamaz';
     const prev = this.save.rebirth;
     const p0 = Math.max(1, this.fullPower() / this.shopMul());
+    this.save.dwarfAt = undefined;
     this.save.rebirth = { n: (prev?.n ?? 0) + 1, p0: Math.max(p0, prev?.p0 ?? 0), floor: Math.max(this.bossesDown(), prev?.floor ?? 0) };
     this.save.bossDown = ZONES.map(() => false);
     this.save.spawn = {};
@@ -1267,6 +1270,21 @@ export class Game {
   static readonly OLD_GAMES_END = 60;
   /** 60. adadan sonra maden, usta eğitimi ve arena kapanır; iksir kazanı tek mini oyun kalır */
   oldGamesClosed(): boolean { return this.bdFloor() >= Game.OLD_GAMES_END; }
+  /** cüce iksiri etkisinde mi (kolaylıklar: gizlenme, +%25 ganimet, +%0,6 can/sn, +%15 kritik) */
+  isDwarf(): boolean { return this.brewT > 0 && this.brewKind === 'dwarf'; }
+  /** aynanın dengesi: cüce olunan adadan sonraki adada dev olmak zorunludur */
+  forcedGiant(): boolean { return this.save.dwarfAt !== undefined && this.region === this.save.dwarfAt + 1; }
+  /** adaya girişte cüce bir önceki adadaysa otomatik dev olunur (5 dk) */
+  private balanceCheck(): void {
+    if (!this.forcedGiant() || this.save.first['bal' + this.region]) return;
+    this.save.first['bal' + this.region] = 1;
+    this.brewKind = 'giant'; this.brewS = 0.75; this.brewT = Game.BREW_SEC;
+    this.hp = this.maxHp();
+    this.say('Aynanın dengesi: cüceden sonra dev olursun');
+    audio.play('boss');
+    vibrate([60, 40, 120]);
+    this.narrate('balance');
+  }
   brewReadyInMs(): number { return Math.max(0, (this.save.brewAt ?? 0) + Game.BREW_CD_MS - Date.now()); }
   private brewHpMul(): number { return this.brewT <= 0 ? 1 : this.brewKind === 'giant' ? 1 + 0.8 * this.brewS : this.brewKind === 'dwarf' ? 1 - 0.25 * this.brewS : 1 + 0.15 * this.brewS; }
   private brewDmgMul(): number { return this.brewT <= 0 ? 1 : this.brewKind === 'giant' ? 1 + 0.25 * this.brewS : this.brewKind === 'dwarf' ? 1 + 0.6 * this.brewS : 1 + 0.15 * this.brewS; }
@@ -1276,9 +1294,11 @@ export class Game {
   /** karışım: sum > 0 dev, sum < 0 cüce (|sum| < 2 dengeli); q 0.4–1 karıştırma ustalığı. Sonuç ve ödül döner. */
   brew(sum: number, q: number): { kind: 'giant' | 'dwarf' | 'balanced'; s: number; geodes: number; dust: number } | null {
     if (this.brewReadyInMs() > 0 || this.dead > 0) return null;
+    if (this.forcedGiant()) sum = Math.max(sum, 3); // aynanın dengesi: bu adada dev olmak zorunlu
     const kind = Math.abs(sum) < 2 ? 'balanced' : sum > 0 ? 'giant' : 'dwarf';
     const s = kind === 'balanced' ? q : Math.min(1, Math.max(0.25, Math.abs(sum) / 8)) * q;
     this.brewKind = kind; this.brewS = s; this.brewT = Game.BREW_SEC;
+    if (kind === 'dwarf') this.save.dwarfAt = this.region; else if (this.save.dwarfAt === this.region - 1) this.save.dwarfAt = undefined;
     const geodes = 1 + (q >= 0.85 ? 1 : 0);
     const dust = Math.ceil(q * 20 * (1 + this.bdFloor() / 10));
     this.save.geodes += geodes; this.save.dust += dust;
@@ -1310,7 +1330,7 @@ export class Game {
 
   // ---- devlerin gelişi: 35. adadan itibaren sarsıntılar, 50. adada devler gelir (düşmanlar 1,5 kat büyür) ----
   static readonly GIANT_FROM = 49;
-  private giantK(reg: number): number { return reg >= Game.GIANT_FROM ? 1.5 : 1; }
+  private giantK(reg: number): number { return reg >= Game.GIANT_FROM && !this.save.first['ended'] ? 1.5 : 1; } // ayna bütünlenince (final) devler çekilir
   /** düşman yarıçapı (çarpışma ve çizim): 50. adadan sonra devler; dev yılan bölümleri etkilenmez */
   private erad(e: Enemy): number { return e.def.r * TIERS[e.tier].size * (e.seg ? 1 : this.giantK(e.reg)); }
   private tremorT = 0;
@@ -2636,15 +2656,15 @@ export class Game {
     return (TEST_LEVEL ? 0.5 : 1) * this.potionMul() * this.brewHpMul() * this.curseMul() * this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
       * (1 + (this.cb('hp') + this.helmetHp() + this.perm('elite.hpPct') + this.perm('train.hp') + this.save.house.hp + this.perm('col.hp')) / 100);
   }
-  regen(): number { return 0.6 * this.lv('regen') + this.cb('regen') + this.helmetRegen() + this.perm('tree.regen') + this.perm('train.regen'); }
+  regen(): number { return 0.6 * this.lv('regen') + this.cb('regen') + this.helmetRegen() + this.perm('tree.regen') + this.perm('train.regen') + (this.isDwarf() ? 0.006 * this.maxHp() : 0); }
   armor(): number { return Math.max(0.2, 1 - 0.04 * this.lv('armor')); }
   dmgMul(): number { return this.testDmgF * this.potionMul() * this.brewDmgMul() * this.curseMul() * this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
   castSpeed(): number { return 1 + 0.08 * this.lv('spin'); }
   reachMul(): number { return 1 + 0.06 * this.lv('reach') + this.outfitBonus('reach') / 100; }
   magnet(): number { return 70 + 25 * this.lv('magnet') + this.cb('magnet'); }
-  yieldMul(): number { return (1 + 0.1 * this.lv('yield')) * (1 + this.cb('yield') / 100) * (1 + this.outfitBonus('yield') / 100); }
+  yieldMul(): number { return (this.isDwarf() ? 1.25 : 1) * (1 + 0.1 * this.lv('yield')) * (1 + this.cb('yield') / 100) * (1 + this.outfitBonus('yield') / 100); }
   speed(): number { return 150 * (1 + 0.04 * this.lv('speed')) * (1 + this.cb('speed') / 100) * (1 + this.outfitBonus('speed') / 100) * (this.flyT > 0 ? 1.35 : 1) * (this.wrapT > 0 ? 0.55 : 1) * this.brewSpeedMul(); }
-  critChance(): number { return Math.min(0.75, (this.cb('crit') + this.outfitBonus('crit')) / 100); }
+  critChance(): number { return Math.min(0.75, (this.cb('crit') + this.outfitBonus('crit')) / 100 + (this.isDwarf() ? 0.15 : 0)); }
   lifesteal(): number { return Math.min(0.5, (this.cb('lifesteal') + this.outfitBonus('lifesteal')) / 100); }
   evasion(): number { return Math.min(0.6, (this.cb('evasion') + this.outfitBonus('evasion')) / 100 + this.brewEva()); }
   weaponDmg(i: number): number {
@@ -3001,7 +3021,7 @@ export class Game {
     this.updateZoom(dt);
     const reg0 = this.region;
     this.region = this.regionAt(this.px, this.py);
-    if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); this.tigerEnterRegion(this.region); this.softCapHint(); this.giantStage(); }
+    if (this.region !== reg0) { audio.setMood(this.region); this.ensureLoaded(this.region); this.tigerEnterRegion(this.region); this.softCapHint(); this.giantStage(); this.balanceCheck(); }
     const calm = !this.enemies.some((e) => e.state === 'chase');
     const atHome = this.inHome();
     const before = this.hp;
@@ -3175,7 +3195,7 @@ export class Game {
       e.lunge = Math.max(0, e.lunge - dt);
       e.phase += dt;
       const big = e.tier === 'boss';
-      const aggro = big ? 400 : 250 + (e.tier === 'elite' || e.tier === 'knight' ? 40 : 0);
+      const aggro = (big ? 400 : 250 + (e.tier === 'elite' || e.tier === 'knight' ? 40 : 0)) * (this.isDwarf() ? 0.6 : 1); // cüce fark edilmez: düşmanlar %40 daha geç görür
       const leash = big ? 1000 : 480;
       const home = Math.hypot(e.hx - e.x, e.hy - e.y);
       if (d < 320 && !this.save.seen[e.def.id + (big ? '_boss' + e.reg : '')]) {
@@ -3472,6 +3492,8 @@ export class Game {
     this.save.rivalDown = 1;
     this.save.geodes += 10;
     this.gain('+10 Jeod', '#7dffb0', 'icon_geode');
+    this.save.first['ended'] = 1; // ayna bütünlendi: devler çekilir
+    this.narrate('ending');
     this.say('Rakip cadıyı yendin! Hexling efsanesi oldun!');
     audio.play('beastdie');
     vibrate([120, 60, 240]);

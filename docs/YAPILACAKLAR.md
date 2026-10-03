@@ -77,3 +77,4 @@ Satın alma, geri yükleme, banner ve ödüllü reklam akışları yalnızca der
 - **Kışkırtma yayları** (`story.ts` provokeArcs): her 6-8 adada bir başlar, 2-3 ada aynı tonda sürer (zayıf/güçlü/paketli/geri dönen/final). Yay son adımında iki yayda bir usta cadı büyü yapar: güç %60 düşer, 60 sn (`CURSE_*`).
 - **Devler:** 35. adadan itibaren sarsıntılar ve hikâye sahneleri (g1..g4: 35, 40, 45, 49. adalar), 50. adada devler gelir: düşman yarıçapı ×1,5 (`Game.GIANT_FROM = 49`).
 - **Görseller (Gemini/agy):** `tools/agy_rival.py` (rival_*.jpg), `tools/agy_brewstory.py` (story_brew1/giant/dwarf/rebirth/closing/curse/giants1-5.jpg).
+- **Aynanın dengesi:** cüce iksiri içilen adadan sonraki adada dev olmak zorunlu (otomatik dev, Cüce Çiçeği kilitli; `save.dwarfAt`). Cüce kolaylıkları: düşman görüş menzili %40 az, ganimet +%25, can yenilenmesi +%0,6/sn, kritik +%15. Final düellosu kazanılınca birleşme sahnesi, devler çekilir (`first.ended`).

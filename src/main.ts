@@ -1075,7 +1075,7 @@ function showProvoke(title: string, text: string, tone: string, curse: string | 
 }
 game.onProvoke = (title, text, tone, curse) => setTimeout(() => showProvoke(title, text, tone, curse), 4500);
 /** yeni sistemlerin hikâye anlatımı: kazan, dev, cüce, yeniden doğuş, eski oyunların kapanışı */
-game.onNarrate = (key) => { const pages = NARRATIVES[key]; if (pages) setTimeout(() => showIntro(() => undefined, pages), key === 'closing' ? 4500 : 1200); };
+game.onNarrate = (key) => { const pages = NARRATIVES[key]; if (pages) setTimeout(() => showIntro(() => undefined, pages), key === 'closing' ? 4500 : key === 'ending' ? 2500 : 1200); };
 /** yeni oyunun açılış hikâyesi: sırayla birkaç sahne, her dokunuşta bir sonrakine geçer */
 function showIntro(done: () => void, pages: { img: string; title: string; text: string }[] = INTRO): void {
   let n = 0;
@@ -1141,8 +1141,12 @@ function renderBrew(): void {
   const wait = game.brewReadyInMs();
   const info = document.createElement('div');
   info.className = 'row';
-  info.innerHTML = `<small>${L('En fazla 8 malzeme ekle, sonra karıştır. Dev Mantarı seni dev, Cüce Çiçeği cüce yapar; eşit karışım dengeli bırakır.')} ${game.oldGamesClosed() ? L('Artık tek mini oyun bu.') : ''}</small>`;
+  info.innerHTML = `<small>${L('Cüce olunca fark edilmezsin, +%25 ganimet, can yenilenir, +%15 kritik. Ama cüceden sonraki adada dev olmak zorundasın.')} </small>`;
   panel.append(info);
+  const info2 = document.createElement('div');
+  info2.className = 'row';
+  info2.innerHTML = `<small>${L('En fazla 8 malzeme ekle, sonra karıştır. Dev Mantarı seni dev, Cüce Çiçeği cüce yapar; eşit karışım dengeli bırakır.')} ${game.oldGamesClosed() ? L('Artık tek mini oyun bu.') : ''}</small>`;
+  panel.append(info2);
   if (game.brewT > 0) {
     const kind = game.brewKind === 'giant' ? L('Dev') : game.brewKind === 'dwarf' ? L('Cüce') : L('Dengeli');
     panel.append(row(emoji('🧪', 'explorer'), `${L('Etki')}: ${kind}`, `${Math.ceil(game.brewT)} ${L('sn kaldı')}`, null));
@@ -1169,7 +1173,8 @@ function renderBrew(): void {
   panel.append(gauge);
   if (brewUI.stage === 'pick') {
     for (const ing of BREW_ING) {
-      panel.append(row(emoji(ing.icon, 'explorer'), L(ing.name), L(ing.hint), btn('Ekle', '', brewUI.n < 8, () => {
+      const locked = ing.id === 'cuce' && game.forcedGiant();
+      panel.append(row(emoji(ing.icon, 'explorer'), L(ing.name), locked ? L('Aynanın dengesi: bu adada dev olmalısın') : L(ing.hint), btn('Ekle', '', brewUI.n < 8 && !locked, () => {
         brewUI.n++;
         if (ing.id === 'ay') brewUI.sum -= Math.sign(brewUI.sum) * Math.min(Math.abs(brewUI.sum), 2);
         else brewUI.sum += ing.tilt;
