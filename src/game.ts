@@ -3119,6 +3119,7 @@ export class Game {
     const b = this.bonus;
     if (b) {
       b.t -= dt;
+      if (this.region !== b.reg) { this.endBonus(); return; } // sonraki adaya geçilince bonus tur biter
       for (let pass = 0; pass < 6; pass++) this.separateBonus();
       const left = this.enemies.filter((e) => e.sp === BONUS_SP && e.hp > 0).length;
       b.kills = b.total - left; // sayaç kalan düşmandan hesaplanır: ölen hiçbir düşman atlanmaz
