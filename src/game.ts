@@ -174,9 +174,9 @@ const TREE_RESPAWN = 120;
 /** canavar: boss'a göre can ve hasar ×2 → güç ×2 */
 const BEAST_MUL = 2;
 /** zor boss: ada bossu yenildikten sonra günde bir kez, güç ×3 */
-/** tüm karakterler (düşmanlar, kahraman, kaplan) biraz daha kolay hasar alır: düşmanlar +%25, kahraman ve kaplan +%20 */
-const DMG_DEALT = 1.25;
-const DMG_TAKEN = 1.2;
+/** tüm karakterler (düşmanlar, kahraman, kaplan) biraz daha kolay hasar alır: düşmanlar, kahraman ve kaplan +%15 */
+const DMG_DEALT = 1.15;
+const DMG_TAKEN = 1.15;
 const HARD_BOSS_MUL = 2.4; // zor boss: boss'un 2,4 katı (eskiden 3; %20 düşürüldü)
 /** bu adadan itibaren (dizin) daha sık kamp: komşu kampların bölgeleri iç içe geçer */
 const DENSE_FROM = 10;
@@ -1500,10 +1500,17 @@ export class Game {
     const oy = this.py - 10;
     const a = Math.atan2(wy - oy, wx - ox);
     this.archerCd = 0.16;
-    const p = this.newProj('arrow', ox, oy, this.weaponDmg(0) * 1.2, 'pierce');
-    p.vx = Math.cos(a) * 760; p.vy = Math.sin(a) * 760; p.max = 1.1; p.pierce = 1; p.a = a;
+    const p = this.newProj('arrow', ox, oy, this.arrowDmg(), 'pierce');
+    p.vx = Math.cos(a) * 760; p.vy = Math.sin(a) * 760; p.max = 1.1; p.pierce = 3; p.a = a;
     this.projs.push(p);
     audio.play('cast');
+  }
+
+  /** arbalet okunun hasarı: kuşanılan büyülerin ortalama hasarının 1,5 katı (yalnız asa değil; ilerledikçe birlikte büyür) */
+  private arrowDmg(): number {
+    const eq = this.equippedWeapons();
+    if (!eq.length) return this.weaponDmg(0) * 1.5;
+    return (eq.reduce((a, i) => a + this.weaponDmg(i), 0) / eq.length) * 1.5;
   }
 
   /** ok deliğe değdiyse true (ok söner); 3 isabet = 30 sn dondurma */
@@ -3152,7 +3159,8 @@ export class Game {
       if (p.kind === 'bolt' || p.kind === 'arrow') {
         p.x += p.vx * dt; p.y += p.vy * dt;
         if (p.kind === 'arrow' && this.arrowHitsHole(p)) continue;
-        this.projCollide(p, enemies, trees, 12);
+        if (p.kind === 'arrow') this.arrowCollide(p, enemies);
+        else this.projCollide(p, enemies, trees, 12);
         if (p.life < p.max && p.pierce >= 0) keep.push(p);
       } else if (p.kind === 'broom') {
         const sp = 440;
@@ -3181,6 +3189,29 @@ export class Game {
       } else if (p.life < p.max) keep.push(p); // ring / slash: yalnızca görsel
     }
     this.projs = keep;
+  }
+
+  /** arbalet oku ağaç, kaya ve yapılara takılmaz: yalnız yaratıklara ve boss evlerine vurur (3 hedefi delip geçer) */
+  private arrowCollide(p: Proj, enemies: Enemy[]): void {
+    for (const e of enemies) {
+      if (p.hit.has(e) || e.hp <= 0) continue;
+      if (Math.hypot(e.x - p.x, e.y - p.y) < e.def.r * TIERS[e.tier].size + 14) {
+        p.hit.add(e);
+        // boss ve zor bosslara ok daha çok işler (zırh deliciliği)
+        this.hitEnemy(e, p.dmg * (e.tier === 'boss' ? 2 : 1), p.dtype);
+        p.pierce--;
+        if (p.pierce < 0) return;
+      }
+    }
+    for (const s of this.bossHouses()) {
+      if (p.hit.has(s)) continue;
+      if (Math.hypot(s.x - p.x, s.y - p.y) < 56 + 14) {
+        p.hit.add(s);
+        this.hitHouse(s, p.dmg * 2, p.dtype);
+        p.pierce--;
+        if (p.pierce < 0) return;
+      }
+    }
   }
 
   private projCollide(p: Proj, enemies: Enemy[], trees: ResTree[], r: number, once = false): void {
