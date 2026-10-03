@@ -338,7 +338,7 @@ function renderPanel() {
             const st = CRYSTAL_STATS[c.stat];
             const val = crystalValue(c.stat, c.rarity, c.enchant);
             const cost = enchantCost(c.enchant);
-            panel.append(row(`<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico(statIcon(c.stat), 34)}</span>`, `<span style="color:${RARITIES[c.rarity].color}">${L(RARITIES[c.rarity].name)} ${L(st.name)}</span> +${c.enchant}`, `+${val.toFixed(st.unit === '/sn' ? 2 : 1)}${st.unit} ${L(st.name)}`, btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => { if (!game.toggleCrystal(c.id))
+            panel.append(row(`<span class="rar" style="border-color:${RARITIES[c.rarity].color}">${ico(statIcon(c.stat), 34)}</span>`, `<span style="color:${RARITIES[c.rarity].color}">${L(RARITIES[c.rarity].name)} ${L(st.name)}</span> +${c.enchant}`, `+${val.toFixed(st.unit === '/sn' ? 2 : 1)}${st.unit} ${L(st.name)}` + (c.enchant < MAX_ENCHANT && game.save.dust < cost ? ` · ${L('Toz yetmiyor')} (${Math.floor(game.save.dust)}/${cost})` : ''), btns(btn(eq ? 'Çıkar' : 'Tak', '', true, () => { if (!game.toggleCrystal(c.id))
                 note = L('Boş yuva yok.'); renderPanel(); }), btn(c.enchant >= MAX_ENCHANT ? 'MAX' : `✦ ${cost} · %${Math.round(enchantChance(c.enchant) * 100)}`, '', c.enchant < MAX_ENCHANT && game.save.dust >= cost, () => {
                 const r = game.enchantCrystal(c.id);
                 note = r === 'ok' ? 'Başarılı!' : r === 'fail' ? 'Başarısız, toz gitti.' : '';
@@ -370,6 +370,13 @@ function renderPanel() {
     }
     else if (open === 'cards') {
         setPanelTitle('Karakter Kartları', 'ui_cards');
+        /** "vurur ⚔ · zayıf ⚔" satırı: vurduğu hasar türü ve en çok zarar gördüğü tür */
+        const hitWeak = (atk, weak) => `${L('vurur')} ${ico('ui_' + atk, 14)} ${L(DTYPE_NAMES[atk])} · ${L('zayıf')} ${ico('ui_' + weak, 14)} ${L(DTYPE_NAMES[weak])}`;
+        const bossInfo = (reg) => {
+            const e = ENEMIES[game.bossKind(reg)];
+            const w = DTYPES.reduce((b, t) => (e.resist[t] > e.resist[b] ? t : b), DTYPES[0]);
+            return hitWeak(e.atk, w);
+        };
         const grid = document.createElement('div');
         grid.className = 'cards';
         const card = (img, name, info, known) => {
@@ -382,10 +389,10 @@ function renderPanel() {
         for (const id of ['ghost', 'mushroom', 'pumpkin', 'bat', 'scorpion', 'golem', 'wisp']) {
             const e = ENEMIES[id];
             const w = DTYPES.reduce((b, t) => (e.resist[t] > e.resist[b] ? t : b), DTYPES[0]);
-            grid.append(card('card_' + id, e.name, `vurur ${ico('ui_' + e.atk, 14)} · zayıf ${ico('ui_' + w, 14)}`, !!game.save.seen[id]));
+            grid.append(card('card_' + id, e.name, hitWeak(e.atk, w), !!game.save.seen[id]));
         }
         const bossCard = ['card_boss_owl', 'card_boss_swamp', 'card_boss_frost', 'card_boss_desert', 'card_boss_crystal', 'card_boss_volcano', 'card_boss_sky', 'card_boss_shadow'];
-        ZONES.slice(0, 8).forEach((z, i) => grid.append(card(bossCard[i], N(z.bossName), `${L(TIERS.boss.name)} · ${N(z.name)}`, Object.keys(game.save.seen).some((k) => k.endsWith('_boss' + i) && game.save.seen[k]))));
+        ZONES.slice(0, 8).forEach((z, i) => grid.append(card(bossCard[i], N(z.bossName), `${L(TIERS.boss.name)} · ${N(z.name)}<br>${bossInfo(i)}`, Object.keys(game.save.seen).some((k) => k.endsWith('_boss' + i) && game.save.seen[k]))));
         panel.append(grid);
     }
     else if (open === 'settings') {

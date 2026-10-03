@@ -331,6 +331,7 @@ export class Game {
         if (!s.house.soupAt) s.house.soupAt = Date.now();
         if (!Array.isArray(s.outfits)) s.outfits = [0];
         if (!s.arena) s.arena = {};
+        Game.mergeDuplicates(s);
         if (!s.daily || !Array.isArray(s.daily.goals)) s.daily = makeDaily(Date.now());
         if (!s.ads) s.ads = { day: 0, n: 0, last: {} };
         return s;
@@ -863,6 +864,7 @@ export class Game {
       const geo = Math.min(5, h.streak);
       const ess = this.soupYield(4 * 3.6e6);
       this.save.geodes += geo;
+      this.save.dust += 10;
       this.save.essence += ess;
       if (h.streak % 7 === 0) { this.gainItem('helmet', 3); this.gainItem('shield', 3); }
       msg = `Günlük ödül: +${geo} jeod, +${this.fmt(ess)} ruh · seri ${h.streak} gün` + (h.streak % 7 === 0 ? ' · büyük ödül!' : '');
@@ -920,7 +922,8 @@ export class Game {
     if (!g || g.claimed || g.have < g.need) return false;
     g.claimed = true;
     this.save.geodes += 1;
-    this.gain('Günlük görev tamamlandı: +1 jeod', '#7dffb0', 'icon_geode');
+    this.save.dust += 3;
+    this.gain('Günlük görev tamamlandı: +1 jeod, +3 toz', '#7dffb0', 'icon_geode');
     if (this.save.daily.goals.every((x) => x.claimed)) {
       const ess = this.soupYield(3 * 3.6e6);
       this.save.geodes += 2;
@@ -1075,6 +1078,10 @@ export class Game {
   }
   weaponCopies(i: number): number { return 1 + Math.min(3, Math.floor((this.save.weapons[i] - 1) / 5)); }
   zone() { return ZONES[this.region]; }
+  /** adanın bossunun düşman türü (kartta vurduğu/zayıf olduğu tür için) */
+  bossKind(reg: number): EnemyId {
+    return this.zoneWorld(reg).spawners.find((x) => x.tier === 'boss' && x.bridge === undefined)?.kind ?? ZONES[reg].enemies[0];
+  }
   bossesDown(): number { return this.save.bossDown.filter(Boolean).length; }
   /** kristal yuvası: 2'den başlar, boss'larla 4'e çıkar, her 10 adada bir yenisi eklenir */
   slots(): number { return Math.min(4, 2 + this.bossesDown()) + Math.floor(this.bossesDown() / 10); }
@@ -1272,6 +1279,28 @@ export class Game {
     this.persist();
     this.onChange();
     return it;
+  }
+
+  /** aynı türden (tür + nadirlik + hasar türü) eşyaları tek eşyada toplar: eski kayıtlardaki kopyalar da birleşir */
+  static mergeDuplicates(s: SaveData): void {
+    const keep = new Map<string, Item>();
+    const gone = new Map<number, number>(); // silinen kimlik → kalan kimlik
+    const equipped = new Set<number>([s.eq.helmet, s.eq.shield, ...s.extra]);
+    // kuşanılanlar önce: kalan eşya onlardan biri olsun
+    const ordered = [...s.items].sort((a, b) => Number(equipped.has(b.id)) - Number(equipped.has(a.id)));
+    for (const it of ordered) {
+      const k = it.type + '|' + it.rarity + '|' + it.dtype;
+      const base = keep.get(k);
+      if (!base) { keep.set(k, it); continue; }
+      const total = base.level + it.level;
+      base.level = Math.min(MAX_ITEM_LEVEL, total);
+      if (total > MAX_ITEM_LEVEL) s.dust += 8 * (1 + it.rarity) * (total - MAX_ITEM_LEVEL);
+      gone.set(it.id, base.id);
+    }
+    if (!gone.size) return;
+    s.items = s.items.filter((x) => !gone.has(x.id));
+    for (const t of ['helmet', 'shield'] as const) if (gone.has(s.eq[t])) s.eq[t] = gone.get(s.eq[t]) as number;
+    s.extra = [...new Set(s.extra.map((x) => gone.get(x) ?? x))].filter((x) => x !== s.eq.helmet && x !== s.eq.shield);
   }
 
   toggleItem(id: number): void {
@@ -1780,7 +1809,7 @@ export class Game {
           p.x += (dx / d) * sp * dt; p.y += (dy / d) * sp * dt;
           if (d < 22) continue;
         }
-        this.projCollide(p, enemies, trees, 18, true);
+        this.projCollide(p, enemies, trees, 14.4, true); // süpürge %20 küçültüldü
         if (p.life < p.max) keep.push(p);
       } else if (p.kind === 'potion') {
         const k = Math.min(1, p.life / p.max);
@@ -2062,6 +2091,10 @@ export class Game {
     }
     if (sp.tag) this.gainItem(sp.tag, Math.min(4, 1 + sp.reg));
     if (sp.tier === 'elite') { this.save.geodes++; this.gain('+1 Jeod', '#7dffb0', 'icon_geode'); }
+    // toz: kristal geliştirmenin yakıtı; elit/muhafız/boss kamplarından ve canavarlardan düşer
+    const dustBase = { easy: 0, medium: 0, hard: 1, elite: 3, knight: 3, boss: 10 }[sp.tier] * (sp.beast ? 2 : 1) * (sp.hard ? 2 : 1);
+    const dustGain = Math.round(dustBase * (1 + sp.reg / 10));
+    if (dustGain > 0) { this.save.dust += dustGain; this.gain('+' + dustGain + ' Toz', '#ffd1f0', 'ui_dust', { key: 'dust', amount: dustGain, fmt: (n) => '+' + n + ' Toz' }); }
     if (sp.hard) {
       const ess = this.soupYield(6 * 3.6e6);
       this.save.geodes += 5;
@@ -2831,7 +2864,7 @@ export class Game {
         c.fillStyle = '#ffd84a'; c.beginPath(); c.arc(p.x, p.y, 8, 0, Math.PI * 2); c.fill();
       }
     } else if (p.kind === 'broom') {
-      if (!this.drawSpr('icon_broom', p.x, p.y, 58, this.time * 14)) {
+      if (!this.drawSpr('icon_broom', p.x, p.y, 46.4, this.time * 14)) {
         c.fillStyle = '#c98a4b'; c.fillRect(p.x - 18, p.y - 3, 36, 6);
       }
     } else if (p.kind === 'potion') {

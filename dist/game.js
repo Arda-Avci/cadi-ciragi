@@ -238,6 +238,7 @@ export class Game {
                     s.outfits = [0];
                 if (!s.arena)
                     s.arena = {};
+                Game.mergeDuplicates(s);
                 if (!s.daily || !Array.isArray(s.daily.goals))
                     s.daily = makeDaily(Date.now());
                 if (!s.ads)
@@ -848,6 +849,7 @@ export class Game {
             const geo = Math.min(5, h.streak);
             const ess = this.soupYield(4 * 3.6e6);
             this.save.geodes += geo;
+            this.save.dust += 10;
             this.save.essence += ess;
             if (h.streak % 7 === 0) {
                 this.gainItem('helmet', 3);
@@ -934,7 +936,8 @@ export class Game {
             return false;
         g.claimed = true;
         this.save.geodes += 1;
-        this.gain('Günlük görev tamamlandı: +1 jeod', '#7dffb0', 'icon_geode');
+        this.save.dust += 3;
+        this.gain('Günlük görev tamamlandı: +1 jeod, +3 toz', '#7dffb0', 'icon_geode');
         if (this.save.daily.goals.every((x) => x.claimed)) {
             const ess = this.soupYield(3 * 3.6e6);
             this.save.geodes += 2;
@@ -1110,6 +1113,10 @@ export class Game {
     }
     weaponCopies(i) { return 1 + Math.min(3, Math.floor((this.save.weapons[i] - 1) / 5)); }
     zone() { return ZONES[this.region]; }
+    /** adanın bossunun düşman türü (kartta vurduğu/zayıf olduğu tür için) */
+    bossKind(reg) {
+        return this.zoneWorld(reg).spawners.find((x) => x.tier === 'boss' && x.bridge === undefined)?.kind ?? ZONES[reg].enemies[0];
+    }
     bossesDown() { return this.save.bossDown.filter(Boolean).length; }
     /** kristal yuvası: 2'den başlar, boss'larla 4'e çıkar, her 10 adada bir yenisi eklenir */
     slots() { return Math.min(4, 2 + this.bossesDown()) + Math.floor(this.bossesDown() / 10); }
@@ -1337,6 +1344,34 @@ export class Game {
         this.persist();
         this.onChange();
         return it;
+    }
+    /** aynı türden (tür + nadirlik + hasar türü) eşyaları tek eşyada toplar: eski kayıtlardaki kopyalar da birleşir */
+    static mergeDuplicates(s) {
+        const keep = new Map();
+        const gone = new Map(); // silinen kimlik → kalan kimlik
+        const equipped = new Set([s.eq.helmet, s.eq.shield, ...s.extra]);
+        // kuşanılanlar önce: kalan eşya onlardan biri olsun
+        const ordered = [...s.items].sort((a, b) => Number(equipped.has(b.id)) - Number(equipped.has(a.id)));
+        for (const it of ordered) {
+            const k = it.type + '|' + it.rarity + '|' + it.dtype;
+            const base = keep.get(k);
+            if (!base) {
+                keep.set(k, it);
+                continue;
+            }
+            const total = base.level + it.level;
+            base.level = Math.min(MAX_ITEM_LEVEL, total);
+            if (total > MAX_ITEM_LEVEL)
+                s.dust += 8 * (1 + it.rarity) * (total - MAX_ITEM_LEVEL);
+            gone.set(it.id, base.id);
+        }
+        if (!gone.size)
+            return;
+        s.items = s.items.filter((x) => !gone.has(x.id));
+        for (const t of ['helmet', 'shield'])
+            if (gone.has(s.eq[t]))
+                s.eq[t] = gone.get(s.eq[t]);
+        s.extra = [...new Set(s.extra.map((x) => gone.get(x) ?? x))].filter((x) => x !== s.eq.helmet && x !== s.eq.shield);
     }
     toggleItem(id) {
         const it = this.save.items.find((x) => x.id === id);
@@ -2014,7 +2049,7 @@ export class Game {
                     if (d < 22)
                         continue;
                 }
-                this.projCollide(p, enemies, trees, 18, true);
+                this.projCollide(p, enemies, trees, 14.4, true); // süpürge %20 küçültüldü
                 if (p.life < p.max)
                     keep.push(p);
             }
@@ -2337,6 +2372,13 @@ export class Game {
         if (sp.tier === 'elite') {
             this.save.geodes++;
             this.gain('+1 Jeod', '#7dffb0', 'icon_geode');
+        }
+        // toz: kristal geliştirmenin yakıtı; elit/muhafız/boss kamplarından ve canavarlardan düşer
+        const dustBase = { easy: 0, medium: 0, hard: 1, elite: 3, knight: 3, boss: 10 }[sp.tier] * (sp.beast ? 2 : 1) * (sp.hard ? 2 : 1);
+        const dustGain = Math.round(dustBase * (1 + sp.reg / 10));
+        if (dustGain > 0) {
+            this.save.dust += dustGain;
+            this.gain('+' + dustGain + ' Toz', '#ffd1f0', 'ui_dust', { key: 'dust', amount: dustGain, fmt: (n) => '+' + n + ' Toz' });
         }
         if (sp.hard) {
             const ess = this.soupYield(6 * 3.6e6);
@@ -3359,7 +3401,7 @@ export class Game {
             }
         }
         else if (p.kind === 'broom') {
-            if (!this.drawSpr('icon_broom', p.x, p.y, 58, this.time * 14)) {
+            if (!this.drawSpr('icon_broom', p.x, p.y, 46.4, this.time * 14)) {
                 c.fillStyle = '#c98a4b';
                 c.fillRect(p.x - 18, p.y - 3, 36, 6);
             }
