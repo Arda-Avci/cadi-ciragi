@@ -127,6 +127,9 @@ export class Game {
         this.venoms = [];
         this.snakeGid = 0;
         this.snakeDone = new Set();
+        /** dev yılan savaşı: yılan yakındayken kamera yaklaşır, diğer düşmanlar/kamplar durur, yalnız yılana odaklanılır */
+        this.snakeFight = false;
+        this.focus = 0;
         // ---- yardımcı karakter: beyaz kaplan ----
         this.tg = null;
         this.campsOf = new Map();
@@ -1049,6 +1052,33 @@ export class Game {
         audio.play('roar');
         this.shake = Math.max(this.shake, 5);
     }
+    updateFocus(dt) {
+        let on = false;
+        if (this.dead <= 0) {
+            for (const gid of this.snakes.keys()) {
+                const head = this.enemies.find((e) => e.seg && e.seg.gid === gid && e.hp > 0);
+                if (head && Math.hypot(head.x - this.px, head.y - this.py) < 720) {
+                    on = true;
+                    break;
+                }
+            }
+        }
+        if (on && !this.snakeFight)
+            this.say('Dev yılan savaşı! Her şey durdu: yılana odaklan');
+        this.snakeFight = on;
+        this.focus += ((on ? 1 : 0) - this.focus) * Math.min(1, dt * 2.5);
+    }
+    /** odak sırasında ekran kenarları kararır (dikkat yılanda) */
+    drawFocusVignette() {
+        if (this.focus < 0.02)
+            return;
+        const c = this.ctx;
+        const g = c.createRadialGradient(this.w / 2, this.h / 2, Math.min(this.w, this.h) * 0.25, this.w / 2, this.h / 2, Math.max(this.w, this.h) * 0.75);
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        g.addColorStop(1, `rgba(5,0,15,${0.6 * this.focus})`);
+        c.fillStyle = g;
+        c.fillRect(0, 0, this.w, this.h);
+    }
     spawnGiant(x, y, reg) {
         const gid = ++this.snakeGid;
         const rr = rng(gid * 7919 + reg);
@@ -1477,6 +1507,8 @@ export class Game {
                 continue;
             if (e.seg && !this.snakeWrapped(e))
                 continue; // zırhlı yılana vurmak boşa; saran yılana saldırır
+            if (this.snakeFight && !e.seg)
+                continue; // yılan savaşında kaplan yalnız yılana saldırır
             const d = Math.hypot(e.x - g.x, e.y - g.y) * (e.def.id === 'snake' ? 0.6 : 1); // yılanlara öncelik verir
             if (d < td) {
                 td = d;
@@ -2272,7 +2304,9 @@ export class Game {
                 this.houseFlash.set(k, v - dt);
         }
         this.invuln = Math.max(0, this.invuln - dt);
-        this.syncSpawners();
+        this.updateFocus(dt);
+        if (!this.snakeFight)
+            this.syncSpawners(); // yılan savaşında yeni kamp çıkmaz
         this.syncRival(dt);
         this.updateEnemies(dt);
         this.checkPaywall(dt);
@@ -2409,6 +2443,8 @@ export class Game {
                 e.flash = Math.max(0, e.flash - dt);
                 continue;
             } // dev yılan bölümlerini updateSnakes yönetir
+            if (this.snakeFight)
+                continue; // yılan savaşında diğer düşmanlar donar
             const dx = this.px - e.x;
             const dy = this.py - e.y;
             const d = Math.hypot(dx, dy) || 1;
@@ -2602,7 +2638,8 @@ export class Game {
     updateZoom(dt) {
         const half = Math.min(this.w, this.h) / 2;
         const target = Math.max(0.5, Math.min(1, (half * 0.94) / (this.aimRange() + 40)));
-        this.zoom += (target - this.zoom) * Math.min(1, dt * 3);
+        const goal = target + (1.3 - target) * this.focus; // yılan savaşında yakınlaşır
+        this.zoom += (goal - this.zoom) * Math.min(1, dt * 3);
     }
     /** (x,y) şu an ekranda mı (atış yalnızca ekrandaki hedeflere) */
     visible(x, y) {
@@ -2617,6 +2654,8 @@ export class Game {
         let bd = range;
         for (const e of this.enemies) {
             const d = Math.hypot(e.x - this.px, e.y - this.py);
+            if (this.snakeFight && (!e.seg || !this.snakeWrapped(e)))
+                continue; // yılan savaşında yalnız saran yılanın bölümleri hedeflenir
             if (e.tgFirst && this.time < e.tgFirst && this.hp > this.maxHp() * 0.5)
                 continue; // kaplan önce mücadele eder (can azsa yine yardım)
             if (d < bd && this.visible(e.x, e.y)) {
@@ -2624,6 +2663,8 @@ export class Game {
                 best = { x: e.x, y: e.y };
             }
         }
+        if (this.snakeFight)
+            return best;
         for (const s of this.bossHouses()) {
             const d = Math.hypot(s.x - this.px, s.y - this.py);
             if (d < bd && this.visible(s.x, s.y)) {
@@ -3445,6 +3486,7 @@ export class Game {
         this.ambient.update(0.016, this.w, this.h);
         this.ambient.draw(c, this.w, this.h, this.region, this.time);
         drawVignette(c, this.w, this.h);
+        this.drawFocusVignette();
         this.drawGains();
         this.drawFeed();
         this.drawGateBanner();
