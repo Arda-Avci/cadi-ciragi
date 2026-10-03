@@ -10,7 +10,7 @@ import { TUTORIAL } from './quests.js';
 import { ENERGY_MAX, LEVEL_COST, TIGER_SLOTS, tigerItemPct } from './tiger.js';
 import { Ghost, LEGENDS, OUTFITS, RIVAL_HUE, ghostCode, heroLevel, parseGhostCode, weekly } from './meta.js';
 import { INTRO, hasScene, pageFor } from './story.js';
-import { createAds, testRewarded } from './ads.js';
+import { TESTING, createAds, testRewarded } from './ads.js';
 import {
   CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, statIcon, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS,
   UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemAbility, itemUpgradeCost, itemValue, upgradeCost,
@@ -522,7 +522,7 @@ function renderPanel(): void {
     panel.append(info);
     const msg = document.createElement('div');
     msg.className = 'row';
-    msg.innerHTML = `<small id="shop-msg">${billing.kind === 'none' ? L('Mağaza yalnızca mobil uygulamada kullanılabilir.') : billing.kind === 'dev' ? 'GELİŞTİRME MODU: sahte satın alma' : ''}</small>`;
+    msg.innerHTML = `<small id="shop-msg">${TESTING ? L('TEST: satın alma 3 sn test reklamıyla yapılır') : billing.kind === 'none' ? L('Mağaza yalnızca mobil uygulamada kullanılabilir.') : billing.kind === 'dev' ? 'GELİŞTİRME MODU: sahte satın alma' : ''}</small>`;
     panel.append(msg);
     // devam paketleri: 40. adadan sonrasını açar (kalıcı, bir kez alınır)
     const lh = document.createElement('h3');
@@ -536,11 +536,10 @@ function renderPanel(): void {
       const owned = !!game.save.lvPacks[p.id];
       const price = shopPrices[p.id] ?? p.fallbackPrice;
       panel.append(row(ico('ui_skill', 36), p.name, owned ? L('Alındı') : `+${p.levels} ${L('ada')}`,
-        btn(owned ? '✓' : price, '', !owned && billing.kind !== 'none', async () => {
-          const r = await billing.purchase(p.id);
+        btn(owned ? '✓' : price, '', !owned && (billing.kind !== 'none' || TESTING), async () => {
+          const r = await buy(p.id);
           const m = document.getElementById('shop-msg');
-          if (r.ok && billing.kind === 'dev') game.grantPurchase(p.id, r.receipt ?? 'dev');
-          else if (!r.ok && m) m.textContent = r.error ?? '';
+          if (!r.ok && m) m.textContent = r.error ?? '';
           renderPanel();
         })));
     }
@@ -549,11 +548,10 @@ function renderPanel(): void {
     panel.append(ah);
     const archerOwned = !!game.save.archer;
     panel.append(row(ico('icon_wand', 36), L('Okçu (arbalet)'), archerOwned ? L('Alındı: ayarlardan açılıp kapatılır') : L('Sağ alttaki 🏹 ile seç, basılı tutup nişan al: seri ok. 3 isabet kara deliği 30 sn dondurur'),
-      btn(archerOwned ? '✓' : (shopPrices[ARCHER.id] ?? ARCHER.fallbackPrice), '', !archerOwned && billing.kind !== 'none', async () => {
-        const r = await billing.purchase(ARCHER.id);
+      btn(archerOwned ? '✓' : (shopPrices[ARCHER.id] ?? ARCHER.fallbackPrice), '', !archerOwned && (billing.kind !== 'none' || TESTING), async () => {
+        const r = await buy(ARCHER.id);
         const m = document.getElementById('shop-msg');
-        if (r.ok && billing.kind === 'dev') game.grantPurchase(ARCHER.id, r.receipt ?? 'dev');
-        else if (!r.ok && m) m.textContent = r.error ?? '';
+        if (!r.ok && m) m.textContent = r.error ?? '';
         renderPanel();
       })));
     const ph = document.createElement('h3');
@@ -563,11 +561,10 @@ function renderPanel(): void {
       const have = game.save.shop[p.id] ?? 0;
       const price = shopPrices[p.id] ?? p.fallbackPrice;
       panel.append(row(ico('ui_power', 36), `${p.name}${have ? ' ×' + have : ''}`, `${L('Gücü ×')}${p.mul} ${L('artırır')}`,
-        btn(price, '', billing.kind !== 'none', async () => {
-          const r = await billing.purchase(p.id);
+        btn(price, '', billing.kind !== 'none' || TESTING, async () => {
+          const r = await buy(p.id);
           const m = document.getElementById('shop-msg');
-          if (r.ok && billing.kind === 'dev') game.grantPurchase(p.id, r.receipt ?? 'dev');
-          else if (!r.ok && m) m.textContent = r.error ?? '';
+          if (!r.ok && m) m.textContent = r.error ?? '';
           renderPanel();
         })));
     }
@@ -833,6 +830,18 @@ function frame(now: number): void {
 // ---------------- mağaza ----------------
 const ads = createAds();
 const billing = createBilling((id, receipt) => { game.grantPurchase(id, receipt); renderPanel(); });
+/** test aşaması (ads.TESTING): mağaza yok ya da çalışmıyor; 3 sn test reklamı izlenince ürün verilir. Yayın öncesi TESTING=false yapılır */
+async function buy(id: string): Promise<{ ok: boolean; error?: string }> {
+  if (TESTING) {
+    const done = await testRewarded();
+    if (!done) return { ok: false, error: 'İptal edildi.' };
+    game.grantPurchase(id, 'test');
+    return { ok: true };
+  }
+  const r = await billing.purchase(id);
+  if (r.ok && billing.kind === 'dev') game.grantPurchase(id, r.receipt ?? 'dev');
+  return r;
+}
 // son düello: street fighter tarzı ayrı dövüş oyunu
 const fight = new FightGame((n) => game.spr(n), () => ZONES[ZONES.length - 1].bg, () => game.save.hero.name);
 game.onDuel = () => {
