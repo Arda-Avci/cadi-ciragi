@@ -151,6 +151,13 @@ export class Game {
         this.holeHitT = 0;
         this.holeBossT = 0;
         this.archerCd = 0;
+        /** yakındaki bulunmuş madene dokunuldu: maden oyunu açılır (oyun duraklar, bitince finishMine çağrılır) */
+        this.onMine = () => { };
+        /** kaşif ilk madeni buldu (hikâye sahnesi için) */
+        this.onMineFound = () => { };
+        /** madende bulunan gizli iksir: kalan süre (sn); süresince can ve hasar ×10 (güç ×10) */
+        this.potionT = 0;
+        this.mineSpots = new Map();
         this.fogSets = new Map();
         this.fogFade = new Map();
         this.cloudSpr = null;
@@ -352,7 +359,7 @@ export class Game {
         return {
             essence: 0, upgrades: {}, weapons: [1, 0, 0, 0], copies: [0, 0, 0, 0], loadout: [0], x: HOME.x, y: HOME.y + 70,
             bossDown: ZONES.map(() => false), hero: { id: 'h' + Date.now().toString(36), name: 'Çırak', born: Date.now() }, playSec: 0, shop: {}, lvPacks: {}, rivalDown: 0, house: { ...freshHouse(), soupAt: Date.now() }, outfit: 0, outfits: [0], arena: {}, weekWon: -1, storyRead: 0, tut: 0, daily: makeDaily(Date.now()), col: 0, tiger: freshTiger(), ads: { day: 0, n: 0, last: {} }, first: {}, gw: {}, kills: 0, deaths: 0, geodes: 1, dust: 20, crystals: [], equipped: [], nextCrystal: 1,
-            chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {}, archer: 0, fog: {},
+            chests: [], seen: {}, train: {}, chestBonus: {}, items: [], eq: { helmet: 0, shield: 0 }, extra: [], nextItem: 1, spawn: {}, perm: {}, archer: 0, fog: {}, explorer: { at: 0, target: -1 }, mines: [], mineAt: {},
         };
     }
     load() {
@@ -384,6 +391,7 @@ export class Game {
                 if (!Array.isArray(s.tiger.paid))
                     s.tiger.paid = [];
                 Game.mergeDuplicates(s);
+                Game.mergeCrystals(s);
                 if (!s.daily || !Array.isArray(s.daily.goals))
                     s.daily = makeDaily(Date.now());
                 if (!s.ads)
@@ -1170,6 +1178,164 @@ export class Game {
         this.shake = Math.max(this.shake, 5);
     }
     archerOn() { return this.save.archer === 1 && settings.archer; }
+    exploreMs() { return TEST_LEVEL ? 10 * 1000 : Game.EXPLORE_MS; }
+    potionMul() { return this.potionT > 0 ? 10 : 1; }
+    tickPotion(dt) {
+        if (this.potionT <= 0)
+            return;
+        this.potionT = Math.max(0, this.potionT - dt);
+        if (this.potionT <= 0) {
+            this.hp = Math.min(this.hp, this.maxHp());
+            this.say('İksirin etkisi bitti');
+        }
+    }
+    /** iksir süresince ekranın üstünde kalan süre gösterilir */
+    drawPotion() {
+        if (this.potionT <= 0)
+            return;
+        const c = this.ctx;
+        c.textAlign = 'center';
+        c.font = 'bold ' + Math.round(15 * this.lk()) + 'px sans-serif';
+        c.lineWidth = 4;
+        c.strokeStyle = '#000';
+        c.fillStyle = '#ff9bff';
+        const txt = '🧪 GÜÇ ×10 · ' + Math.ceil(this.potionT) + ' sn';
+        c.strokeText(txt, this.w / 2, 118 * this.lk());
+        c.fillText(txt, this.w / 2, 118 * this.lk());
+    }
+    /** kaşifin hedefi: bulunulan seviyeden sonraki 3'ün katı olan ada (seviye 4 → 6, seviye 11 → 12); ada dizini (0 tabanlı), yoksa -1 */
+    exploreTarget() {
+        const t = (Math.floor((this.region + 1) / 3) + 1) * 3;
+        return t <= ZONES.length ? t - 1 : -1;
+    }
+    explorerState() {
+        const ex = this.save.explorer;
+        if (ex.at > 0)
+            return { away: true, target: ex.target, leftMs: Math.max(0, ex.at + this.exploreMs() - Date.now()), found: false };
+        const t = this.exploreTarget();
+        return { away: false, target: t, leftMs: 0, found: t >= 0 && this.save.mines.includes(t) };
+    }
+    /** kaşifi keşfe gönderir: 'ok' ya da nedeni */
+    sendExplorer() {
+        const st = this.explorerState();
+        if (st.away)
+            return 'Kaşif zaten yolda';
+        if (st.target < 0)
+            return 'Bu seviyeden sonra keşfedilecek maden yok';
+        if (st.found)
+            return 'Bu seviyedeki madeni kaşif zaten buldu';
+        this.save.explorer = { at: Date.now(), target: st.target };
+        this.say('Kaşif ' + (st.target + 1) + '. adaya doğru yola çıktı');
+        scheduleHouse(this.save.house, this.now(), this.save.explorer.at + this.exploreMs());
+        this.persist();
+        this.onChange();
+        return 'ok';
+    }
+    tickExplorer() {
+        const ex = this.save.explorer;
+        if (ex.at <= 0 || Date.now() < ex.at + this.exploreMs())
+            return;
+        if (!this.save.mines.includes(ex.target))
+            this.save.mines.push(ex.target);
+        this.save.explorer = { at: 0, target: -1 };
+        audio.play('chest');
+        vibrate([80, 60, 160]);
+        this.gain('Kaşif elmas madeni buldu!', '#8fdcff', 'icon_geode');
+        if (this.save.mines.length === 1)
+            this.onMineFound(ex.target);
+        this.say('Kaşif ' + (ex.target + 1) + '. adada elmas madeni buldu!');
+        this.persist();
+        this.onChange();
+    }
+    mineCdLeftMs(reg) {
+        return Math.max(0, (this.save.mineAt[reg] ?? 0) + (TEST_LEVEL ? 0 : Game.MINE_CD_MS) - Date.now());
+    }
+    /** maden girişinin konumu: adanın içinde, engellerden uzak, sabit (ada dizinine bağlı) */
+    mineSpot(reg) {
+        const hit = this.mineSpots.get(reg);
+        if (hit)
+            return hit;
+        const z = ZONES[reg];
+        const obs = this.zoneWorld(reg).obstacles;
+        let best = { x: z.cx + z.radius * 0.5, y: z.cy };
+        for (let k = 0; k < 60; k++) {
+            const a = reg * 2.399 + k * 0.7;
+            const d = z.radius * (0.42 + (k % 5) * 0.04);
+            const x = z.cx + Math.cos(a) * d;
+            const y = z.cy + Math.sin(a) * d;
+            if (obs.some((o) => Math.hypot(o.x - x, o.y - y) < o.r + 110))
+                continue;
+            best = { x, y };
+            break;
+        }
+        this.mineSpots.set(reg, best);
+        return best;
+    }
+    /** maden oyunu bitti: kazılan elmasa göre can yenilenir, kalıcı güç ve eşya kazanılır; özet döner */
+    finishMine(reg, diamonds, potion = false) {
+        this.save.mineAt[reg] = Date.now();
+        this.hp = this.maxHp();
+        const before = this.fullPower();
+        const f = 0.004 * diamonds; // her elmas kalıcı +%0,4 can ve hasar
+        this.addPerm('elite.hp', f * this.hpPool());
+        this.addPerm('elite.dmg', f * this.dmgPool());
+        const power = Math.max(0, this.fullPower() - before);
+        const items = Math.floor(diamonds / 4);
+        for (let i = 0; i < items; i++)
+            this.gainItem(i % 2 ? 'shield' : 'helmet', 1 + (reg >= 12 ? 1 : 0));
+        if (diamonds >= 6)
+            this.gainTigerItem(1);
+        const geodes = Math.floor(diamonds / 3);
+        this.save.geodes += geodes;
+        if (power > 0)
+            this.gain('+' + this.fmt(power) + ' Güç (kalıcı, maden)', '#ffe36b', 'ui_power');
+        if (geodes > 0)
+            this.gain('+' + geodes + ' Jeod', '#7dffb0', 'icon_geode');
+        this.say('Maden bitti: canın doldu!');
+        this.persist();
+        this.onChange();
+        this.invuln = Math.max(this.invuln, 3); // madenden çıkarken cadı kısa süre korunur
+        if (potion) {
+            this.potionT = 60;
+            this.hp = this.maxHp();
+            this.gain('Gizli iksir: 1 dk güç ×10!', '#ff9bff', 'icon_potion');
+            this.say('Gizli iksir! 1 dakika boyunca gücün 10 katı');
+            audio.play('boss');
+        }
+        return { diamonds, power, items, geodes, potion };
+    }
+    drawMines(camX, camY) {
+        const c = this.ctx;
+        for (const r of [this.region - 1, this.region, this.region + 1]) {
+            if (r < 0 || r >= ZONES.length || !this.save.mines.includes(r))
+                continue;
+            const p = this.mineSpot(r);
+            if (!this.inView(p.x, p.y, 140, camX, camY))
+                continue;
+            c.fillStyle = 'rgba(0,0,0,0.3)';
+            c.beginPath();
+            c.ellipse(p.x + 4, p.y + 24, 62, 20, 0, 0, Math.PI * 2);
+            c.fill();
+            if (!this.drawSpr('mine', p.x, p.y - 30, 150)) {
+                c.fillStyle = '#5a6a7a';
+                c.beginPath();
+                c.arc(p.x, p.y - 20, 50, 0, Math.PI * 2);
+                c.fill();
+                c.fillStyle = '#8fdcff';
+                c.fillText('💎', p.x, p.y - 14);
+            }
+            const s = 0.5 + 0.5 * Math.sin(this.time * 3 + r);
+            c.fillStyle = `rgba(190,240,255,${0.35 + 0.4 * s})`;
+            c.beginPath();
+            c.arc(p.x + 30 * Math.cos(this.time + r), p.y - 40 + 14 * Math.sin(this.time * 1.7 + r), 3 + 2 * s, 0, Math.PI * 2);
+            c.fill();
+            c.font = 'bold 12px sans-serif';
+            c.textAlign = 'center';
+            c.fillStyle = '#c8f4ff';
+            const left = this.mineCdLeftMs(r);
+            c.fillText(left > 0 ? 'ELMAS MADENİ · ' + Math.ceil(left / 60000) + ' dk' : 'ELMAS MADENİ · dokun', p.x, p.y + 52);
+        }
+    }
     fogKey(gx, gy) { return (gx + 6000) * 12000 + (gy + 6000); }
     fogSet(reg) {
         let s = this.fogSets.get(reg);
@@ -2469,12 +2635,12 @@ export class Game {
         return LEVEL_PACKS.some((x) => x.id === id) ? this.grantLevelPack(id, receipt) : this.grantPack(id, receipt);
     }
     maxHp() {
-        return (TEST_LEVEL ? 0.5 : 1) * this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
+        return (TEST_LEVEL ? 0.5 : 1) * this.potionMul() * this.shopMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
             * (1 + (this.cb('hp') + this.helmetHp() + this.perm('elite.hpPct') + this.perm('train.hp') + this.save.house.hp + this.perm('col.hp')) / 100);
     }
     regen() { return 0.6 * this.lv('regen') + this.cb('regen') + this.helmetRegen() + this.perm('tree.regen') + this.perm('train.regen'); }
     armor() { return Math.max(0.2, 1 - 0.04 * this.lv('armor')); }
-    dmgMul() { return this.testDmgF * this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
+    dmgMul() { return this.testDmgF * this.potionMul() * this.shopMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
     castSpeed() { return 1 + 0.08 * this.lv('spin'); }
     reachMul() { return 1 + 0.06 * this.lv('reach') + this.outfitBonus('reach') / 100; }
     magnet() { return 70 + 25 * this.lv('magnet') + this.cb('magnet'); }
@@ -2627,9 +2793,42 @@ export class Game {
             id: this.save.nextCrystal++, rarity, stat: CSTAT_KEYS[Math.floor(Math.random() * CSTAT_KEYS.length)], enchant: 0,
         };
         this.save.crystals.push(c);
+        // aynı türden kristal varsa otomatik birleşir (+1 gelişim)
+        if (Game.mergeCrystals(this.save) > 0) {
+            this.say('Aynı tür kristal birleştirildi: gelişim arttı');
+            this.hp = Math.min(this.hp, this.maxHp());
+            this.persist();
+            this.onChange();
+            return this.save.crystals.find((x) => x.stat === c.stat && x.rarity === c.rarity) ?? c;
+        }
         this.persist();
         this.onChange();
         return c;
+    }
+    /** aynı türden (özellik + nadirlik) kristaller otomatik birleştirilir: gelişim seviyeleri toplanır, azami aşan kısım ruh tozuna döner; birleştirilen sayıyı döner */
+    static mergeCrystals(s) {
+        const keep = new Map();
+        const gone = new Map(); // silinen kimlik → kalan kimlik
+        const worn = new Set(s.equipped);
+        const ordered = [...s.crystals].sort((a, b) => Number(worn.has(b.id)) - Number(worn.has(a.id)));
+        for (const c of ordered) {
+            const k = c.stat + '|' + c.rarity;
+            const base = keep.get(k);
+            if (!base) {
+                keep.set(k, c);
+                continue;
+            }
+            const total = base.enchant + c.enchant + 1;
+            base.enchant = Math.min(MAX_ENCHANT, total);
+            if (total > MAX_ENCHANT)
+                s.dust += 6 * (1 + c.rarity) * (total - MAX_ENCHANT);
+            gone.set(c.id, base.id);
+        }
+        if (!gone.size)
+            return 0;
+        s.crystals = s.crystals.filter((x) => !gone.has(x.id));
+        s.equipped = [...new Set(s.equipped.map((x) => gone.get(x) ?? x))];
+        return gone.size;
     }
     toggleCrystal(id) {
         const eq = this.save.equipped;
@@ -2907,6 +3106,8 @@ export class Game {
         this.questTick(dt);
         this.updateTiger(dt);
         this.archerCd = Math.max(0, this.archerCd - dt);
+        this.tickExplorer();
+        this.tickPotion(dt);
         if (this.archerSel && !this.archerOn()) {
             this.archerSel = false;
             this.aim = null;
@@ -4094,6 +4295,27 @@ export class Game {
                 return true;
             }
         }
+        // bulunmuş elmas madeni: yakındayken dokununca maden oyunu açılır
+        for (const r of this.save.mines) {
+            if (Math.abs(r - this.region) > 1)
+                continue;
+            const m = this.mineSpot(r);
+            const sx = this.w / 2 + (m.x - this.px) * this.zoom;
+            const sy = this.h / 2 + (m.y - this.py) * this.zoom;
+            if (Math.hypot(x - sx, y - (sy - 30 * this.zoom)) < 80 * this.zoom + 20) {
+                if (Math.hypot(m.x - this.px, m.y - this.py) > 260) {
+                    this.say('Madene yaklaş, sonra dokun');
+                    return true;
+                }
+                const left = this.mineCdLeftMs(r);
+                if (left > 0) {
+                    this.say('Maden dinleniyor: ' + Math.ceil(left / 60000) + ' dk sonra yeniden girilir');
+                    return true;
+                }
+                this.onMine(r);
+                return true;
+            }
+        }
         return false;
     }
     // ---- çizim ----
@@ -4121,6 +4343,7 @@ export class Game {
         for (const e of this.enemies)
             if (this.inView(e.x, e.y, 140, camX, camY))
                 this.drawEnemy(e);
+        this.drawMines(camX, camY);
         this.drawHole();
         this.drawTiger();
         this.drawVenoms();
@@ -4144,6 +4367,7 @@ export class Game {
         this.ambient.draw(c, this.w, this.h, this.region, this.time);
         drawVignette(c, this.w, this.h);
         this.drawFocusVignette();
+        this.drawPotion();
         this.drawGains();
         this.drawFeed();
         this.drawGateBanner();
@@ -5419,6 +5643,9 @@ export class Game {
 // ---- ödüllü reklam ödülleri ----
 Game.AD_DAILY = 10;
 Game.AD_COOLDOWN = 180; // sn, ödül türü başına
+// ---- kaşif ve elmas madeni ----
+Game.EXPLORE_MS = 10 * 60 * 1000;
+Game.MINE_CD_MS = 6 * 3600 * 1000;
 // ---- sis/bulut: ada ilk girişte bulutlarla kaplıdır; oyuncu gezdikçe çevresindeki 500 px çaplı daire açılır (haritada değil, oyun ekranında) ----
 Game.FOG_CELL = 100;
 Game.FOG_R = 600;

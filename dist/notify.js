@@ -31,7 +31,7 @@ async function allowed(p) {
     return granted;
 }
 /** ev işleri değiştikçe gelecekteki bildirimleri yeniden planlar (hepsi cihaz saatine göre) */
-export function scheduleHouse(h, now) {
+export function scheduleHouse(h, now, explorerAt = 0) {
     const p = plugin();
     if (!p)
         return;
@@ -47,6 +47,8 @@ export function scheduleHouse(h, now) {
         items.push({ id: 4, at: h.garden + GARDEN_CD, title: 'Bahçen susadı', body: 'Bahçeyi sula: +%1 can ve 1 jeod.' });
     if (h.soupAt > 0)
         items.push({ id: 5, at: h.soupAt + SOUP_CAP, title: 'Kazan doldu', body: 'Kazanda 8 saatlik ruh seni bekliyor.' });
+    if (explorerAt > 0)
+        items.push({ id: 7, at: explorerAt, title: 'Kaşif döndü', body: 'Kaşif bir elmas madeni buldu!' });
     // yarın sabah 10:00: günlük ödül
     const tomorrow = new Date((dayNumber(now) + 1) * 86400000 + new Date(now).getTimezoneOffset() * 60000 + 10 * 3600000);
     items.push({ id: 6, at: tomorrow.getTime(), title: 'Günlük ödülün hazır', body: 'Giriş serini koru: bugünün jeodu seni bekliyor.' });

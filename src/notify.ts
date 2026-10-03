@@ -34,7 +34,7 @@ async function allowed(p: LocalNotifications): Promise<boolean> {
 }
 
 /** ev işleri değiştikçe gelecekteki bildirimleri yeniden planlar (hepsi cihaz saatine göre) */
-export function scheduleHouse(h: HouseState, now: number): void {
+export function scheduleHouse(h: HouseState, now: number, explorerAt = 0): void {
   const p = plugin();
   if (!p) return;
   const L = (s: string): string => N(T(s));
@@ -44,6 +44,7 @@ export function scheduleHouse(h: HouseState, now: number): void {
   if (h.fed > 0 && h.food > 0) items.push({ id: 3, at: h.fed + FEED_CD, title: 'Kedi acıktı', body: 'Mama zamanı! Düzenli beslenme serini koru.' });
   if (h.garden > 0) items.push({ id: 4, at: h.garden + GARDEN_CD, title: 'Bahçen susadı', body: 'Bahçeyi sula: +%1 can ve 1 jeod.' });
   if (h.soupAt > 0) items.push({ id: 5, at: h.soupAt + SOUP_CAP, title: 'Kazan doldu', body: 'Kazanda 8 saatlik ruh seni bekliyor.' });
+  if (explorerAt > 0) items.push({ id: 7, at: explorerAt, title: 'Kaşif döndü', body: 'Kaşif bir elmas madeni buldu!' });
   // yarın sabah 10:00: günlük ödül
   const tomorrow = new Date((dayNumber(now) + 1) * 86400000 + new Date(now).getTimezoneOffset() * 60000 + 10 * 3600000);
   items.push({ id: 6, at: tomorrow.getTime(), title: 'Günlük ödülün hazır', body: 'Giriş serini koru: bugünün jeodu seni bekliyor.' });

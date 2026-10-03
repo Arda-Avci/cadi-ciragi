@@ -13,6 +13,14 @@ export const INTRO: { img: string; title: string; text: string }[] = [
   { img: 'intro3', title: 'Yolculuk', text: 'Ama kırıkların peşinde yalnız değilsin: yeşil gözlü bir cadı da aynayı arıyor. İlk adımı at, çırak. Yol uzun.' },
 ];
 
+/** kaşif ilk madeni bulunca ve ilk kez madene girilince gösterilen kısa hikâye sahneleri (görsel: assets/story_<img>.jpg) */
+export const MINE_FOUND: { img: string; title: string; text: string }[] = [
+  { img: 'mine1', title: 'Kaşifin buluşu', text: 'Kaşif haritanın kenarındaki sisi aşıp döndü, gözleri parlıyordu: "Dağın karnında bir mağara var. Duvarları elmasla dolu, kırık aynanın gücünü saklıyor gibi!" Ada kıyısında yeni bir giriş işaretlendi.' },
+];
+export const MINE_ENTER: { img: string; title: string; text: string }[] = [
+  { img: 'mine2', title: 'Elmas madeni', text: 'Mağara serin ve sessiz. Fenerin ışığında her kaya bir sır saklıyor. Çekicini al: kırdığın her elmas canını yeniler, gücünü kalıcı artırır. Ama zaman dar; ışık sönmeden çık.' },
+];
+
 /** önemli dönüm noktaları (ada dizini → sayfa) */
 const KEY: Record<number, Page> = {
   0: { title: 'İlk adım', text: 'Ustam Elmira bana eski bir defter verdi: "Adalar eskiden tek bir topraktı. Bir ayna kırıldı ve her parça bir ada oldu. Parçaları toplarsan yol açılır." Bossun düştüğü yerde bir ayna kırığı parladı.' },

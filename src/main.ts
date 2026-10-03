@@ -9,7 +9,8 @@ import { catFull, fmtWait } from './house.js';
 import { TUTORIAL } from './quests.js';
 import { ENERGY_MAX, LEVEL_COST, TIGER_SLOTS, tigerItemPct } from './tiger.js';
 import { Ghost, LEGENDS, OUTFITS, RIVAL_HUE, ghostCode, heroLevel, parseGhostCode, weekly } from './meta.js';
-import { INTRO, hasScene, pageFor } from './story.js';
+import { INTRO, MINE_ENTER, MINE_FOUND, hasScene, pageFor } from './story.js';
+import { playMine } from './mine.js';
 import { TESTING, createAds, testRewarded } from './ads.js';
 import {
   CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, statIcon, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS,
@@ -27,7 +28,7 @@ const masterBtn = document.getElementById('master-btn') as HTMLButtonElement;
 const archerBtn = document.getElementById('archer-btn') as HTMLButtonElement;
 archerBtn.addEventListener('click', () => game.toggleArcher());
 let open: 'tree' | 'weapons' | 'crystals' | 'gear' | 'stats' | 'cards' | 'train' | 'settings' | 'hof' | 'shop' | 'house' | null = null;
-let houseTab: 'home' | 'quests' | 'tiger' | 'story' | 'arena' | 'wardrobe' = 'home';
+let houseTab: 'home' | 'quests' | 'tiger' | 'story' | 'arena' | 'wardrobe' | 'explorer' = 'home';
 let settingsNote = '';
 let landingOpen = true;
 let note = '';
@@ -78,7 +79,7 @@ function setPanelTitle(t: string, iconName: string): void {
   head.append(btn('✕', 'x', true, () => { open = null; renderPanel(); }));
   panel.append(head);
   // panel başlık görseli (varsa): yavaşça kayan/yakınlaşan animasyon
-  const art = open === 'house' ? ({ home: 'house', quests: 'quests', tiger: 'tiger', story: 'story', arena: 'arena', wardrobe: 'wardrobe' } as Record<string, string>)[houseTab] : open;
+  const art = open === 'house' ? ({ home: 'house', quests: 'quests', tiger: 'tiger', story: 'story', arena: 'arena', wardrobe: 'wardrobe', explorer: 'explorer' } as Record<string, string>)[houseTab] : open;
   if (art) {
     const ban = document.createElement('div');
     ban.className = 'banner';
@@ -125,7 +126,7 @@ function startDuel(opts: FightOpts, done: (won: boolean) => void): void {
 
 function renderHouse(): void {
   setPanelTitle('Cadı Evi', 'home');
-  const tabs: [typeof houseTab, string][] = [['home', 'Ev'], ['quests', 'Görev'], ['tiger', 'Kaplan'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop']];
+  const tabs: [typeof houseTab, string][] = [['home', 'Ev'], ['quests', 'Görev'], ['tiger', 'Kaplan'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop'], ['explorer', 'Kaşif']];
   const tabRow = document.createElement('div');
   tabRow.style.cssText = 'display:flex;gap:6px;margin:6px 0';
   for (const [k, name] of tabs) {
@@ -269,6 +270,42 @@ function renderHouse(): void {
         panel.append(row(chip(hashHue(e.id)), e.name, `${e.islands} ${L('ada')} · ⚔ ${fmt(e.power)}`, btn('Dövüş', '', true,
           () => startDuel({ foeName: e.name, foeHue: hashHue(e.id), level: gl, mod: 'none', playerHue: sv.outfit }, (r) => { game.finishArena('ghost', e.name, r); renderPanel(); }))));
       }
+    }
+  } else if (houseTab === 'explorer') {
+    const st = game.explorerState();
+    const info = document.createElement('div');
+    info.className = 'row';
+    info.innerHTML = `<small>${L('Kaşifi keşfe gönder: bulunduğun seviyeden sonraki 3\'ün katı olan adada elmas madeni bulur. Maden bulununca adada görünür; girince canın yenilenir, kalıcı güç ve eşya kazanırsın.')}</small>`;
+    panel.append(info);
+    const sendMsg = document.createElement('div');
+    sendMsg.className = 'row';
+    sendMsg.innerHTML = `<small id="exp-msg"></small>`;
+    let sub: string;
+    let label: string;
+    let can = false;
+    if (st.away) { sub = `${L('Yolda')} → ${st.target + 1}. ${L('ada')}`; label = fmtWait(st.leftMs); }
+    else if (st.target < 0) { sub = L('Bu seviyeden sonra keşfedilecek maden yok'); label = '—'; }
+    else if (st.found) { sub = `${st.target + 1}. ${L('ada')}: ${L('maden zaten keşfedildi')}`; label = '✓'; }
+    else { sub = `${L('Hedef')}: ${st.target + 1}. ${L('ada')} · ${L('süre')}: 10 ${L('dk')}`; label = L('Keşfe gönder'); can = true; }
+    panel.append(row(emoji('🧭', 'explorer'), L('Kaşif'), sub, btn(label, '', can, () => {
+      const r = game.sendExplorer();
+      const m = document.getElementById('exp-msg');
+      if (r !== 'ok' && m) m.textContent = L(r);
+      renderPanel();
+    })));
+    panel.append(sendMsg);
+    const h = document.createElement('h3');
+    h.textContent = L('Bulunan madenler');
+    panel.append(h);
+    if (!sv.mines.length) {
+      const none = document.createElement('div');
+      none.className = 'row';
+      none.innerHTML = `<small>${L('Henüz maden bulunmadı')}</small>`;
+      panel.append(none);
+    }
+    for (const r of sv.mines) {
+      const left = game.mineCdLeftMs(r);
+      panel.append(row(ico('icon_geode', 36), `${L('Elmas madeni')} · ${r + 1}. ${L('ada')}`, left > 0 ? `${L('Dinleniyor')}: ${Math.ceil(left / 60000)} ${L('dk')}` : L('Hazır: adadaki girişe dokun'), document.createElement('span')));
     }
   } else {
     const info = document.createElement('div');
@@ -876,6 +913,30 @@ game.onHoleTrap = (who) => {
   document.body.append(wrap);
 };
 game.onPaywall = () => { if (!fight.active && !landingOpen) { open = 'shop'; renderPanel(); } };
+// elmas madeni: kaşif ilk madeni bulunca hikâye; madene girince ana oyun duraklar, maden oyunu oynanır, bitince ödül verilir
+game.onMineFound = () => setTimeout(() => { if (!landingOpen && !fight.active) showIntro(() => undefined, MINE_FOUND); }, 1500);
+game.onMine = (reg) => {
+  if (fight.active || landingOpen || open) return;
+  const enter = (): void => {
+    game.paused = true;
+    playMine(L, (d, p) => {
+      const r = game.finishMine(reg, d, p);
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'position:fixed;inset:0;z-index:270;background:rgba(5,10,25,.88);display:flex;align-items:center;justify-content:center;padding:16px';
+      const box = document.createElement('div');
+      box.style.cssText = 'background:#16233a;color:#fff;border:1px solid #8fdcff88;border-radius:14px;padding:18px;max-width:320px;text-align:center;font:15px sans-serif';
+      box.innerHTML = `<div style="font-size:42px">💎</div><b>${L('Maden bitti')}</b><p>${L('Elmas')}: ${r.diamonds} · ${L('Eşya')}: ${r.items} · ${L('Jeod')}: ${r.geodes}<br>${L('Canın doldu')}${r.potion ? ' · 🧪 ' + L('Güç ×10 (1 dk)') : ''}${r.power > 0 ? ' · ⚔ +' + fmt(r.power) : ''}</p>`;
+      const ok = document.createElement('button');
+      ok.textContent = L('Tamam');
+      ok.style.cssText = 'padding:10px 28px;border-radius:8px;border:0;font:bold 15px sans-serif;background:#d9822b;color:#fff';
+      ok.addEventListener('click', () => { wrap.remove(); game.paused = false; renderPanel(); });
+      box.append(ok);
+      wrap.append(box);
+      document.body.append(wrap);
+    });
+  };
+  if (!game.save.first['mineIn']) { game.save.first['mineIn'] = 1; showIntro(enter, MINE_ENTER); } else enter();
+};
 let shopPrices: Record<string, string> = {};
 billing.prices().then((p) => { shopPrices = p; if (open === 'shop') renderPanel(); }).catch((e) => console.error('fiyatlar alınamadı', e));
 /** hikâye ara sahnesi: tam ekran, yavaş yakınlaşan illüstrasyon + yazı (dokununca kapanır) */
@@ -891,17 +952,17 @@ function showScene(i: number): void {
 }
 game.onStory = (i) => setTimeout(() => showScene(i), 1800);
 /** yeni oyunun açılış hikâyesi: sırayla birkaç sahne, her dokunuşta bir sonrakine geçer */
-function showIntro(done: () => void): void {
+function showIntro(done: () => void, pages: { img: string; title: string; text: string }[] = INTRO): void {
   let n = 0;
   const wrap = document.createElement('div');
   wrap.className = 'scene-ov';
   const render = (): void => {
-    const pg = INTRO[n];
-    wrap.innerHTML = `<div class="scene-img"><img src="assets/story_${pg.img}.jpg" alt="" onerror="this.parentElement.style.display='none'"></div><div class="scene-txt"><b>${L(pg.title)}</b><p>${L(pg.text)}</p><small>${L(n < INTRO.length - 1 ? 'Devam etmek için dokun' : 'Başlamak için dokun')}</small></div>`;
+    const pg = pages[n];
+    wrap.innerHTML = `<div class="scene-img"><img src="assets/story_${pg.img}.jpg" alt="" onerror="this.parentElement.style.display='none'"></div><div class="scene-txt"><b>${L(pg.title)}</b><p>${L(pg.text)}</p><small>${L(n < pages.length - 1 ? 'Devam etmek için dokun' : 'Başlamak için dokun')}</small></div>`;
   };
   wrap.addEventListener('click', () => {
     n++;
-    if (n < INTRO.length) { render(); return; }
+    if (n < pages.length) { render(); return; }
     wrap.classList.add('out');
     setTimeout(() => wrap.remove(), 500);
     game.paused = false;
@@ -934,7 +995,7 @@ setInterval(() => {
   updateQuest();
   const ready = game.houseTasks().some((t) => t.ready && t.id !== 'soup') || game.save.bossDown.filter(Boolean).length > game.save.storyRead;
   houseBtn.dataset.badge = ready ? '1' : '0';
-  if (open === 'house' && houseTab === 'home') renderPanel();
+  if (open === 'house' && (houseTab === 'home' || houseTab === 'explorer')) renderPanel();
 }, 1000);
 document.getElementById('btn-shop')?.addEventListener('click', () => { open = open === 'shop' ? null : 'shop'; renderPanel(); });
 
