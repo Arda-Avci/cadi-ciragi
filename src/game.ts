@@ -1914,6 +1914,7 @@ export class Game {
   }
 
   // ---- yardımcı karakter: beyaz kaplan ----
+  private tgStuckT = 0;
   private tg: { x: number; y: number; face: number; atkT: number; cd: number; inv: number; flash: number; t: number; moving: boolean; down: boolean; dry: boolean } | null = null;
   /** bu seviye (ada) için kaplan bedeli ödendi mi (ya da ücretsiz mi) */
   tigerPaid(reg: number = this.region): boolean { return this.save.tiger.paid.includes(reg); }
@@ -2111,11 +2112,16 @@ export class Game {
     if (speed > 0 && d > 8) {
       const nx = g.x + (dx / d) * speed * dt;
       const ny = g.y + (dy / d) * speed * dt;
+      const gx0 = g.x;
+      const gy0 = g.y;
       if (this.walkable(nx, ny, true, true)) { g.x = nx; g.y = ny; }
       else if (this.walkable(nx, g.y, true, true)) g.x = nx;
       else if (this.walkable(g.x, ny, true, true)) g.y = ny;
       g.moving = true;
-    }
+      // takıldıysa (hedefe giden yol suyla kesik, köprüde kaldı): 1,2 sn sonra oyuncunun yanına gelir
+      this.tgStuckT = Math.hypot(g.x - gx0, g.y - gy0) < speed * dt * 0.2 ? this.tgStuckT + dt : 0;
+      if (this.tgStuckT > 1.2) { this.tgStuckT = 0; g.x = this.px - 40; g.y = this.py + 20; }
+    } else this.tgStuckT = 0;
     // düşman teması: kaplan da hasar alır (ana karakterin dayanıklılığının %60'ı kadar yumuşak)
     if (g.inv <= 0) {
       for (const e of this.enemies) {
@@ -3096,6 +3102,7 @@ export class Game {
     this.px = c.x; this.py = c.y;
     if (!this.walkable(this.px, this.py)) this.snapToLand();
     this.ensureLoaded(i);
+    if (this.tg) { this.tg.x = this.px - 40; this.tg.y = this.py + 20; } // kaplan köprüde takılı kalmasın: oyuncunun yanına gelir
     let placed = 0;
     let spots: { x: number; y: number }[] = [];
     for (const gap of [130, 115, 100, 90, 80, 70]) {
