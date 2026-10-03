@@ -1238,8 +1238,16 @@ export class Game {
         const seg = e.seg;
         if (!seg || this.snakeDone.has(seg.gid))
             return;
-        if (this.enemies.some((x) => x.seg && x.seg.gid === seg.gid && x.hp > 0))
+        if (this.enemies.some((x) => x.seg && x.seg.gid === seg.gid && x.hp > 0)) {
+            // parça koptu: küçük toz ve can, ekran sarsılır; yılan kısalır
+            const d = Math.max(1, Math.round(2 * (1 + e.reg / 10)));
+            this.save.dust += d;
+            this.hp = Math.min(this.maxHp(), this.hp + this.maxHp() * 0.02);
+            this.shake = Math.max(this.shake, 5);
+            this.floaters.push({ x: e.x, y: e.y - 20, t: 0.9, text: '+' + d, color: '#ffd1f0' });
+            audio.play('beastdie');
             return;
+        }
         this.snakeDone.add(seg.gid);
         const tigerHelped = this.enemies.some((x) => x.seg && x.seg.gid === seg.gid && x.tg);
         const ess = this.soupYield(8 * 3.6e6);
