@@ -923,7 +923,7 @@ func _draw_stick() -> void:
 	stick.draw_circle(stick_origin + stick_vec * 90.0, 38.0, Color(1, 1, 1, 0.45))
 
 func _paint() -> void:
-	lbl_dia.text = "%d" % diamonds
+	lbl_dia.text = "%d/%d" % [diamonds, quota]
 	bar.value = maxf(0.0, meter)
 	lbl_time.text = "%d s" % int(maxf(0.0, MAX_TIME - elapsed))
 
@@ -1269,7 +1269,7 @@ func enemy_died(e) -> void:
 
 func _check_exit() -> void:
 	if exit_label != null:
-		exit_label.text = "%s %d/%d" % [t("exit"), mini(diamonds, quota), quota]
+		exit_label.text = t("exit")
 		exit_label.modulate = Color(1, 0.95, 0.7) if diamonds >= quota else Color(1, 0.55, 0.45)
 		if exit_gate != null and diamonds >= quota and exit_gate.position.y < 3.0:
 			exit_gate.position.y = lerpf(exit_gate.position.y, 3.2, 0.05)
