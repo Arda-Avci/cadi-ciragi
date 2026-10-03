@@ -97,9 +97,15 @@ function islandPath(count, radius, seed, start) {
             return false;
         const cur = path[path.length - 1];
         const prev = lastDir[lastDir.length - 1];
-        const order = dirs.map((_, i) => i).sort(() => rnd() - 0.5);
+        // tohumlu Fisher–Yates: sort(() => rnd() - 0.5) tutarsız karşılaştırıcıdır, tarayıcının JIT aşamasına göre farklı sonuç verir
+        // (aynı tohumla her yüklemede farklı ada dizilimi, hatta 'ada yolu bulunamadı' hatası çıkıyordu)
+        const shuffled = dirs.map((_, i) => i);
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(rnd() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
         // dönmeyi tercih et: düz gitmek en sona kalır
-        order.sort((a, b) => Number(a === prev) - Number(b === prev));
+        const order = [...shuffled.filter((d) => d !== prev), ...shuffled.filter((d) => d === prev)];
         for (const d of order) {
             const q = cur.q + dirs[d][0];
             const r = cur.r + dirs[d][1];
