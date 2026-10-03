@@ -840,6 +840,32 @@ game.onDuel = () => {
         return;
     fight.start((won) => { game.finishDuel(won); renderPanel(); });
 };
+// kara delik yuttu: reklam izleyip kurtar ya da adaya baştan başla
+game.onHoleTrap = (who) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:250;background:rgba(10,0,25,.82);display:flex;align-items:center;justify-content:center;padding:16px';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#241a40;color:#fff;border:1px solid #b07cff88;border-radius:14px;padding:18px;max-width:320px;text-align:center;font:15px sans-serif';
+    box.innerHTML = `<div style="font-size:42px">🕳️</div><b>${L(who === 'hero' ? 'Kara delik seni yuttu!' : 'Kara delik kaplanı yuttu!')}</b><p>${L('%2 can kaybettin. Ne yapmak istersin?')}</p>`;
+    const mk = (label, bg, fn, off = false) => {
+        const b = document.createElement('button');
+        b.textContent = L(label);
+        b.disabled = off;
+        b.style.cssText = `display:block;width:100%;margin-top:10px;padding:12px;border-radius:9px;border:0;font:bold 15px sans-serif;color:#fff;background:${off ? '#555' : bg}`;
+        b.addEventListener('click', fn);
+        return b;
+    };
+    const close = () => { wrap.remove(); renderPanel(); };
+    box.append(mk('Reklam izle ve kurtar', '#d9822b', async () => {
+        const ok = await ads.showRewarded();
+        if (ok) {
+            game.holeRescue();
+            close();
+        }
+    }, ads.kind === 'none'), mk('Adaya baştan başla', '#6a3fc4', () => { game.holeRestart(); close(); }));
+    wrap.append(box);
+    document.body.append(wrap);
+};
 game.onPaywall = () => { if (!fight.active && !landingOpen) {
     open = 'shop';
     renderPanel();

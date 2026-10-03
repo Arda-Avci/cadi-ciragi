@@ -129,6 +129,14 @@ export class Game {
         this.snakeDone = new Set();
         /** dev yılan savaşı: yılan yakındayken kamera yaklaşır, diğer düşmanlar/kamplar durur, yalnız yılana odaklanılır */
         this.snakeFight = false;
+        // ---- kara delik: 3. adadan itibaren adada 20. saniyede belirir, ilk boss yenilince kaybolur ----
+        this.hole = null;
+        /** delik kimi yuttu: oyun, oyuncu kurtarma ya da baştan başlama seçene kadar durur */
+        this.holeTrap = null;
+        this.onHoleTrap = () => { };
+        this.holeIsle = -1;
+        this.holeIsleT = 0;
+        this.holeGrace = 0;
         this.focus = 0;
         // ---- yardımcı karakter: beyaz kaplan ----
         this.tg = null;
@@ -1051,6 +1059,198 @@ export class Game {
         this.say('Kuleden yılanlar çıktı!');
         audio.play('roar');
         this.shake = Math.max(this.shake, 5);
+    }
+    holeSpawn() {
+        const c = this.regionCenter(this.region);
+        for (let k = 0; k < 40; k++) {
+            const a = Math.random() * Math.PI * 2;
+            const d = Math.sqrt(Math.random()) * (c.r - 140);
+            const x = c.x + Math.cos(a) * d;
+            const y = c.y + Math.sin(a) * d;
+            if (Math.hypot(x - this.px, y - this.py) < 600 || !this.walkable(x, y, false, true))
+                continue;
+            this.hole = { x, y };
+            return;
+        }
+    }
+    updateHole(dt) {
+        const c = this.regionCenter(this.region);
+        const onIsle = Math.hypot(this.px - c.x, this.py - c.y) <= c.r - 18;
+        if (this.region !== this.holeIsle) {
+            this.holeIsle = this.region;
+            this.holeIsleT = 0;
+            this.hole = null;
+        }
+        if (!onIsle || this.region < Game.HOLE_FROM || this.save.bossDown[this.region]) {
+            this.hole = null;
+            this.holeIsleT = 0;
+            return;
+        }
+        if (this.snakeFight) {
+            this.hole = null;
+            return;
+        } // yılan savaşında delik yok
+        this.holeIsleT += dt;
+        this.holeGrace = Math.max(0, this.holeGrace - dt);
+        if (!this.hole) {
+            if (this.holeIsleT < Game.HOLE_AFTER)
+                return;
+            this.holeSpawn();
+            if (this.hole) {
+                this.say('Kara delik belirdi! Kahramanı ve kaplanı ondan uzak tut');
+                audio.play('boss');
+                vibrate(120);
+            }
+            return;
+        }
+        const h = this.hole;
+        // yavaşça en yakın hedefe (kahraman ya da kaplan) süzülür
+        const tg = this.tg && settings.companion ? this.tg : null;
+        let tx = this.px;
+        let ty = this.py;
+        if (tg && Math.hypot(tg.x - h.x, tg.y - h.y) < Math.hypot(tx - h.x, ty - h.y)) {
+            tx = tg.x;
+            ty = tg.y;
+        }
+        const dx = tx - h.x;
+        const dy = ty - h.y;
+        const dl = Math.max(1, Math.hypot(dx, dy));
+        const sp = Math.max(40, this.speed() * 0.28);
+        const nx = h.x + (dx / dl) * sp * dt;
+        const ny = h.y + (dy / dl) * sp * dt;
+        if (Math.hypot(nx - c.x, ny - c.y) <= c.r - 60) {
+            h.x = nx;
+            h.y = ny;
+        }
+        // çekim alanı: kahramanı ve kaplanı yavaşça içeri çeker (kaçmak mümkün: çekim hızdan zayıf)
+        const PULL = 180;
+        const pull = (x, y, ign) => {
+            const d = Math.hypot(h.x - x, h.y - y);
+            if (d >= PULL || d < 1)
+                return { x, y };
+            const f = this.speed() * 0.5 * (1 - d / PULL) * dt;
+            const px2 = x + ((h.x - x) / d) * f;
+            const py2 = y + ((h.y - y) / d) * f;
+            return this.walkable(px2, py2, false, ign) ? { x: px2, y: py2 } : { x, y };
+        };
+        const hp = pull(this.px, this.py, false);
+        this.px = hp.x;
+        this.py = hp.y;
+        if (tg) {
+            const tp = pull(tg.x, tg.y, true);
+            tg.x = tp.x;
+            tg.y = tp.y;
+        }
+        if (this.holeGrace > 0)
+            return;
+        if (Math.hypot(h.x - this.px, h.y - this.py) < Game.HOLE_R * 0.6)
+            this.holeSwallow('hero');
+        else if (tg && Math.hypot(h.x - tg.x, h.y - tg.y) < Game.HOLE_R * 0.6)
+            this.holeSwallow('tiger');
+    }
+    holeSwallow(who) {
+        this.hp = Math.max(1, this.hp - this.maxHp() * 0.02);
+        if (who === 'tiger')
+            this.save.tiger.frac = Math.max(0.05, this.save.tiger.frac - 0.02);
+        this.holeTrap = who;
+        this.hurtFlash = 0.5;
+        this.shake = Math.max(this.shake, 10);
+        vibrate([100, 50, 200]);
+        audio.play('hurt');
+        this.say(who === 'hero' ? 'Kara delik seni yuttu! −%2 can' : 'Kara delik kaplanı yuttu! −%2 can');
+        this.onHoleTrap(who);
+    }
+    /** reklam izlendi: yutulan kurtarılır, delik uzakta yeniden belirir */
+    holeRescue() {
+        const who = this.holeTrap;
+        const h = this.hole;
+        this.holeTrap = null;
+        if (!who || !h)
+            return;
+        const c = this.regionCenter(this.region);
+        const ang = Math.atan2(c.y - h.y, c.x - h.x);
+        const sx = h.x + Math.cos(ang) * 420;
+        const sy = h.y + Math.sin(ang) * 420;
+        if (who === 'hero') {
+            if (this.walkable(sx, sy)) {
+                this.px = sx;
+                this.py = sy;
+            }
+            else {
+                const rp = this.restPoints()[this.region];
+                this.px = rp.x;
+                this.py = rp.y + 70;
+            }
+        }
+        if (this.tg) {
+            this.tg.x = this.px - 40;
+            this.tg.y = this.py + 20;
+        }
+        this.hole = null;
+        this.holeSpawn();
+        this.holeGrace = 4;
+        this.say(who === 'hero' ? 'Kurtuldun!' : 'Kaplan kurtuldu!');
+    }
+    /** adaya baştan başla: kamplar yenilenir, kahraman ve kaplan başlangıca döner, delik 20 sn sonra yine gelir */
+    holeRestart() {
+        const reg = this.region;
+        this.holeTrap = null;
+        for (const sp of this.getWorld().spawners)
+            if (sp.reg === reg && sp.tier !== 'boss' && sp.bridge === undefined && !sp.hard)
+                delete this.save.spawn['s' + sp.id];
+        this.enemies = [];
+        this.projs = [];
+        const rp = this.restPoints()[reg];
+        this.px = rp.x;
+        this.py = rp.y + 70;
+        if (this.tg) {
+            this.tg.x = this.px - 40;
+            this.tg.y = this.py + 20;
+        }
+        this.hole = null;
+        this.holeIsleT = 0;
+        this.holeGrace = 0;
+        this.hp = Math.max(this.hp, this.maxHp() * 0.5);
+        this.say('Ada baştan başladı: kamplar yenilendi');
+        this.persist();
+        this.onChange();
+    }
+    drawHole() {
+        const h = this.hole;
+        if (!h)
+            return;
+        const c = this.ctx;
+        const R = Game.HOLE_R * (1 + 0.04 * Math.sin(this.time * 5));
+        const halo = c.createRadialGradient(h.x, h.y, R * 0.6, h.x, h.y, R * 3.2);
+        halo.addColorStop(0, 'rgba(150,60,255,0.45)');
+        halo.addColorStop(1, 'rgba(150,60,255,0)');
+        c.fillStyle = halo;
+        c.beginPath();
+        c.arc(h.x, h.y, R * 3.2, 0, Math.PI * 2);
+        c.fill();
+        c.strokeStyle = 'rgba(190,120,255,0.35)';
+        c.lineWidth = 2;
+        c.setLineDash([8, 10]);
+        c.beginPath();
+        c.arc(h.x, h.y, 180, 0, Math.PI * 2);
+        c.stroke();
+        c.setLineDash([]);
+        for (let k = 0; k < 3; k++) {
+            const a0 = this.time * 2.2 + (k * Math.PI * 2) / 3;
+            c.strokeStyle = 'rgba(210,150,255,0.6)';
+            c.lineWidth = 4;
+            c.beginPath();
+            c.arc(h.x, h.y, R * 1.15, a0, a0 + 1.3);
+            c.stroke();
+        }
+        const core = c.createRadialGradient(h.x, h.y, 2, h.x, h.y, R);
+        core.addColorStop(0, '#000');
+        core.addColorStop(0.75, '#0a0014');
+        core.addColorStop(1, 'rgba(40,0,80,0.9)');
+        c.fillStyle = core;
+        c.beginPath();
+        c.arc(h.x, h.y, R, 0, Math.PI * 2);
+        c.fill();
     }
     updateFocus(dt) {
         let on = false;
@@ -2209,7 +2409,7 @@ export class Game {
     }
     // ---- simülasyon ----
     update(dt) {
-        if (this.paused || this.mapOpen)
+        if (this.paused || this.mapOpen || this.holeTrap)
             return;
         this.nowMs = Date.now();
         this.time += dt;
@@ -2320,6 +2520,7 @@ export class Game {
         this.checkPaywall(dt);
         this.questTick(dt);
         this.updateTiger(dt);
+        this.updateHole(dt);
         this.updateSnakes(dt);
         this.castSpells(dt);
         this.updateProjs(dt);
@@ -3475,6 +3676,7 @@ export class Game {
         for (const e of this.enemies)
             if (this.inView(e.x, e.y, 140, camX, camY))
                 this.drawEnemy(e);
+        this.drawHole();
         this.drawTiger();
         this.drawVenoms();
         this.drawPlayer();
@@ -4717,6 +4919,9 @@ export class Game {
 // ---- ödüllü reklam ödülleri ----
 Game.AD_DAILY = 10;
 Game.AD_COOLDOWN = 180; // sn, ödül türü başına
+Game.HOLE_FROM = 2;
+Game.HOLE_AFTER = 20;
+Game.HOLE_R = 56;
 Game.TRAIN_PER_DAY = 2;
 /** denge: kalıcı kazanç ve ruh çarpanları (tools/bot.js ile ölçülür) */
 Game.YIELD = 1;
