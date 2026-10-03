@@ -227,6 +227,7 @@ export class Game {
   private bossHealShow = 0;
   /** kapı açılış animasyonu (bölge numarası, kalan süre) */
   gateAnim: { i: number; t: number } | null = null;
+  exitAnim: { i: number; t: number } | null = null;
   hurtFlash = 0;
   deathFx: DeathFx[] = [];
   gains: Gain[] = [];
@@ -474,12 +475,28 @@ export class Game {
   }
 
   /** köprü i, bölge i ile i+1 arasını bağlar */
-  private bridge(i: number): { ax: number; ay: number; bx: number; by: number; len: number; tGate: number } {
+  private bridge(i: number): { ax: number; ay: number; bx: number; by: number; len: number; tGate: number; tExit: number } {
     const a = this.regionCenter(i);
     const b = this.regionCenter(i + 1);
     const len = Math.hypot(b.x - a.x, b.y - a.y);
-    return { ax: a.x, ay: a.y, bx: b.x, by: b.y, len, tGate: (a.r + GATE_GAP) / len };
+    return { ax: a.x, ay: a.y, bx: b.x, by: b.y, len, tGate: (a.r + GATE_GAP) / len, tExit: (len - b.r - GATE_GAP) / len };
   }
+  /** köprü i'nin bekçi bossları (kimlikleri genZone ile aynı formülden): 2–3 tane */
+  private bridgeGuardIds(i: number): number[] {
+    const b = this.bridge(i);
+    const s0 = ZONES[i].radius + 260;
+    const s1 = b.len - ZONES[i + 1].radius - 260;
+    const n = s1 - s0 < 2200 ? 2 : 3;
+    return Array.from({ length: n }, (_, k) => 100000 + i * 3 + k);
+  }
+  /** köprü bekçileri yenildi mi: köprünün çıkış kapısı ancak o zaman açılır (daha önce geçmiş oyuncular için karşı ada bossu yenilmişse de açık sayılır) */
+  bridgeOpen(i: number): boolean {
+    if (i >= ZONES.length - 1) return true;
+    if (this.save.first['bx' + i] || this.save.bossDown[i + 1]) return true;
+    return this.bridgeGuardIds(i).every((id) => this.isCleared('s' + id));
+  }
+  /** kalan bekçi sayısı */
+  bridgeGuardsLeft(i: number): number { return this.bridgeGuardIds(i).filter((id) => !this.isCleared('s' + id)).length; }
   private rests: { x: number; y: number; r: number; reg: number }[] | null = null;
   /** dinlenme noktaları: ada 0'da ev, diğer adalarda giriş kampı (hızlı iyileşme, güvenli bölge, ölünce burada uyanılır) */
   restPoints(): { x: number; y: number; r: number; reg: number }[] {
@@ -535,6 +552,7 @@ export class Game {
       const d = Math.hypot(x - (b.ax + dx * t), y - (b.ay + dy * t));
       if (d > BRIDGE_HALF_WIDTH) continue;
       if (!ignoreGates && this.gateLocked(i) && t > b.tGate) continue;
+      if (!ignoreGates && t > b.tExit && !this.bridgeOpen(i)) continue; // köprü bekçileri yenilmeden çıkış kapısından geçilmez
       return true;
     }
     return false;
@@ -1231,6 +1249,7 @@ export class Game {
       t.level++;
       t.hpBase *= LEVEL_GROWTH;
       t.dpsBase *= LEVEL_GROWTH;
+      t.energy = Math.min(ENERGY_MAX, t.energy + 300); // seviye atlayınca +5 dk enerji
       this.gain('Kaplan seviye atladı: sv.' + t.level, '#8fe8ff', 'ui_power');
       audio.play('chest');
     }
@@ -1287,7 +1306,6 @@ export class Game {
     let gy: number;
     let speed: number;
     if (target && t.energy > 0) {
-      t.energy = Math.max(0, t.energy - dt);
       g.dry = false;
       const reach = target.def.r * TIERS[target.tier].size + 26;
       const dx = target.x - g.x;
@@ -1299,6 +1317,8 @@ export class Game {
         if (g.cd <= 0) {
           g.cd = this.tigerInterval();
           g.atkT = 0.25;
+          t.energy = Math.max(0, t.energy - g.cd * 0.5); // enerji yalnızca vururken azalır
+          audio.play('tigerhit');
           if (!target.tg) target.tgFirst = this.time + 3; // ilk vuruştan sonra 3 sn kaplan yalnız mücadele eder
           target.tg = true;
           this.hitEnemy(target, this.tigerDps() * g.cd, 'cut'); // saniyelik hasar = tigerDps
@@ -1871,6 +1891,7 @@ export class Game {
     this.save.playSec += dt;
     this.flyT = Math.max(0, this.flyT - dt);
     if (this.gateAnim) { this.gateAnim.t -= dt; if (this.gateAnim.t <= 0) this.gateAnim = null; }
+    if (this.exitAnim) { this.exitAnim.t -= dt; if (this.exitAnim.t <= 0) this.exitAnim = null; }
     this.movePlayer(dt);
     // bekleme geliri: oyun açık ve kahraman duruyorsa kazan, çalışırken kazandığının dörtte biri kadar ruh üretir
     if (!this.moving && this.castPulse <= 0) {
@@ -2564,6 +2585,13 @@ export class Game {
     const tier = TIERS[sp.tier];
     this.save.spawn['s' + id] = this.now() + (sp.hard ? 24 * 3600 * 1000 : sp.tier === 'boss' ? 1e12 : tier.respawn * 1000); // ada bossu bir daha çıkmaz; zor boss günde bir
     if (sp.bridge === undefined && sp.tier !== 'boss') this.bumpDaily('camps');
+    if (sp.id >= 100000 && sp.id < 200000 && sp.bridge !== undefined && !this.save.first['bx' + sp.bridge] && this.bridgeOpen(sp.bridge)) {
+      this.save.first['bx' + sp.bridge] = 1;
+      this.exitAnim = { i: sp.bridge, t: 3.6 };
+      audio.play('gate');
+      vibrate([80, 60, 200]);
+      this.say('Köprü bekçileri yenildi: köprü kapısı açıldı');
+    }
     const lvK = Math.sqrt(sp.lv);
     const hp0 = this.maxHp();
     const eq0 = this.equippedWeapons();
@@ -2880,7 +2908,7 @@ export class Game {
       if (cx + zone.radius + 60 < 0 || cx - zone.radius - 60 > this.vw || cy + zone.radius + 60 < 0 || cy - zone.radius - 60 > this.vh) return;
       drawShore(c, cx, cy, zone.radius, this.time, shade(zone.dot, 1.45));
     });
-    for (let i = 0; i < ZONES.length - 1; i++) drawBridge(c, this.bridge(i), i, camX, camY, this.vw, this.vh, this.time, this.gateLocked(i));
+    for (let i = 0; i < ZONES.length - 1; i++) drawBridge(c, this.bridge(i), i, camX, camY, this.vw, this.vh, this.time, this.gateLocked(i), !this.bridgeOpen(i));
     ZONES.forEach((zone, reg) => {
       const cx = zone.cx - camX;
       const cy = zone.cy - camY;
@@ -3027,7 +3055,7 @@ export class Game {
       c.fillRect(ch.x - 14, ch.y - 9, 28, 5);
       if (!open) c.fillRect(ch.x - 3, ch.y - 4, 6, 7);
     }
-    for (let i = 0; i < ZONES.length - 1; i++) this.drawGate(i, camX, camY);
+    for (let i = 0; i < ZONES.length - 1; i++) { this.drawGate(i, camX, camY); this.drawExitGate(i, camX, camY); }
   }
 
   /** Evimiz: doğduğumuz yer ve hızlı iyileşme alanı */
@@ -3116,7 +3144,18 @@ export class Game {
       return { x: tx, y: ty, label: 'Sıradaki düşman', color: best ? '#7bff9a' : '#ffb36b' };
     }
     if (reg < last) {
-      if (this.passedGate(reg)) return null; // kapı geçildi: ok kalkar
+      if (this.passedGate(reg)) {
+        // kapı geçildi: köprü bekçileri sağ kalmışsa en yakın bekçi gösterilir, yoksa ok kalkar
+        if (this.bridgeOpen(reg)) return null;
+        let bs: Spawner | null = null;
+        let bd2 = Infinity;
+        for (const s of this.getWorld().spawners) {
+          if (s.id < 100000 || s.id >= 200000 || s.reg !== reg || this.spCleared(s)) continue;
+          const dd = Math.hypot(s.x - this.px, s.y - this.py);
+          if (dd < bd2) { bd2 = dd; bs = s; }
+        }
+        return bs ? { x: bs.x, y: bs.y, label: 'Köprü bekçisi', color: '#ff8a5a' } : null;
+      }
       const g = this.gatePos(reg);
       if (this.paywalled(reg)) return { x: g.x, y: g.y, label: 'Devam paketi gerekli', color: '#ffd84a' };
       // kapıya yaklaşan oyuncuya eğitim hakkı varsa usta cadı işaret edilir
@@ -3240,6 +3279,22 @@ export class Game {
     }
   }
 
+  /** köprünün çıkışındaki kapı: köprü bekçileri yenilince açılır */
+  private drawExitGate(i: number, camX: number, camY: number): void {
+    const b = this.bridge(i);
+    const gx = b.ax + (b.bx - b.ax) * b.tExit;
+    const gy = b.ay + (b.by - b.ay) * b.tExit;
+    if (!this.inView(gx, gy, 200, camX, camY)) return;
+    const c = this.ctx;
+    const ang = Math.atan2(b.by - b.ay, b.bx - b.ax);
+    const locked = !this.bridgeOpen(i);
+    const ea = this.exitAnim && this.exitAnim.i === i ? this.exitAnim : null;
+    const open = locked ? 0 : ea ? Math.min(1, (3.6 - ea.t) / 1.4) : 1;
+    drawGateArt(c, gx, gy, -Math.sin(ang), Math.cos(ang), locked, open, this.time, this.spr('ui_lock'));
+    c.font = 'bold 12px sans-serif'; c.textAlign = 'center'; c.fillStyle = locked ? '#ffd0a0' : '#b8ffcc';
+    c.fillText(locked ? T('KİLİTLİ — köprü bekçileri yenilmeli') + ` (${this.bridgeGuardsLeft(i)})` : T('Köprü kapısı açık'), gx, gy - 130);
+  }
+
   private drawGate(i: number, camX: number, camY: number): void {
     const c = this.ctx;
     const g = this.gatePos(i);
@@ -3343,7 +3398,7 @@ export class Game {
     const r = e.def.r * tier.size;
     const t = e.phase;
     const boss = e.tier === 'boss';
-    const size = r * 3.3;
+    const size = e.def.id === 'snake' ? r * 6.4 : r * 3.3; // yılan görseli ince ve uzun: büyük çizilir
     const o: { flip: number; rot: number; sx: number; sy: number; alpha: number; bob: number; flash: boolean } =
       { flip: e.flip, rot: 0, sx: 1, sy: 1, alpha: 1, bob: 0, flash: e.flash > 0 };
     switch (e.def.id) {

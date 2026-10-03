@@ -13,7 +13,7 @@ export function shade(hex, f) {
     return `rgb(${r},${g},${b})`;
 }
 /** köprü: gölge, tahta döşeme, korkuluk, direkler ve fenerler (yalnızca ekrandaki kısım çizilir) */
-export function drawBridge(c, b, idx, camX, camY, vw, vh, time, locked) {
+export function drawBridge(c, b, idx, camX, camY, vw, vh, time, locked, exitLocked = false) {
     const dx = b.bx - b.ax;
     const dy = b.by - b.ay;
     const ux = dx / b.len;
@@ -43,6 +43,7 @@ export function drawBridge(c, b, idx, camX, camY, vw, vh, time, locked) {
     // tahtalar
     const count = Math.floor(b.len / PL);
     const gateLen = b.tGate * b.len;
+    const exitLen = (b.tExit ?? 1) * b.len;
     for (let k = 0; k < count; k++) {
         const d = (k + 0.5) * PL;
         const px = b.ax + ux * d;
@@ -64,7 +65,7 @@ export function drawBridge(c, b, idx, camX, camY, vw, vh, time, locked) {
         c.fillStyle = 'rgba(40,24,12,0.7)';
         c.fillRect(-PL / 2 + 4, -half + 5, 2, 2);
         c.fillRect(-PL / 2 + 4, half - 7, 2, 2);
-        if (locked && d > gateLen) {
+        if ((locked && d > gateLen) || (exitLocked && d > exitLen)) {
             c.fillStyle = 'rgba(25,10,50,0.42)';
             c.fillRect(-PL / 2, -half, PL, half * 2);
         }

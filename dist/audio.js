@@ -174,7 +174,7 @@ class AudioEngine {
         if (!c || settings.sfx <= 0.001)
             return;
         const now = c.currentTime;
-        const gap = { cast: 0.06, hit: 0.05, kill: 0.08, hurt: 0.15, gain: 0.12, chest: 0.3, gate: 1, fly: 0.5, heal: 0.9, click: 0.04, boss: 1, chop: 0.08, roar: 5, beastdie: 1, tigerroar: 0.8 };
+        const gap = { cast: 0.06, hit: 0.05, kill: 0.08, hurt: 0.15, gain: 0.12, chest: 0.3, gate: 1, fly: 0.5, heal: 0.9, click: 0.04, boss: 1, chop: 0.08, roar: 5, beastdie: 1, tigerroar: 0.8, tigerhit: 1.1 };
         if (now - (this.last.get(name) ?? -9) < gap[name])
             return;
         this.last.set(name, now);
@@ -221,10 +221,16 @@ class AudioEngine {
                 break;
             case 'tigerroar':
                 // kaplan "Rooaarr": yükselip alçalan hırlama + kısa gürültü
-                this.tone(110, now, 0.45, 'sawtooth', 0.18, b, false, 190);
-                this.tone(190, now + 0.4, 0.55, 'sawtooth', 0.16, b, false, 85);
-                this.tone(75, now, 1.0, 'sine', 0.2, b, false, 55);
-                this.burst(now, 0.9, 0.12, 300, 1400, 0.6);
+                this.tone(110, now, 0.5, 'sawtooth', 0.3, b, false, 200);
+                this.tone(200, now + 0.42, 0.6, 'sawtooth', 0.28, b, false, 80);
+                this.tone(75, now, 1.1, 'sine', 0.32, b, false, 50);
+                this.tone(220, now + 0.1, 0.8, 'square', 0.08, b, false, 120);
+                this.burst(now, 1.0, 0.22, 300, 1500, 0.6);
+                break;
+            case 'tigerhit':
+                // pençe darbesi: kısa hırıltı
+                this.tone(150, now, 0.22, 'sawtooth', 0.16, b, false, 90);
+                this.burst(now, 0.18, 0.1, 500, 1500, 0.5);
                 break;
             case 'beastdie':
                 // canavar ölümü: inen gürleme + yükselen zafer akoru

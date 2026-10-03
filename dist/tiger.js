@@ -18,7 +18,7 @@ export const WOUND_FLOOR = 0.4;
 export const TIGER_REGEN_CAP = 0.75;
 /** kaplanı bir seviyede (adada) kullanmanın ruh tozu bedeli; ilk seviye ücretsizdir */
 export const LEVEL_COST = 40;
-export const freshTiger = () => ({ energy: 600, frac: 1, items: [], eq: { helm: 0, fang: 0, claw: 0 }, nextItem: 1, feeds: 0, asked: false, paid: [], level: 1, kills: 0, hpBase: 0, dpsBase: 0 });
+export const freshTiger = () => ({ energy: ENERGY_MAX, frac: 1, items: [], eq: { helm: 0, fang: 0, claw: 0 }, nextItem: 1, feeds: 0, asked: false, paid: [], level: 1, kills: 0, hpBase: 0, dpsBase: 0 });
 export const TIGER_SLOTS = {
     helm: { label: 'Kask', icon: 'icon_tigerhelm', stat: 'azami can', names: ['Deri Kask', 'Demir Kask', 'Gümüş Kask', 'Altın Kask', 'Efsane Kask'] },
     fang: { label: 'Keskin Diş', icon: 'icon_fang', stat: 'hasar', names: ['Taş Diş', 'Çelik Diş', 'Gümüş Diş', 'Altın Diş', 'Efsane Diş'] },

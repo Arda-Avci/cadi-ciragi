@@ -1,7 +1,7 @@
 /** Manzara çizimleri: ahşap köprüler, taş kapılar, kıyı köpüğü, ortam parçacıkları, vinyet. */
 import { BRIDGE_HALF_WIDTH } from './data.js';
 
-export interface BridgeGeo { ax: number; ay: number; bx: number; by: number; len: number; tGate: number }
+export interface BridgeGeo { ax: number; ay: number; bx: number; by: number; len: number; tGate: number; tExit?: number }
 
 function hash(n: number): number {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
@@ -19,7 +19,7 @@ export function shade(hex: string, f: number): string {
 
 /** köprü: gölge, tahta döşeme, korkuluk, direkler ve fenerler (yalnızca ekrandaki kısım çizilir) */
 export function drawBridge(c: CanvasRenderingContext2D, b: BridgeGeo, idx: number, camX: number, camY: number, vw: number, vh: number,
-  time: number, locked: boolean): void {
+  time: number, locked: boolean, exitLocked = false): void {
   const dx = b.bx - b.ax;
   const dy = b.by - b.ay;
   const ux = dx / b.len;
@@ -43,6 +43,7 @@ export function drawBridge(c: CanvasRenderingContext2D, b: BridgeGeo, idx: numbe
   // tahtalar
   const count = Math.floor(b.len / PL);
   const gateLen = b.tGate * b.len;
+  const exitLen = (b.tExit ?? 1) * b.len;
   for (let k = 0; k < count; k++) {
     const d = (k + 0.5) * PL;
     const px = b.ax + ux * d;
@@ -61,7 +62,7 @@ export function drawBridge(c: CanvasRenderingContext2D, b: BridgeGeo, idx: numbe
     // çivi
     c.fillStyle = 'rgba(40,24,12,0.7)';
     c.fillRect(-PL / 2 + 4, -half + 5, 2, 2); c.fillRect(-PL / 2 + 4, half - 7, 2, 2);
-    if (locked && d > gateLen) { c.fillStyle = 'rgba(25,10,50,0.42)'; c.fillRect(-PL / 2, -half, PL, half * 2); }
+    if ((locked && d > gateLen) || (exitLocked && d > exitLen)) { c.fillStyle = 'rgba(25,10,50,0.42)'; c.fillRect(-PL / 2, -half, PL, half * 2); }
     c.restore();
   }
   // korkuluklar

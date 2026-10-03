@@ -39,7 +39,7 @@ export interface TigerSave {
   dpsBase: number;
 }
 
-export const freshTiger = (): TigerSave => ({ energy: 600, frac: 1, items: [], eq: { helm: 0, fang: 0, claw: 0 }, nextItem: 1, feeds: 0, asked: false, paid: [], level: 1, kills: 0, hpBase: 0, dpsBase: 0 });
+export const freshTiger = (): TigerSave => ({ energy: ENERGY_MAX, frac: 1, items: [], eq: { helm: 0, fang: 0, claw: 0 }, nextItem: 1, feeds: 0, asked: false, paid: [], level: 1, kills: 0, hpBase: 0, dpsBase: 0 });
 
 export const TIGER_SLOTS: Record<TigerSlot, { label: string; icon: string; stat: string; names: string[] }> = {
   helm: { label: 'Kask', icon: 'icon_tigerhelm', stat: 'azami can', names: ['Deri Kask', 'Demir Kask', 'Gümüş Kask', 'Altın Kask', 'Efsane Kask'] },

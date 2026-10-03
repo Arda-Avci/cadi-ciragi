@@ -21,6 +21,7 @@ ADVENTURE
 • 4 spells: Star Wand, Flying Broom, Boiling Potion, Enchanted Ladle. Master damage types (cut, pierce, smash), enemy weaknesses and spell combos (+30% damage).
 • Skill tree, crystals, helmets and shields, master witch training, hidden chests.
 • A fearsome beast every 3 islands. Defeated bosses return once a day as 3x stronger "hard bosses" with big loot.
+• Guardian bosses stand on the bridges: the bridge exit gate stays shut until you defeat them all.
 • Destroy towers, but beware: from island 3 some towers release a swarm of snakes, and after island 6 some release a multi-segment giant snake. It coils around you, every segment has different power; it dies when all segments are hit and drops a big reward.
 • Collect character cards: learn what damage each enemy deals and is weak to, and earn collection rewards.
 • A guide arrow leads you to the next enemy; 8 starter quests hold your hand through the first minutes.
@@ -49,11 +50,13 @@ Hall of Fame, 5 languages, adjustable sound and vibration.
 
 The game is free to play. It contains optional in-app purchases and ads: power packs, continuation packs for islands beyond 40, and rewarded videos. Notifications are optional.
 
-## Release notes (0.15.4)
+## Release notes (0.15.5)
 • New: cat food, regular feeding streak, name your cat.
 • New: starter and daily quests, enemy collection, hard bosses, outfit bonuses.
 • New: story cutscenes and new artwork across all panels.
 • New: idle income and potion/cat/cauldron notifications.
+• New: the bridge exit gate stays shut until the bridge guardians are defeated.
+• Fix: snakes are easier to see, the tiger's energy only drains while it strikes, tiger sounds are louder.
 • New: tower snakes and a multi-segment giant snake; the tiger grows by killing snakes.
 • New: White Tiger companion (own level, gear, soul-dust care).
 • New: denser camps after island 10; fight many enemies at once.
