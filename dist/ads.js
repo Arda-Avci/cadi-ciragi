@@ -100,3 +100,5 @@ export function createAds() {
         return dev;
     return none;
 }
+/** reklam altyapısı olmayan ortamlarda (web) ödüllü reklam yerine 3 sn test reklamı gösterir */
+export const testRewarded = () => dev.showRewarded();

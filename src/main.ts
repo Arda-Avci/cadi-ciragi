@@ -9,8 +9,8 @@ import { catFull, fmtWait } from './house.js';
 import { TUTORIAL } from './quests.js';
 import { ENERGY_MAX, LEVEL_COST, TIGER_SLOTS, tigerItemPct } from './tiger.js';
 import { Ghost, LEGENDS, OUTFITS, RIVAL_HUE, ghostCode, heroLevel, parseGhostCode, weekly } from './meta.js';
-import { hasScene, pageFor } from './story.js';
-import { createAds } from './ads.js';
+import { INTRO, hasScene, pageFor } from './story.js';
+import { createAds, testRewarded } from './ads.js';
 import {
   CRYSTAL_STATS, DTYPES, DTYPE_NAMES, ENEMIES, statIcon, EQUIP_NAMES, MAX_ENCHANT, MAX_ITEM_LEVEL, MAX_WEAPON_LEVEL, RARITIES, SLOT_NAMES, TIERS,
   UPGRADES, WEAPONS, ZONES, crystalValue, enchantChance, enchantCost, fmtNum, itemAbility, itemUpgradeCost, itemValue, upgradeCost,
@@ -857,9 +857,9 @@ game.onHoleTrap = (who) => {
   const close = (): void => { wrap.remove(); renderPanel(); };
   box.append(
     mk('Reklam izle ve kurtar', '#d9822b', async () => {
-      const ok = await ads.showRewarded();
+      const ok = await (ads.kind === 'none' ? testRewarded() : ads.showRewarded());
       if (ok) { game.holeRescue(); close(); }
-    }, ads.kind === 'none'),
+    }),
     mk('Adaya baştan başla', '#6a3fc4', () => { game.holeRestart(); close(); }),
   );
   wrap.append(box);
@@ -880,6 +880,27 @@ function showScene(i: number): void {
   game.paused = true;
 }
 game.onStory = (i) => setTimeout(() => showScene(i), 1800);
+/** yeni oyunun açılış hikâyesi: sırayla birkaç sahne, her dokunuşta bir sonrakine geçer */
+function showIntro(done: () => void): void {
+  let n = 0;
+  const wrap = document.createElement('div');
+  wrap.className = 'scene-ov';
+  const render = (): void => {
+    const pg = INTRO[n];
+    wrap.innerHTML = `<div class="scene-img"><img src="assets/story_${pg.img}.jpg" alt="" onerror="this.parentElement.style.display='none'"></div><div class="scene-txt"><b>${L(pg.title)}</b><p>${L(pg.text)}</p><small>${L(n < INTRO.length - 1 ? 'Devam etmek için dokun' : 'Başlamak için dokun')}</small></div>`;
+  };
+  wrap.addEventListener('click', () => {
+    n++;
+    if (n < INTRO.length) { render(); return; }
+    wrap.classList.add('out');
+    setTimeout(() => wrap.remove(), 500);
+    game.paused = false;
+    done();
+  });
+  render();
+  document.body.append(wrap);
+  game.paused = true;
+}
 const houseBtn = document.getElementById('btn-house') as HTMLButtonElement;
 houseBtn.addEventListener('click', () => { open = open === 'house' ? null : 'house'; renderPanel(); });
 // ev düğmesindeki rozet: hazır iş ya da yeni günlük sayfası varsa; ev açıkken geri sayımlar tazelenir
@@ -981,15 +1002,16 @@ function askTiger(): void {
   document.body.append(wrap);
 }
 
-function hideLanding(): void {
+function hideLanding(intro = false): void {
   landingOpen = false;
-  if (!game.save.tiger.asked) setTimeout(askTiger, 300);
+  const afterIntro = (): void => { if (!game.save.tiger.asked) setTimeout(askTiger, 300); };
   // alt barın altındaki sürekli banner (yalnızca reklam destekli ortamlarda); bar banner yüksekliği kadar yukarı kayar
   ads.showBanner((px) => document.documentElement.style.setProperty('--ad-h', px + 'px')).catch((e) => console.error('banner gösterilemedi', e));
   landing.classList.add('hidden');
   audio.start();
   audio.setMood(game.region);
   renderPanel();
+  if (intro && !location.search.includes('level=')) showIntro(afterIntro); else afterIntro();
 }
 document.getElementById('l-continue')?.addEventListener('click', () => {
   if (lName.value.trim()) game.setHeroName(lName.value);
@@ -999,7 +1021,7 @@ document.getElementById('l-new')?.addEventListener('click', () => {
   const sv = Game.peekSave();
   if (sv && sv.kills > 0 && !confirm(L('Mevcut kahraman Şeref Salonu\'nda kalır. Yeni oyun başlatılsın mı?'))) return;
   game.newGame(lName.value || L('Çırak'));
-  hideLanding();
+  hideLanding(true);
 });
 document.getElementById('l-settings')?.addEventListener('click', () => { open = 'settings'; renderPanel(); });
 document.getElementById('l-hof')?.addEventListener('click', () => { open = 'hof'; renderPanel(); });

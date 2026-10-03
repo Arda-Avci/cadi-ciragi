@@ -101,3 +101,6 @@ export function createAds(): Ads {
   if (['localhost', '127.0.0.1'].includes(location.hostname)) return dev;
   return none;
 }
+
+/** reklam altyapısı olmayan ortamlarda (web) ödüllü reklam yerine 3 sn test reklamı gösterir */
+export const testRewarded = (): Promise<boolean> => dev.showRewarded();
