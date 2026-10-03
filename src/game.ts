@@ -3077,7 +3077,9 @@ export class Game {
     const probe: Enemy = { def, tier: 'easy', lv: 1, reg: i, sp: BONUS_SP, x: 0, y: 0, hx: 0, hy: 0, hp: 1, maxHp: 1, state: 'chase', hitCd: 0, phase: 0, dashT: 3, dvx: 0, dvy: 0, flip: 1, flash: 0, lunge: 0, moving: false };
     const dmg0 = Math.max(1e-6, this.enemyDmg(probe));
     const target = 0.04 * Math.max(1, this.fullPower()); // her düşman karakter gücünün %4'ü
-    const maxHp = Math.max(1, ((target / 10) ** 2 * 0.6) / dmg0);
+    const maxHp = Math.max(1, this.dps() * 0.25); // karakterin saniyelik hasarının dörtte biri: kısa sürede ölür, can ve hasar karakterin %4 gücünü verir
+    const dmgE = (0.6 * (target / 10) ** 2) / maxHp;
+    const lvB = Math.max(1, (dmgE / dmg0) ** 2); // enemyDmg ∝ √lv
     let placed = 0;
     const spots: { x: number; y: number }[] = [];
     for (let k = 0; k < 60000 && placed < BONUS_COUNT; k++) {
@@ -3088,7 +3090,7 @@ export class Game {
       if (!this.walkable(x, y, true)) continue;
       if (spots.some((s) => Math.hypot(s.x - x, s.y - y) < 130)) continue; // doğarken de 130 px aralık
       spots.push({ x, y });
-      this.enemies.push({ def, tier: 'easy', lv: 1, reg: i, sp: BONUS_SP, x, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
+      this.enemies.push({ def, tier: 'easy', lv: lvB, reg: i, sp: BONUS_SP, x, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
         phase: Math.random() * 6, dashT: 3, dvx: 0, dvy: 0, flip: Math.random() < 0.5 ? 1 : -1, flash: 0, lunge: 0, moving: false });
       placed++;
     }
