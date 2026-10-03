@@ -977,12 +977,24 @@ export class Game {
 
   // ---- yılanlar: 3. adadan itibaren bazı kuleler yıkılınca çok sayıda küçük yılan, 5. adadan sonra bazı kulelerden dev yılan çıkar ----
   /** kule bir yılan yuvası mı: küçük (3. adadan) ya da dev (6. adadan; ada dizini ≥ 5) */
+  private nestCache = new Map<number, { giant: Set<number>; small: Set<number> }>();
   nestOf(o: Obstacle): 'small' | 'giant' | null {
     if (o.kind !== 'bld') return null;
     const reg = Math.floor(o.id / 100);
-    if (reg >= 5 && o.id % 4 === 1) return 'giant';
-    if (reg >= 2 && o.id % 3 === 0) return 'small';
-    return null;
+    let c = this.nestCache.get(reg);
+    if (!c) {
+      // adanın kuleleri arasından deterministik seçim: 6. adadan itibaren her adada en az bir dev yılan kulesi, 16. adadan sonra iki;
+      // 3. adadan itibaren kalan kulelerin yarısı küçük yılan yuvası
+      const ids = this.zoneWorld(reg).obstacles.filter((x) => x.kind === 'bld').map((x) => x.id).sort((a, b) => a - b);
+      const giant = new Set<number>();
+      const small = new Set<number>();
+      if (reg >= 5 && ids.length) giant.add(ids[reg % ids.length]);
+      if (reg >= 15 && ids.length > 3) giant.add(ids[(reg + 2) % ids.length]);
+      if (reg >= 2) ids.forEach((id, i) => { if (i % 2 === 0 && !giant.has(id)) small.add(id); });
+      c = { giant, small };
+      this.nestCache.set(reg, c);
+    }
+    return c.giant.has(o.id) ? 'giant' : c.small.has(o.id) ? 'small' : null;
   }
   private releaseNest(o: Obstacle): void {
     const k = this.nestOf(o);
@@ -1953,6 +1965,9 @@ export class Game {
     this.checkChests();
     for (const f of this.floaters) { f.t -= dt; f.y -= 28 * dt; }
     this.floaters = this.floaters.filter((f) => f.t > 0);
+    for (const f of this.feed) f.t -= dt;
+    this.feed = this.feed.filter((f) => f.t > 0);
+    this.dealt.t -= dt;
     this.saveT += dt;
     if (this.saveT > 5) { this.saveT = 0; this.persist(); }
   }
@@ -2426,7 +2441,7 @@ export class Game {
     }
     if (this.lifesteal() > 0) this.hp = Math.min(this.maxHp(), this.hp + dmg * this.lifesteal());
     if (e.state === 'idle') e.state = 'chase';
-    this.float(e.x, e.y - e.def.r * TIERS[e.tier].size - 22, (crit ? '!' : '') + this.fmt(dmg), crit ? '#ffd84a' : '#ffffff');
+    this.feedDealt(dmg, crit);
   }
 
   treeMaxHp(t: ResTree): number { return (t.big ? 30 : 9) * ZONES[t.reg].scale * t.s; }
@@ -2434,7 +2449,7 @@ export class Game {
   private hitTree(t: ResTree, raw: number): void {
     const maxHp = this.treeMaxHp(t);
     const hp = (this.treeHp.get(t.id) ?? maxHp) - raw;
-    this.float(t.x, t.y - 34 * t.s, this.fmt(raw), '#c8ffc8');
+    this.feedDealt(raw, false);
     audio.play('chop');
     if (hp <= 0) this.chopTree(t);
     else this.treeHp.set(t.id, hp);
@@ -2511,7 +2526,7 @@ export class Game {
     const hp = (this.bldHp.get(o.id) ?? max) - raw;
     this.bldFlash.set(o.id, 0.12);
     audio.play('hit');
-    this.float(o.x, o.y - o.size * 0.7, this.fmt(raw), '#ffd9a0');
+    this.feedDealt(raw, false);
     if (hp > 0) { this.bldHp.set(o.id, hp); return; }
     this.bldHp.delete(o.id);
     this.save.spawn['o' + o.id] = this.now() + 600 * 1000; // 10 dk sonra yeniden kurulur
@@ -2738,8 +2753,20 @@ export class Game {
   }
 
   private say(text: string): void { this.banner = N(T(text)); this.bannerT = 4; }
-  private float(x: number, y: number, text: string, color: string): void {
-    if (this.floaters.length < 60) this.floaters.push({ x, y, t: 0.8, text, color });
+  /** savaş mesajları (kombo, engel, alınan hasar…) savaş alanının üstünde değil, sağ kenardaki savaş günlüğünde gösterilir */
+  private feed: { text: string; color: string; t: number; n: number }[] = [];
+  private dealt = { sum: 0, hits: 0, crit: false, t: 0 };
+  private float(_x: number, _y: number, text: string, color: string): void {
+    const last = this.feed[this.feed.length - 1];
+    if (last && last.text === text && last.t > 1.8) { last.n++; last.t = 2.2; return; }
+    this.feed.push({ text, color, t: 2.2, n: 1 });
+    if (this.feed.length > 6) this.feed.shift();
+  }
+  /** verilen hasar tek satırda toplanır (her vuruş için ayrı sayı çıkmaz) */
+  private feedDealt(dmg: number, crit: boolean): void {
+    const d = this.dealt;
+    if (d.t <= 0) { d.sum = 0; d.hits = 0; d.crit = false; }
+    d.sum += dmg; d.hits++; d.crit = d.crit || crit; d.t = 1.4;
   }
 
   campProgress(reg: number = this.region): { done: number; total: number } {
@@ -2860,6 +2887,7 @@ export class Game {
     this.ambient.draw(c, this.w, this.h, this.region, this.time);
     drawVignette(c, this.w, this.h);
     this.drawGains();
+    this.drawFeed();
     this.drawGateBanner();
     this.drawHud();
     this.drawMinimap();
@@ -3504,25 +3532,53 @@ export class Game {
     c.restore();
   }
 
+  /** sağ kenar (mini haritanın altı): toplam verilen hasar ve savaş mesajları */
+  private drawFeed(): void {
+    const c = this.ctx;
+    const x = this.w - 10;
+    let y = 222;
+    c.textAlign = 'right';
+    c.lineJoin = 'round';
+    c.lineWidth = 3;
+    c.strokeStyle = 'rgba(0,0,0,0.75)';
+    const d = this.dealt;
+    if (d.t > 0 && d.sum > 0) {
+      c.globalAlpha = Math.min(1, d.t / 0.4);
+      c.font = 'bold 14px sans-serif';
+      const txt = '⚔ ' + this.fmt(d.sum) + (d.hits > 1 ? ' ×' + d.hits : '');
+      c.strokeText(txt, x, y); c.fillStyle = d.crit ? '#ffd84a' : '#ffffff'; c.fillText(txt, x, y);
+      y += 17;
+    }
+    c.font = 'bold 12px sans-serif';
+    for (let i = this.feed.length - 1; i >= 0; i--) {
+      const f = this.feed[i];
+      c.globalAlpha = Math.min(1, f.t / 0.5);
+      const txt = f.n > 1 ? f.text + ' ×' + f.n : f.text;
+      c.strokeText(txt, x, y); c.fillStyle = f.color; c.fillText(txt, x, y);
+      y += 15;
+    }
+    c.globalAlpha = 1;
+  }
+
   private drawGains(): void {
     const c = this.ctx;
     const active = this.gains.filter((g) => g.delay <= 0);
-    const baseY = this.h / 2 - 96;
+    const baseY = this.h - 150; // kazanımlar sol altta (savaşın olduğu ekran ortasında değil)
     c.textAlign = 'left';
     active.forEach((g, i) => {
       const age = 1.9 - g.t;
       const slot = active.length - 1 - i; // en yeni altta
       const pop = 1 + 0.45 * Math.exp(-age * 9);
       const alpha = Math.min(1, g.t / 0.45, age / 0.08 + 0.2);
-      const y = baseY - slot * 24 - Math.min(age, 0.6) * 14;
+      const y = baseY - slot * 20 - Math.min(age, 0.6) * 10;
       c.save();
       c.globalAlpha = alpha;
-      c.font = 'bold 17px sans-serif';
+      c.font = 'bold 14px sans-serif';
       const tw = c.measureText(g.text).width;
       const iw = g.icon && this.spr(g.icon) ? 24 : 0;
       const total = tw + iw;
-      c.translate(this.w / 2, y);
-      c.scale(pop, pop);
+      c.translate(12 + total / 2, y);
+      c.scale(1 + (pop - 1) * 0.5, 1 + (pop - 1) * 0.5);
       c.shadowColor = g.color; c.shadowBlur = 10;
       c.lineWidth = 4; c.strokeStyle = 'rgba(0,0,0,0.75)'; c.lineJoin = 'round';
       c.strokeText(g.text, -total / 2 + iw, 6);

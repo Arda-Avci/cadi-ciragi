@@ -52,7 +52,7 @@ FİNAL
 
 Oyun ücretsizdir. İsteğe bağlı uygulama içi satın almalar ve reklamlar içerir: güç paketleri, 40. adadan sonrası için devam paketleri ve ödüllü videolar. Bildirimler isteğe bağlıdır.
 
-## Sürüm notları (0.15.5)
+## Sürüm notları (0.15.6)
 • Yeni: kedi maması, düzenli besleme serisi, kediye isim verme.
 • Yeni: başlangıç ve günlük görevler, düşman koleksiyonu, zor boss, kıyafet bonusları.
 • Yeni: hikâye ara sahneleri ve tüm panellerde yeni görseller.

@@ -146,7 +146,7 @@ class AudioEngine {
     const c = this.ctx;
     if (!c || settings.sfx <= 0.001) return;
     const now = c.currentTime;
-    const gap: Record<Sfx, number> = { cast: 0.06, hit: 0.05, kill: 0.08, hurt: 0.15, gain: 0.12, chest: 0.3, gate: 1, fly: 0.5, heal: 0.9, click: 0.04, boss: 1, chop: 0.08, roar: 5, beastdie: 1, tigerroar: 0.8, tigerhit: 1.1 };
+    const gap: Record<Sfx, number> = { cast: 0.06, hit: 0.05, kill: 0.08, hurt: 0.15, gain: 0.12, chest: 0.3, gate: 1, fly: 0.5, heal: 0.9, click: 0.04, boss: 1, chop: 0.08, roar: 5, beastdie: 1, tigerroar: 1.2, tigerhit: 1.1 };
     if (now - (this.last.get(name) ?? -9) < gap[name]) return;
     this.last.set(name, now);
     const b = this.sfxBus;
@@ -171,14 +171,48 @@ class AudioEngine {
         this.burst(now, 1.3, 0.16, 140, 900, 0.7);
         this.burst(now + 0.45, 0.8, 0.1, 900, 200, 0.9);
         break;
-      case 'tigerroar':
-        // kaplan "Rooaarr": yükselip alçalan hırlama + kısa gürültü
-        this.tone(110, now, 0.5, 'sawtooth', 0.3, b, false, 200);
-        this.tone(200, now + 0.42, 0.6, 'sawtooth', 0.28, b, false, 80);
-        this.tone(75, now, 1.1, 'sine', 0.32, b, false, 50);
-        this.tone(220, now + 0.1, 0.8, 'square', 0.08, b, false, 120);
-        this.burst(now, 1.0, 0.22, 300, 1500, 0.6);
+      case 'tigerroar': {
+        // kaplan "Rooaarr": titreşimli (tremolo) alçak hırlama + formant süzgeci + gürültü; çalarken diğer efektler kısılır
+        const dur = 1.3;
+        const vol = 0.55 * settings.sfx;
+        const g = c.createGain();
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.linearRampToValueAtTime(vol, now + 0.12);
+        g.gain.setValueAtTime(vol, now + 0.6);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+        const o1 = c.createOscillator();
+        o1.type = 'sawtooth';
+        o1.frequency.setValueAtTime(90, now);
+        o1.frequency.linearRampToValueAtTime(165, now + 0.4);
+        o1.frequency.exponentialRampToValueAtTime(62, now + dur);
+        const o2 = c.createOscillator();
+        o2.type = 'square';
+        o2.frequency.setValueAtTime(45, now);
+        o2.frequency.linearRampToValueAtTime(82, now + 0.4);
+        o2.frequency.exponentialRampToValueAtTime(31, now + dur);
+        const bp = c.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.Q.value = 2.5;
+        bp.frequency.setValueAtTime(420, now);
+        bp.frequency.linearRampToValueAtTime(950, now + 0.4);
+        bp.frequency.exponentialRampToValueAtTime(320, now + dur);
+        const trem = c.createGain();
+        trem.gain.value = 0.55;
+        const lfo = c.createOscillator();
+        lfo.type = 'sine';
+        lfo.frequency.value = 26; // hırlama titreşimi
+        const lfoG = c.createGain();
+        lfoG.gain.value = 0.45;
+        lfo.connect(lfoG); lfoG.connect(trem.gain);
+        o1.connect(bp); o2.connect(bp); bp.connect(trem); trem.connect(g); g.connect(this.master); // efekt yolundan bağımsız: kısılmaz
+        for (const x of [o1, o2, lfo]) { x.start(now); x.stop(now + dur + 0.05); }
+        this.burst(now, 0.9, 0.25, 400, 1600, 0.8);
+        // kükreme duyulsun diye diğer efektler kısa süre kısılır
+        this.sfxBus.gain.cancelScheduledValues(now);
+        this.sfxBus.gain.setValueAtTime(settings.sfx * 0.35, now);
+        this.sfxBus.gain.linearRampToValueAtTime(settings.sfx, now + dur);
         break;
+      }
       case 'tigerhit':
         // pençe darbesi: kısa hırıltı
         this.tone(150, now, 0.22, 'sawtooth', 0.16, b, false, 90);

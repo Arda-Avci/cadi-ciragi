@@ -118,6 +118,9 @@ export class Game {
         this.pendingLoads = 0;
         this.loadingNames = new Set();
         this.treeCells = new Map();
+        // ---- yılanlar: 3. adadan itibaren bazı kuleler yıkılınca çok sayıda küçük yılan, 5. adadan sonra bazı kulelerden dev yılan çıkar ----
+        /** kule bir yılan yuvası mı: küçük (3. adadan) ya da dev (6. adadan; ada dizini ≥ 5) */
+        this.nestCache = new Map();
         /** dev yılan: çok bölümlü; her bölümün canı farklı; ana karakterin etrafını sarar; bütün bölümler vurulunca ölür */
         this.snakes = new Map();
         this.snakeGid = 0;
@@ -132,6 +135,9 @@ export class Game {
         // ---- kale / bina hedefleri: boss kadar canlı, zarar vermez, yıkılınca canın %2'sini verir ----
         this.bldHp = new Map();
         this.bldFlash = new Map();
+        /** savaş mesajları (kombo, engel, alınan hasar…) savaş alanının üstünde değil, sağ kenardaki savaş günlüğünde gösterilir */
+        this.feed = [];
+        this.dealt = { sum: 0, hits: 0, crit: false, t: 0 };
         this.onMaster = () => { };
         this.ctx = canvas.getContext('2d');
         // sahne içi bütün yazılar seçili dile çevrilir
@@ -992,17 +998,28 @@ export class Game {
         this.onChange();
         return msg;
     }
-    // ---- yılanlar: 3. adadan itibaren bazı kuleler yıkılınca çok sayıda küçük yılan, 5. adadan sonra bazı kulelerden dev yılan çıkar ----
-    /** kule bir yılan yuvası mı: küçük (3. adadan) ya da dev (6. adadan; ada dizini ≥ 5) */
     nestOf(o) {
         if (o.kind !== 'bld')
             return null;
         const reg = Math.floor(o.id / 100);
-        if (reg >= 5 && o.id % 4 === 1)
-            return 'giant';
-        if (reg >= 2 && o.id % 3 === 0)
-            return 'small';
-        return null;
+        let c = this.nestCache.get(reg);
+        if (!c) {
+            // adanın kuleleri arasından deterministik seçim: 6. adadan itibaren her adada en az bir dev yılan kulesi, 16. adadan sonra iki;
+            // 3. adadan itibaren kalan kulelerin yarısı küçük yılan yuvası
+            const ids = this.zoneWorld(reg).obstacles.filter((x) => x.kind === 'bld').map((x) => x.id).sort((a, b) => a - b);
+            const giant = new Set();
+            const small = new Set();
+            if (reg >= 5 && ids.length)
+                giant.add(ids[reg % ids.length]);
+            if (reg >= 15 && ids.length > 3)
+                giant.add(ids[(reg + 2) % ids.length]);
+            if (reg >= 2)
+                ids.forEach((id, i) => { if (i % 2 === 0 && !giant.has(id))
+                    small.add(id); });
+            c = { giant, small };
+            this.nestCache.set(reg, c);
+        }
+        return c.giant.has(o.id) ? 'giant' : c.small.has(o.id) ? 'small' : null;
     }
     releaseNest(o) {
         const k = this.nestOf(o);
@@ -2196,6 +2213,10 @@ export class Game {
             f.y -= 28 * dt;
         }
         this.floaters = this.floaters.filter((f) => f.t > 0);
+        for (const f of this.feed)
+            f.t -= dt;
+        this.feed = this.feed.filter((f) => f.t > 0);
+        this.dealt.t -= dt;
         this.saveT += dt;
         if (this.saveT > 5) {
             this.saveT = 0;
@@ -2835,13 +2856,13 @@ export class Game {
             this.hp = Math.min(this.maxHp(), this.hp + dmg * this.lifesteal());
         if (e.state === 'idle')
             e.state = 'chase';
-        this.float(e.x, e.y - e.def.r * TIERS[e.tier].size - 22, (crit ? '!' : '') + this.fmt(dmg), crit ? '#ffd84a' : '#ffffff');
+        this.feedDealt(dmg, crit);
     }
     treeMaxHp(t) { return (t.big ? 30 : 9) * ZONES[t.reg].scale * t.s; }
     hitTree(t, raw) {
         const maxHp = this.treeMaxHp(t);
         const hp = (this.treeHp.get(t.id) ?? maxHp) - raw;
-        this.float(t.x, t.y - 34 * t.s, this.fmt(raw), '#c8ffc8');
+        this.feedDealt(raw, false);
         audio.play('chop');
         if (hp <= 0)
             this.chopTree(t);
@@ -2921,7 +2942,7 @@ export class Game {
         const hp = (this.bldHp.get(o.id) ?? max) - raw;
         this.bldFlash.set(o.id, 0.12);
         audio.play('hit');
-        this.float(o.x, o.y - o.size * 0.7, this.fmt(raw), '#ffd9a0');
+        this.feedDealt(raw, false);
         if (hp > 0) {
             this.bldHp.set(o.id, hp);
             return;
@@ -3183,9 +3204,29 @@ export class Game {
         this.invuln = 2;
     }
     say(text) { this.banner = N(T(text)); this.bannerT = 4; }
-    float(x, y, text, color) {
-        if (this.floaters.length < 60)
-            this.floaters.push({ x, y, t: 0.8, text, color });
+    float(_x, _y, text, color) {
+        const last = this.feed[this.feed.length - 1];
+        if (last && last.text === text && last.t > 1.8) {
+            last.n++;
+            last.t = 2.2;
+            return;
+        }
+        this.feed.push({ text, color, t: 2.2, n: 1 });
+        if (this.feed.length > 6)
+            this.feed.shift();
+    }
+    /** verilen hasar tek satırda toplanır (her vuruş için ayrı sayı çıkmaz) */
+    feedDealt(dmg, crit) {
+        const d = this.dealt;
+        if (d.t <= 0) {
+            d.sum = 0;
+            d.hits = 0;
+            d.crit = false;
+        }
+        d.sum += dmg;
+        d.hits++;
+        d.crit = d.crit || crit;
+        d.t = 1.4;
     }
     campProgress(reg = this.region) {
         const sps = this.getWorld().spawners.filter((s) => s.reg === reg && !s.hard);
@@ -3317,6 +3358,7 @@ export class Game {
         this.ambient.draw(c, this.w, this.h, this.region, this.time);
         drawVignette(c, this.w, this.h);
         this.drawGains();
+        this.drawFeed();
         this.drawGateBanner();
         this.drawHud();
         this.drawMinimap();
@@ -4226,25 +4268,56 @@ export class Game {
         c.fillText(sub, 0, 26);
         c.restore();
     }
+    /** sağ kenar (mini haritanın altı): toplam verilen hasar ve savaş mesajları */
+    drawFeed() {
+        const c = this.ctx;
+        const x = this.w - 10;
+        let y = 222;
+        c.textAlign = 'right';
+        c.lineJoin = 'round';
+        c.lineWidth = 3;
+        c.strokeStyle = 'rgba(0,0,0,0.75)';
+        const d = this.dealt;
+        if (d.t > 0 && d.sum > 0) {
+            c.globalAlpha = Math.min(1, d.t / 0.4);
+            c.font = 'bold 14px sans-serif';
+            const txt = '⚔ ' + this.fmt(d.sum) + (d.hits > 1 ? ' ×' + d.hits : '');
+            c.strokeText(txt, x, y);
+            c.fillStyle = d.crit ? '#ffd84a' : '#ffffff';
+            c.fillText(txt, x, y);
+            y += 17;
+        }
+        c.font = 'bold 12px sans-serif';
+        for (let i = this.feed.length - 1; i >= 0; i--) {
+            const f = this.feed[i];
+            c.globalAlpha = Math.min(1, f.t / 0.5);
+            const txt = f.n > 1 ? f.text + ' ×' + f.n : f.text;
+            c.strokeText(txt, x, y);
+            c.fillStyle = f.color;
+            c.fillText(txt, x, y);
+            y += 15;
+        }
+        c.globalAlpha = 1;
+    }
     drawGains() {
         const c = this.ctx;
         const active = this.gains.filter((g) => g.delay <= 0);
-        const baseY = this.h / 2 - 96;
+        const baseY = this.h - 150; // kazanımlar sol altta (savaşın olduğu ekran ortasında değil)
         c.textAlign = 'left';
         active.forEach((g, i) => {
             const age = 1.9 - g.t;
             const slot = active.length - 1 - i; // en yeni altta
             const pop = 1 + 0.45 * Math.exp(-age * 9);
             const alpha = Math.min(1, g.t / 0.45, age / 0.08 + 0.2);
-            const y = baseY - slot * 24 - Math.min(age, 0.6) * 14;
+            const y = baseY - slot * 20 - Math.min(age, 0.6) * 10;
             c.save();
             c.globalAlpha = alpha;
-            c.font = 'bold 17px sans-serif';
+            c.font = 'bold 14px sans-serif';
             const tw = c.measureText(g.text).width;
             const iw = g.icon && this.spr(g.icon) ? 24 : 0;
             const total = tw + iw;
-            c.translate(this.w / 2, y);
-            c.scale(pop, pop);
+            c.translate(12 + total / 2, y);
+            c.scale(1 + (pop - 1) * 0.5, 1 + (pop - 1) * 0.5);
             c.shadowColor = g.color;
             c.shadowBlur = 10;
             c.lineWidth = 4;
