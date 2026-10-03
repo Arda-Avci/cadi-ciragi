@@ -21,6 +21,7 @@ ADVENTURE
 • 4 spells: Star Wand, Flying Broom, Boiling Potion, Enchanted Ladle. Master damage types (cut, pierce, smash), enemy weaknesses and spell combos (+30% damage).
 • Skill tree, crystals, helmets and shields, master witch training, hidden chests.
 • A fearsome beast every 3 islands. Defeated bosses return once a day as 3x stronger "hard bosses" with big loot.
+• Destroy towers, but beware: from island 3 some towers release a swarm of snakes, and after island 6 some release a multi-segment giant snake. It coils around you, every segment has different power; it dies when all segments are hit and drops a big reward.
 • Collect character cards: learn what damage each enemy deals and is weak to, and earn collection rewards.
 • A guide arrow leads you to the next enemy; 8 starter quests hold your hand through the first minutes.
 • Journal: every boss unlocks a page of the broken mirror, with animated story scenes at key moments. A 69-page mystery reveals who the rival witch really is.
@@ -32,7 +33,7 @@ WITCH HOUSE
 
 COMPANION TIGER
 • A White Tiger cub fights beside you: it attacks enemies on screen by itself and grows stronger with a helmet, sharp fang and claw dropped as loot.
-• It has its own level and gains one every 12 enemies it defeats. Wounds weaken it; soul dust heals it.
+• It has its own level and gains one every 12 enemies it defeats; it levels faster by killing snakes. Wounds weaken it; soul dust heals it.
 • The first level is free; every later level change costs soul dust for the tiger: −40. You can turn it off in Settings any time.
 
 FIGHTING ARENA
@@ -48,11 +49,12 @@ Hall of Fame, 5 languages, adjustable sound and vibration.
 
 The game is free to play. It contains optional in-app purchases and ads: power packs, continuation packs for islands beyond 40, and rewarded videos. Notifications are optional.
 
-## Release notes (0.15.0)
+## Release notes (0.16.0)
 • New: cat food, regular feeding streak, name your cat.
 • New: starter and daily quests, enemy collection, hard bosses, outfit bonuses.
 • New: story cutscenes and new artwork across all panels.
 • New: idle income and potion/cat/cauldron notifications.
+• New: tower snakes and a multi-segment giant snake; the tiger grows by killing snakes.
 • New: White Tiger companion (own level, gear, soul-dust care).
 • New: denser camps after island 10; fight many enemies at once.
 • Fix: crystal upgrade dust now drops from enemies and quests.

@@ -116,6 +116,9 @@ interface Enemy {
   tg?: boolean;
   /** kaplan bu düşmanla ilk karşılaştı: bu zamana kadar ana karakter ona yönelmez (önce kaplan mücadele eder) */
   tgFirst?: number;
+  /** dev yılanın bölümü: yılan kimliği, sıra, can çarpanı */
+  seg?: { gid: number; idx: number; f: number };
+  rot?: number;
   /** eve dönerken engele takılma: süre, sayaç, son konum; ikinci takılmadan sonra iyileşme durur */
   stuckT?: number; stuckN?: number; noHeal?: boolean; chkX?: number; chkY?: number;
   state: 'idle' | 'chase' | 'return';
@@ -154,6 +157,8 @@ const BEAST_MUL = 2;
 const HARD_BOSS_MUL = 3;
 /** bu adadan itibaren (dizin) daha sık kamp: komşu kampların bölgeleri iç içe geçer */
 const DENSE_FROM = 10;
+/** dev yılanın bir bölümü (can çarpanı bölüme göre değişir) */
+const SNAKE_SEG_DEF: EnemyDef = { id: 'snake', name: 'Dev Yılan', hp: 14, speed: 0, dmg: 4, r: 17, atk: 'pierce', resist: { cut: 1.8, pierce: 0.5, smash: 1.2 }, drop: 12 };
 
 const CAMP_WEIGHT: Record<Tier, number> = { easy: 1, medium: 2, hard: 3, elite: 5, knight: 5, boss: 15 };
 const GATE_GAP = 160; // kapı, bölge kıyısından bu kadar ileride
@@ -194,6 +199,8 @@ export class Game {
   onStory: (island: number) => void = () => {};
   private idleT = 0;
   private idleAcc = 0;
+  /** dev yılan kahramanı sarmış: yavaşlatır */
+  private wrapT = 0;
   private paywallT = 0;
   private questT = 0;
   /** ekran sarsıntısı (piksel): sert vuruşlarda artar, hızla söner */
@@ -950,6 +957,197 @@ export class Game {
     return msg;
   }
 
+  // ---- yılanlar: 3. adadan itibaren bazı kuleler yıkılınca çok sayıda küçük yılan, 5. adadan sonra bazı kulelerden dev yılan çıkar ----
+  /** kule bir yılan yuvası mı: küçük (3. adadan) ya da dev (6. adadan; ada dizini ≥ 5) */
+  nestOf(o: Obstacle): 'small' | 'giant' | null {
+    if (o.kind !== 'bld') return null;
+    const reg = Math.floor(o.id / 100);
+    if (reg >= 5 && o.id % 4 === 1) return 'giant';
+    if (reg >= 2 && o.id % 3 === 0) return 'small';
+    return null;
+  }
+  private releaseNest(o: Obstacle): void {
+    const k = this.nestOf(o);
+    if (!k) return;
+    const reg = Math.floor(o.id / 100);
+    if (k === 'giant') { this.spawnGiant(o.x, o.y, reg); return; }
+    const n = 5 + Math.min(9, Math.floor(reg / 3));
+    const rr = rng(o.id * 31 + 7);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + rr();
+      const x = o.x + Math.cos(a) * (40 + rr() * 50);
+      const y = o.y + Math.sin(a) * (40 + rr() * 50);
+      const lv = 0.8 + rr() * 0.8;
+      const maxHp = ENEMIES.snake.hp * TIERS.easy.hp * ZONES[reg].scale * lv;
+      this.enemies.push({
+        def: ENEMIES.snake, tier: 'easy', lv, reg, sp: 600000 + o.id, x, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
+        phase: rr() * 6, dashT: 3, dvx: 0, dvy: 0, flip: 1, flash: 0, lunge: 0, moving: true,
+      });
+    }
+    this.say('Kuleden yılanlar çıktı!');
+    audio.play('roar');
+    this.shake = Math.max(this.shake, 5);
+  }
+
+  /** dev yılan: çok bölümlü; her bölümün canı farklı; ana karakterin etrafını sarar; bütün bölümler vurulunca ölür */
+  private snakes = new Map<number, { reg: number; trail: { x: number; y: number }[]; ang: number; ringR: number; phase: 'chase' | 'coil'; tick: number; hdx: number; hdy: number }>();
+  private snakeGid = 0;
+  private snakeDone = new Set<number>();
+  private spawnGiant(x: number, y: number, reg: number): void {
+    const gid = ++this.snakeGid;
+    const rr = rng(gid * 7919 + reg);
+    const n = Math.min(14, 8 + Math.floor((reg - 5) / 3));
+    const z = ZONES[reg];
+    for (let i = 0; i < n; i++) {
+      const f = i === 0 ? 2.4 : i === n - 1 ? 0.5 : 0.55 + rr() * 0.95; // baş en güçlü, kuyruk en zayıf, aradakiler farklı
+      const maxHp = SNAKE_SEG_DEF.hp * TIERS.hard.hp * z.scale * f;
+      this.enemies.push({
+        def: SNAKE_SEG_DEF, tier: 'hard', lv: 1, reg, sp: 700000 + gid, x: x - i * 8, y, hx: x, hy: y, hp: maxHp, maxHp, state: 'chase', hitCd: 0,
+        phase: 0, dashT: 0, dvx: 0, dvy: 0, flip: 1, flash: 0, lunge: 0, moving: true, seg: { gid, idx: i, f }, rot: 0,
+      });
+    }
+    this.snakes.set(gid, { reg, trail: [{ x, y }], ang: Math.atan2(y - this.py, x - this.px), ringR: 170, phase: 'chase', tick: 0, hdx: 1, hdy: 0 });
+    this.say('Dev yılan kuleden çıktı!');
+    audio.play('roar');
+    vibrate([90, 40, 160]);
+    this.shake = Math.max(this.shake, 8);
+  }
+
+  private updateSnakes(dt: number): void {
+    this.wrapT = Math.max(0, this.wrapT - dt);
+    for (const [gid, S] of this.snakes) {
+      const segs = this.enemies.filter((e) => e.seg && e.seg.gid === gid && e.hp > 0).sort((a, b) => (a.seg as { idx: number }).idx - (b.seg as { idx: number }).idx);
+      if (!segs.length) { this.snakes.delete(gid); continue; }
+      const head = segs[0];
+      const dx = this.px - head.x;
+      const dy = this.py - head.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (S.phase === 'chase' && d < 280) S.phase = 'coil';
+      else if (S.phase === 'coil' && d > 520) { S.phase = 'chase'; S.ringR = 170; }
+      let tx = this.px;
+      let ty = this.py;
+      let sp = 140;
+      if (S.phase === 'coil') {
+        S.ang += 1.5 * dt;
+        S.ringR = Math.max(64, S.ringR - 11 * dt); // halka yavaşça daralır
+        tx = this.px + Math.cos(S.ang) * S.ringR;
+        ty = this.py + Math.sin(S.ang) * S.ringR;
+        sp = 280;
+      }
+      const hx = tx - head.x;
+      const hy = ty - head.y;
+      const hd = Math.hypot(hx, hy) || 1;
+      const step = Math.min(hd, sp * dt);
+      head.x += (hx / hd) * step;
+      head.y += (hy / hd) * step;
+      if (step > 0.01) { S.hdx = hx / hd; S.hdy = hy / hd; }
+      const last = S.trail[0];
+      if (!last || Math.hypot(head.x - last.x, head.y - last.y) > 4) { S.trail.unshift({ x: head.x, y: head.y }); if (S.trail.length > 700) S.trail.length = 700; }
+      // gövde: baş izini 30 px aralıkla izler (yaşayan bölümler sıkışır)
+      const SP = 30;
+      let acc = 0;
+      let need = SP;
+      let rank = 1;
+      let px0 = head.x;
+      let py0 = head.y;
+      for (let k = 0; k < S.trail.length && rank < segs.length; k++) {
+        const p = S.trail[k];
+        const len = Math.hypot(p.x - px0, p.y - py0);
+        while (rank < segs.length && acc + len >= need) {
+          const t = len > 0 ? (need - acc) / len : 0;
+          segs[rank].x = px0 + (p.x - px0) * t;
+          segs[rank].y = py0 + (p.y - py0) * t;
+          rank++;
+          need += SP;
+        }
+        acc += len; px0 = p.x; py0 = p.y;
+      }
+      for (; rank < segs.length; rank++) { segs[rank].x = px0; segs[rank].y = py0; }
+      segs[0].rot = Math.atan2(S.hdy, S.hdx);
+      for (let i = 1; i < segs.length; i++) segs[i].rot = Math.atan2(segs[i - 1].y - segs[i].y, segs[i - 1].x - segs[i].x);
+      // sarma: halka daralınca yakındaki bölümler can götürür, kahraman yavaşlar; bölümler vurulunca azalır
+      S.tick -= dt;
+      if (S.phase === 'coil' && S.ringR < 110 && this.dead <= 0) {
+        this.wrapT = 0.4;
+        if (S.tick <= 0) {
+          S.tick = 0.5;
+          let dmg = 0;
+          for (const s of segs) if (Math.hypot(s.x - this.px, s.y - this.py) < 130) dmg += this.enemyDmg(s) * 0.15;
+          if (dmg > 0 && this.invuln <= 0 && this.flyT <= 0) {
+            const hit = dmg * this.armor() * (1 - Math.min(0.9, this.typedReduction('pierce') / 100));
+            this.hp -= hit;
+            this.hurtFlash = 0.2;
+            this.shake = Math.max(this.shake, 3);
+            audio.play('hurt');
+            vibrate(25);
+            this.float(this.px, this.py - 20, '-' + this.fmt(hit), '#ff6b6b');
+            if (this.hp <= 0) this.die();
+          }
+        }
+      }
+    }
+  }
+
+  /** dev yılanın bir bölümü öldü: sonuncusuysa yılan ölür ve iyi bir ödül düşer */
+  private snakeSegDied(e: Enemy): void {
+    const seg = e.seg;
+    if (!seg || this.snakeDone.has(seg.gid)) return;
+    if (this.enemies.some((x) => x.seg && x.seg.gid === seg.gid && x.hp > 0)) return;
+    this.snakeDone.add(seg.gid);
+    const tigerHelped = this.enemies.some((x) => x.seg && x.seg.gid === seg.gid && x.tg);
+    const ess = this.soupYield(8 * 3.6e6);
+    const dust = Math.round(20 * (1 + e.reg / 10));
+    this.save.geodes += 4;
+    this.save.dust += dust;
+    this.save.essence += ess;
+    this.gain('+4 Jeod', '#7dffb0', 'icon_geode');
+    this.gain('+' + dust + ' Toz', '#ffd1f0', 'ui_dust');
+    this.gain('+' + this.fmt(ess) + ' Ruh', '#8fdcff', 'ui_soul');
+    this.gainItem('helmet', 3);
+    this.gainItem('shield', 3);
+    this.gainTigerItem(3);
+    if (tigerHelped) this.tigerCredit(LEVEL_KILLS); // kaplan dev yılanı yenmeye katıldıysa bir seviye atlar
+    this.say('Dev yılan öldü! Büyük ödül');
+    audio.play('beastdie');
+    vibrate([120, 60, 240]);
+    this.shake = Math.max(this.shake, 12);
+    this.snakes.delete(seg.gid);
+    this.persist();
+    this.onChange();
+  }
+
+  private drawSegment(e: Enemy): void {
+    const seg = e.seg;
+    if (!seg) return;
+    const c = this.ctx;
+    let lo = 99;
+    let hi = -1;
+    for (const x of this.enemies) if (x.seg && x.seg.gid === seg.gid && x.hp > 0) { lo = Math.min(lo, x.seg.idx); hi = Math.max(hi, x.seg.idx); }
+    const role = seg.idx === lo ? 'head' : seg.idx === hi ? 'tail' : 'body';
+    const size = role === 'head' ? 78 : role === 'tail' ? 52 : 40 + seg.f * 14;
+    c.fillStyle = 'rgba(0,0,0,0.25)';
+    c.beginPath(); c.ellipse(e.x, e.y + 8, size * 0.38, size * 0.16, 0, 0, Math.PI * 2); c.fill();
+    c.save();
+    if (e.flash > 0 && 'filter' in c) c.filter = 'brightness(2.2) saturate(0.6)';
+    if (!this.drawSpr('snake_' + role, e.x, e.y, size, e.rot ?? 0)) {
+      c.fillStyle = role === 'head' ? '#2f9f58' : '#3fbf6a';
+      c.beginPath(); c.arc(e.x, e.y, size * 0.36, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = '#7b3fb0'; c.lineWidth = 3; c.stroke();
+      if (role === 'head') { c.fillStyle = '#ff4a4a'; c.fillRect(e.x - 6, e.y - 5, 4, 4); c.fillRect(e.x + 2, e.y - 5, 4, 4); }
+    }
+    c.restore();
+    const r = size * 0.4;
+    const hf = Math.max(0, e.hp) / e.maxHp;
+    c.fillStyle = 'rgba(0,0,0,0.55)'; c.fillRect(e.x - r, e.y - r - 12, r * 2, 5);
+    c.fillStyle = hf <= 0.3 ? '#ff5a5a' : '#5fe07a'; c.fillRect(e.x - r + 1, e.y - r - 11, (r * 2 - 2) * hf, 3);
+    c.font = `bold ${Math.round((role === 'head' ? 12 : 10) * this.lk())}px sans-serif`; c.textAlign = 'center';
+    c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.7)';
+    const pw = '⚔ ' + this.fmt(this.enemyPower(e));
+    const ratio = this.enemyPower(e) / Math.max(1, this.power());
+    c.strokeText(pw, e.x, e.y - r - 16); c.fillStyle = ratio < 0.6 ? '#7bff9a' : ratio < 1.6 ? '#ffe36b' : '#ff6b6b'; c.fillText(pw, e.x, e.y - r - 16);
+    if (role === 'head') { c.fillStyle = '#ffb347'; c.strokeText(T('DEV YILAN'), e.x, e.y - r - 30); c.fillText(T('DEV YILAN'), e.x, e.y - r - 30); }
+  }
+
   // ---- yardımcı karakter: beyaz kaplan ----
   private tg: { x: number; y: number; face: number; atkT: number; cd: number; inv: number; flash: number; t: number; moving: boolean; down: boolean; dry: boolean } | null = null;
   /** bu seviye (ada) için kaplan bedeli ödendi mi (ya da ücretsiz mi) */
@@ -1025,16 +1223,17 @@ export class Game {
     return 'ok';
   }
   /** kaplanın vurduğu bir düşman öldü: her 12'de bir kaplan seviye atlar */
-  private tigerCredit(): void {
+  private tigerCredit(weight = 1): void {
     const t = this.save.tiger;
-    t.kills++;
-    if (t.kills < LEVEL_KILLS) return;
-    t.kills = 0;
-    t.level++;
-    t.hpBase *= LEVEL_GROWTH;
-    t.dpsBase *= LEVEL_GROWTH;
-    this.gain('Kaplan seviye atladı: sv.' + t.level, '#8fe8ff', 'ui_power');
-    audio.play('chest');
+    t.kills += weight;
+    while (t.kills >= LEVEL_KILLS) {
+      t.kills -= LEVEL_KILLS;
+      t.level++;
+      t.hpBase *= LEVEL_GROWTH;
+      t.dpsBase *= LEVEL_GROWTH;
+      this.gain('Kaplan seviye atladı: sv.' + t.level, '#8fe8ff', 'ui_power');
+      audio.play('chest');
+    }
   }
   private tigerInterval(): number { return 0.6 / (1 + tigerBonus(this.save.tiger, 'claw') / 100); }
   /** güç = √(can × saniyelik hasar) × 10: ana karakterin %80'i, eşyalarla biraz fazlası */
@@ -1081,7 +1280,7 @@ export class Game {
     let td = 650;
     for (const e of this.enemies) {
       if (e.hp <= 0 || !this.visible(e.x, e.y)) continue;
-      const d = Math.hypot(e.x - g.x, e.y - g.y);
+      const d = Math.hypot(e.x - g.x, e.y - g.y) * (e.def.id === 'snake' ? 0.6 : 1); // yılanlara öncelik verir
       if (d < td) { td = d; target = e; }
     }
     let gx: number;
@@ -1378,7 +1577,7 @@ export class Game {
   reachMul(): number { return 1 + 0.06 * this.lv('reach') + this.outfitBonus('reach') / 100; }
   magnet(): number { return 70 + 25 * this.lv('magnet') + this.cb('magnet'); }
   yieldMul(): number { return (1 + 0.1 * this.lv('yield')) * (1 + this.cb('yield') / 100) * (1 + this.outfitBonus('yield') / 100); }
-  speed(): number { return 150 * (1 + 0.04 * this.lv('speed')) * (1 + this.cb('speed') / 100) * (1 + this.outfitBonus('speed') / 100) * (this.flyT > 0 ? 1.35 : 1); }
+  speed(): number { return 150 * (1 + 0.04 * this.lv('speed')) * (1 + this.cb('speed') / 100) * (1 + this.outfitBonus('speed') / 100) * (this.flyT > 0 ? 1.35 : 1) * (this.wrapT > 0 ? 0.55 : 1); }
   critChance(): number { return Math.min(0.75, (this.cb('crit') + this.outfitBonus('crit')) / 100); }
   lifesteal(): number { return Math.min(0.5, (this.cb('lifesteal') + this.outfitBonus('lifesteal')) / 100); }
   evasion(): number { return Math.min(0.6, (this.cb('evasion') + this.outfitBonus('evasion')) / 100); }
@@ -1726,6 +1925,7 @@ export class Game {
     this.checkPaywall(dt);
     this.questTick(dt);
     this.updateTiger(dt);
+    this.updateSnakes(dt);
     this.castSpells(dt);
     this.updateProjs(dt);
     this.removeDead();
@@ -1824,6 +2024,7 @@ export class Game {
 
   private updateEnemies(dt: number): void {
     for (const e of this.enemies) {
+      if (e.seg) { e.flash = Math.max(0, e.flash - dt); continue; } // dev yılan bölümlerini updateSnakes yönetir
       const dx = this.px - e.x;
       const dy = this.py - e.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -2191,7 +2392,7 @@ export class Game {
     e.hp -= dmg;
     e.flash = 0.14;
     audio.play('hit');
-    if (e.tier === 'boss' || e.tier === 'hard') {
+    if ((e.tier === 'boss' || e.tier === 'hard') && !e.seg) {
       // her %10'luk zararda 5 sn süpürge uçuşu
       const bucket = Math.min(10, Math.floor((1 - Math.max(0, e.hp) / e.maxHp) * 10));
       const prev = this.flyMark.get(e) ?? 0;
@@ -2300,6 +2501,7 @@ export class Game {
     this.hp += h;
     audio.play('kill');
     this.deathFx.push({ x: o.x, y: o.y, t: 0.45, name: o.art, size: o.size, flip: o.flip });
+    this.releaseNest(o);
     this.gain('+' + this.fmt(this.maxHp() * 0.02) + (firstDown ? ' Can kazanıldı (kalıcı, yapı)' : ' Can iyileşti (yıkılan yapı)'), '#7bff9a', 'ui_heart');
     this.persist();
     this.onChange();
@@ -2340,7 +2542,9 @@ export class Game {
   private killEnemy(e: Enemy): void {
     this.save.kills++;
     this.bumpDaily('kills');
-    if (e.tg) { audio.play('tigerroar'); this.tigerCredit(); }
+    if (e.seg) this.snakeSegDied(e);
+    // kaplan yılan öldürerek daha hızlı güçlenir: küçük yılan 2, dev yılan bölümü 3 sayılır
+    if (e.tg) { audio.play('tigerroar'); this.tigerCredit(e.def.id === 'snake' ? (e.seg ? 3 : 2) : 1); }
     this.shake = Math.max(this.shake, e.tier === 'boss' ? 10 : 1.5);
     audio.play(e.beast ? 'beastdie' : e.tier === 'boss' ? 'boss' : 'kill');
     if (e.tier === 'boss') vibrate([60, 40, 120]);
@@ -2843,6 +3047,11 @@ export class Game {
         c.beginPath(); c.arc(o.x, o.y - o.r * 0.3, o.r, 0, Math.PI * 2); c.fill();
       }
       if (o.kind === 'bld') {
+        const nest = this.nestOf(o);
+        if (nest) { // yılan yuvası işareti
+          c.font = `${nest === 'giant' ? 30 : 22}px sans-serif`; c.textAlign = 'center';
+          c.fillText(nest === 'giant' ? '🐍' : '🐍', o.x, o.y - o.size * 1.05 + Math.sin(this.time * 3 + o.id) * 3);
+        }
         const cur = this.bldHp.get(o.id);
         if (cur !== undefined) {
           const f = Math.max(0, cur / this.bldMaxHp(o));
@@ -3128,6 +3337,7 @@ export class Game {
   }
 
   private drawEnemy(e: Enemy): void {
+    if (e.seg) { this.drawSegment(e); return; }
     const c = this.ctx;
     const tier = TIERS[e.tier];
     const r = e.def.r * tier.size;
@@ -3155,7 +3365,7 @@ export class Game {
       c.fillStyle = gr; c.beginPath(); c.arc(e.x, e.y, r * 3, 0, Math.PI * 2); c.fill();
     }
     if (!this.drawSprX(sprName, e.x, e.y, e.beast ? size * 1.7 : size, o)) {
-      const fallback: Record<EnemyId, string> = { ghost: '#e8e8ff', mushroom: '#e0576a', pumpkin: '#ff9a3c', bat: '#8a6bd1', scorpion: '#d9a24a', golem: '#8a7a74', wisp: '#7be0ff' };
+      const fallback: Record<EnemyId, string> = { ghost: '#e8e8ff', mushroom: '#e0576a', pumpkin: '#ff9a3c', bat: '#8a6bd1', scorpion: '#d9a24a', golem: '#8a7a74', wisp: '#7be0ff', snake: '#3fbf6a' };
       c.fillStyle = boss ? '#7a4fd0' : fallback[e.def.id];
       c.beginPath(); c.arc(e.x, e.y, r, 0, Math.PI * 2); c.fill();
     }

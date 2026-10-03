@@ -422,7 +422,7 @@ function renderPanel() {
         };
         grid.append(card('card_tiger', 'Beyaz Kaplan', `${ico('ui_power', 14)} Güç ${fmt(game.tigerPower())} · ${L('Seviye')} ${game.save.tiger.level}`, true));
         grid.append(card('card_witch', 'Cadı Çırağı', `${ico('ui_power', 14)} Güç ${fmt(game.power())} · ${ico('ui_heart', 14)} ${fmt(game.maxHp())}`, true));
-        for (const id of ['ghost', 'mushroom', 'pumpkin', 'bat', 'scorpion', 'golem', 'wisp']) {
+        for (const id of ['ghost', 'mushroom', 'pumpkin', 'bat', 'scorpion', 'golem', 'wisp', 'snake']) {
             const e = ENEMIES[id];
             const w = DTYPES.reduce((b, t) => (e.resist[t] > e.resist[b] ? t : b), DTYPES[0]);
             grid.append(card('card_' + id, e.name, hitWeak(e.atk, w), !!game.save.seen[id]));

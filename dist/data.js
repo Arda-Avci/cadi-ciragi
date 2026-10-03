@@ -29,6 +29,7 @@ export const ENEMIES = {
     bat: { id: 'bat', name: 'Gece Yarasası', hp: 8, speed: 85, dmg: 3, r: 10, atk: 'cut', resist: { cut: 1, pierce: 2.5, smash: 0.3 }, drop: 3 },
     scorpion: { id: 'scorpion', name: 'Çöl Akrebi', hp: 20, speed: 54, dmg: 6, r: 13, atk: 'pierce', resist: { cut: 1, pierce: 0.2, smash: 3.5 }, drop: 5 },
     golem: { id: 'golem', name: 'Taş Golem', hp: 40, speed: 30, dmg: 8, r: 17, atk: 'smash', resist: { cut: 0.2, pierce: 3, smash: 1 }, drop: 8 },
+    snake: { id: 'snake', name: 'Yılan', hp: 9, speed: 78, dmg: 3.5, r: 11, atk: 'pierce', resist: { cut: 3, pierce: 0.4, smash: 1 }, drop: 4 },
     wisp: { id: 'wisp', name: 'Fırtına Cini', hp: 10, speed: 90, dmg: 4, r: 10, atk: 'cut', resist: { cut: 3.5, pierce: 0.3, smash: 1 }, drop: 4 },
 };
 /** boss gücü çarpanı: can ve hasar ×2 → güç ×2 (güç = √(can × hasar)) */
