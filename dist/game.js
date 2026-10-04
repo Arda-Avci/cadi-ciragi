@@ -1918,6 +1918,16 @@ export class Game {
             h.x = nx;
             h.y = ny;
         }
+        // kara delik evlere (dinlenme noktası) giremez: eve yaklaşırsa dışarı itilir
+        const home = this.restPoints()[Math.min(this.region, this.restPoints().length - 1)];
+        const keep = home.r + Game.HOLE_R + 40;
+        const hd = Math.hypot(h.x - home.x, h.y - home.y);
+        if (hd < keep) {
+            const ux = hd > 0.01 ? (h.x - home.x) / hd : 1;
+            const uy = hd > 0.01 ? (h.y - home.y) / hd : 0;
+            h.x = home.x + ux * keep;
+            h.y = home.y + uy * keep;
+        }
         // çekim alanı: kahramanı yavaşça içeri çeker (kaçmak mümkün: çekim hızdan zayıf)
         const PULL = 180;
         const pull = (x, y, ign) => {
@@ -1929,8 +1939,8 @@ export class Game {
             const py2 = y + ((h.y - y) / d) * f;
             return this.walkable(px2, py2, false, ign) ? { x: px2, y: py2 } : { x, y };
         };
-        if (this.flyT > 0)
-            return; // süpürgeyle uçarken kara delik çekemez ve yutamaz
+        if (this.flyT > 0 || this.inHome())
+            return; // süpürgeyle uçarken ya da evdeyken kara delik çekemez ve yutamaz
         const hp = pull(this.px, this.py, false);
         this.px = hp.x;
         this.py = hp.y;
