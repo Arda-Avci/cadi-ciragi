@@ -4794,8 +4794,8 @@ export class Game {
                     }
                 }
             }
-            if (big && !e.fly) {
-                // boss, canavar ve zor boss oyuncunun üstüne çıkamaz: en az STAND mesafesinde durur, içeri girmişse dışarı itilir
+            if ((big || e.refl) && !e.fly) {
+                // boss, canavar, zor boss ve yansıma oyuncunun üstüne çıkamaz: en az STAND mesafesinde durur, içeri girmişse dışarı itilir
                 const stand = this.bossStand(e);
                 const nd = Math.hypot(this.px - nx, this.py - ny) || 1;
                 if (nd < stand) {
@@ -6075,7 +6075,16 @@ export class Game {
             this.bumpDaily('combo');
         }
         const rs = e.tier === 'boss' ? Math.max(0.4, e.def.resist[dtype]) : e.def.resist[dtype]; // bosslarda direnç çarpanı en az 0,4: yanlış türle savaş uzamasın
-        const dmg = Math.max(1, raw * rs * DMG_DEALT * (crit ? 3 : 1) * (combo ? 1.3 : 1));
+        let dmg = Math.max(1, raw * rs * DMG_DEALT * (crit ? 3 : 1) * (combo ? 1.3 : 1));
+        if (e.refl) {
+            // yansıma hasarı emer: gerçek hasar tahmini aşsa (zayıflık, kritik, kombo, kaplan) da dövüş en az ~30 sn sürer
+            const cap = e.maxHp * 0.06;
+            const now = this.time;
+            const b = Math.min(cap, (e.rbud ?? cap) + (now - (e.rt ?? now)) * (e.maxHp / 30));
+            e.rt = now;
+            dmg = Math.min(dmg, b);
+            e.rbud = b - dmg;
+        }
         e.hp -= dmg;
         e.flash = 0.14;
         audio.play('hit');
