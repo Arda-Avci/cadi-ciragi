@@ -1218,8 +1218,21 @@ game.onPaywall = () => { if (!fight.active && !landingOpen) {
 } };
 /**
  * Godot maden oyunu (godot_mine/ projesi, web'e tek iş parçacıklı aktarılmış mine/index.html) tam ekran iframe ile açılır.
- * Oyun hazır olunca 'mine-ready', bitince 'mine-result' mesajı gönderir; 45 sn içinde hazır olmazsa (çevrimdışı, WebGL yok) yedek çalışır.
+ * Oyun hazır olunca 'mine-ready', bitince 'mine-result' mesajı gönderir; 90 sn içinde hazır olmazsa (çevrimdışı, WebGL yok) yedek çalışır.
  */
+/** maden motoru (~16 MB sıkıştırılmış) boştayken arka planda önceden indirilir: madene girişte "Maden yükleniyor" kısalır; veri tasarrufu ve yavaş bağlantıda atlanır */
+let mineWarmed = false;
+function warmMine() {
+    if (mineWarmed)
+        return;
+    const c = navigator.connection;
+    if (c?.saveData || c?.type === 'cellular' || /(^|-)2g$/.test(c?.effectiveType ?? ''))
+        return;
+    mineWarmed = true;
+    for (const u of ['mine/index.js', 'mine/index.pck', 'mine/index.wasm'])
+        fetch(u, { priority: 'low' }).catch(() => undefined);
+}
+setTimeout(() => (window.requestIdleCallback ?? ((f) => setTimeout(f, 0)))(warmMine), 20000);
 function playMineGodot(reg, after, fallback, auto = false) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position:fixed;inset:0;z-index:260;background:#000;color:#fff;font:600 16px system-ui';
@@ -1230,7 +1243,7 @@ function playMineGodot(reg, after, fallback, auto = false) {
     ifr.allow = 'fullscreen';
     const loading = document.createElement('div');
     loading.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-size:18px';
-    loading.textContent = L('Maden yükleniyor…');
+    loading.textContent = L('Maden yükleniyor…') + ' ' + L('(ilk açılışta ~16 MB indirilir)');
     const quit = document.createElement('button');
     quit.textContent = '✕';
     quit.style.cssText = 'position:absolute;right:10px;top:10px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:20px;z-index:2';
@@ -1243,7 +1256,7 @@ function playMineGodot(reg, after, fallback, auto = false) {
     const timer = window.setTimeout(() => { if (!ready) {
         close();
         fallback();
-    } }, 45000);
+    } }, 90000);
     const onMsg = (e) => {
         if (e.source !== ifr.contentWindow)
             return;
