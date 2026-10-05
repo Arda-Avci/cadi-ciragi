@@ -1,0 +1,165 @@
+/**
+ * Günlük: her ada bossu yenilince bir sayfa açılır (250 sayfa). Tek bir gizem ilerler:
+ * Adaları ayıran lanet, kırık bir aynanın parçalarıdır; son sayfada rakip cadının kim olduğu ortaya çıkar.
+ */
+import { ZONES } from './data.js';
+/** yeni oyunun açılış hikâyesi: görsel (assets/story_<img>.jpg) + kısa metin; dokunarak ilerler */
+export const INTRO = [
+    { img: 'intro1', title: 'Kırık Ayna', text: 'Bir zamanlar adalar tek bir topraktı. Büyülü bir ayna kırıldı ve her parçası bir ada oldu; aralarını eski taş köprüler tutuyor.' },
+    { img: 'intro2', title: 'Çırak', text: 'Sen, usta cadı Elmira\'nın çırağısın. Ustan sana eski bir defter verdi: "Kırıkları topla, aynayı bütünle." Yanında minik bir beyaz kaplan da var.' },
+    { img: 'intro3', title: 'Yolculuk', text: 'Ama kırıkların peşinde yalnız değilsin: yeşil gözlü bir cadı da aynayı arıyor. İlk adımı at, çırak. Yol uzun.' },
+];
+/** kaşif ilk madeni bulunca ve ilk kez madene girilince gösterilen kısa hikâye sahneleri (görsel: assets/story_<img>.jpg) */
+export const MINE_FOUND = [
+    { img: 'mine1', title: 'Kaşifin buluşu', text: 'Kaşif haritanın kenarındaki sisi aşıp döndü, gözleri parlıyordu: "Dağın karnında bir mağara var. Duvarları elmasla dolu, kırık aynanın gücünü saklıyor gibi!" Ada kıyısında yeni bir giriş işaretlendi.' },
+];
+export const MINE_ENTER = [
+    { img: 'mine2', title: 'Elmas madeni', text: 'Mağara serin ve sessiz. Fenerin ışığında her kaya bir sır saklıyor. Çekicini al: kırdığın her elmas canını yeniler, gücünü kalıcı artırır. Ama zaman dar; ışık sönmeden çık.' },
+];
+/** önemli dönüm noktaları (ada dizini → sayfa) */
+const KEY = {
+    0: { title: 'İlk adım', text: 'Ustam Elmira bana eski bir defter verdi: "Adalar eskiden tek bir topraktı. Bir ayna kırıldı ve her parça bir ada oldu. Parçaları toplarsan yol açılır." Bossun düştüğü yerde bir ayna kırığı parladı.' },
+    1: { title: 'Kara delik', text: 'İkinci kırık da cebimde, ama ustam Elmira beni uyardı: "Üçüncü adadan itibaren aynanın boşluğu açılıyor: bir kara delik. Adada yirmi saniye durursan ortaya çıkar, yavaş ama durmadan seni yutmaya çalışır. Yutulursan canından %2 gider; ya bir reklam izleyip kurtulursun ya da adaya baştan başlarsın. İlk bossu yenersen kaybolur. Okçu varsa arbaletle üç isabet atıp deliği otuz saniye dondurabilirsin." Defterime not düştüm: ondan hep uzak dur.' },
+    2: { title: 'Kule yılanları', text: 'Üçüncü kırık da bende. Ustam Elmira yeni bir uyarı yazdı: "Dördüncü adadan itibaren eski kulelerde dev yılanlar uyuyor; kırığın kokusunu alıp uyanıyorlar. Kuleyi yıkarsan çıkarlar. Zırhlı pullarını ancak seni sarınca delebilirsin, o zaman kaplanla birlikte vur; her kopan parça sana güç verir." Defterime not düştüm: kuleleri yıkmadan önce hazırlan.' },
+    4: { title: 'Kırığın fısıltısı', text: 'Bataklık Kraliçesi yenilince kırık konuştu: "Ben seni tanıyorum." Kimse bana bunu daha önce söylememişti. Defterin kenarına yazdım: Kırıklar bellek taşıyor.' },
+    9: { title: 'On ada', text: 'On kırık yan yana gelince ayna kısacık bir görüntü gösterdi: pelerinli bir cadı, bana çok benzeyen. Gözleri yeşildi. Usta Aysel "Bakma" dedi, ben baktım.' },
+    19: { title: 'Ustaların sırrı', text: 'Usta cadılar yalnız eğitmen değilmiş: her biri kırıkların bir bekçisiymiş. Biri bana itiraf etti: "Aynayı biz kırdık. Çıraklarımızdan biri çok güçlenmişti ve biz korktuk."' },
+    29: { title: 'Gölge adı', text: 'Gölge Diyarı\'nda kendi gölgemin benden bir adım önde yürüdüğünü gördüm. Taklit etmiyordu; yönlendiriyordu.' },
+    39: { title: 'Kırkıncı kırık', text: 'Kırk kırık tamam, ayna kapıda duruyor ama yarı saydam: öte yüzünü göremiyorum. Ustam, "Buradan sonrası bedelli," dedi. "Yol uzar, güç ister; zamanını ve sabrını." Kapı yalnız bunu hak edene açılır.' },
+    49: { title: 'Öte yüz', text: 'Aynanın öte yüzünde adalar yeşile boyanmış. Her şey bizim dünyamızın tersi: cadılar saklanmıyor, hükmediyor. Bu dünyada bana ne diyorlar? "Gelen."' },
+    59: { title: 'Mektup', text: 'Usta Elmira\'nın eski bir mektubunu buldum: "Çırağım güçlendikçe aynadaki yansıması da güçleniyor. Biri diğerini yenmeden ayna bütünlenmez. Üzgünüm."' },
+    68: { title: 'Altmış dokuzuncu kırık', text: 'Altmış dokuz kırık bende ama ayna hâlâ bütün değil. Ustam, "Adalar bitmedi," dedi. "Öte yüz sonsuza uzanıyor; her adada gölge biraz daha ağır, biraz daha uzun."' },
+    99: { title: 'Yüzüncü kırık', text: 'Yüz kırık. Artık ekipmanlarım bana yetmiyor: eski güçler yeni adaların yanında oyuncak gibi. Ustam, "Güç paketleri bu yüzden var," dedi. "Eski sihir yetmediğinde yeni sihir gerekir."' },
+    149: { title: 'Yarı yol', text: 'Yüz elli kırık. Yeşil gözlü cadının izini her adada buluyorum: bir adım önde, hep önümde. Defterimin kenarına yazdım: "Beni bekliyor."' },
+    199: { title: 'Sessiz adalar', text: 'Bu adalarda boss\'ların bile sesi kısık. Kırıklar tek tek susuyor; ayna bütünlenmeye çok yakın. Ustam Elmira mektubunda tek satır yazmış: "Korkma."' },
+    [ZONES.length - 1]: { title: 'Son kırık', text: 'Son bossu yendim ve ayna bütünlendi. Görüntüde yeşil gözlü cadı bana baktı: yarım kalmış, kendi gücümün aynası. "Ben senim," dedi. "Seni zorladım, çünkü aynanın bütünlenmesi için senin tam olman gerekiyordu. Dövüş: beni geçersen ikimiz tek oluruz."' },
+};
+const FLAVOR = {
+    'Mantar Ormanı': ['Mantarlar geceleri fısıldaşıyor. Bir kırığın izini sürüyorlar.', 'Burada hava nemli ve tatlı. Kırığın yakınında mantarlar daha parlak.', 'Ormanın ortasında eski bir rün taşı var. Üzerinde benim adım yazıyor, ama tersinden.'],
+    'Karanlık Bataklık': ['Bataklık suyu ayna gibi: yansımam bir an gülümsemedi.', 'Kurbağalar tek bir şarkı söylüyor. Kırığın ritmi bu.', 'Sisin içinde adımı çağıran bir ses var; boss yenilince sustu.'],
+    'Buz Mağarası': ['Buzun içinde yüzlerce küçük ayna parçası donmuş. Hepsi bana bakıyor.', 'Kış Cadısı\'nın izleri eski. Ustam onu tanıyormuş.', 'Soğukta bile kırık sıcak. Buz erimeye başlıyor.'],
+    'Kızıl Çöl': ['Kum fırtınası kırığı yutmuş. Akrepler onu bekliyor.', 'Çölün ortasında ayna şeklinde bir vaha var. Yaklaştıkça uzaklaşıyor.', 'Kum saatinin tersine akıyor: zaman burada kırık.'],
+    'Kristal Vadisi': ['Kristaller kırığın parçalarını çoğaltıyor. Hangisi gerçek?', 'Vadide yankı iki kez geliyor: ikincisi benden bağımsız.', 'Bekçi, "Sen ilk değilsin," dedi ve çöktü.'],
+    'Volkan Adası': ['Lav, aynayı eritmeye çalışmış ama olmamış. Kırık kıpkızıl parlıyor.', 'Magma Ejderi kırığın üzerinde uyuyormuş; uyandırmışım.', 'Kül altında eski bir cadı kulesi var. Duvarında ayna kabartması.'],
+    'Bulut Sarayı': ['Bulutlar yansıma gibi: aşağıdaki adayı tersine gösteriyor.', 'Fırtına Kartalı ayna kırığını yuvasına taşımış. Kanatlarında yansıma var.', 'Sarayın tavanında bir göz: kırığı gözlüyor.'],
+    'Gölge Diyarı': ['Gölgeler burada ışıktan önce geliyor. Biri arkamda hep bir adım geride.', 'Gölge Kraliçe\'nin tacında kırık yok; kendisi bir kırık.', 'Karanlığın içinde kendi sesimi duydum: "Yakında."'],
+};
+/** görseli ve ara sahnesi olan dönüm noktası sayfası mı */
+export const hasScene = (i) => i in KEY;
+/** ada dizini için günlük sayfası */
+export function pageFor(i) {
+    const k = KEY[i];
+    if (k)
+        return k;
+    const z = ZONES[i];
+    const biome = Object.keys(FLAVOR).find((b) => z.name.includes(b)) ?? 'Mantar Ormanı'; // 72. adadan sonraki adlara sıra eki (II, III…) gelir
+    const lines = FLAVOR[biome];
+    const text = lines[Math.floor(i / 8) % lines.length];
+    return { title: `Sayfa ${i + 1} · ${z.name}`, text: `${text} (Usta ${z.master} bu adada bana kısa bir not bıraktı.)` };
+}
+let arcCache = null;
+/** yay başlangıçları (boss'u yenilen ada dizini): 6, 7 ya da 8 ada arayla; her yay 2 ya da 3 ada sürer */
+export function provokeArcs() {
+    if (arcCache)
+        return arcCache;
+    const out = [];
+    let at = 5;
+    let k = 0;
+    while (at < ZONES.length) {
+        const len = 2 + ((k * 7 + 1) % 2);
+        out.push({ start: at, len });
+        at += 4 + ((k * 5 + 2) % 3); // 4-6 ada arayla: iki yay arasında uzun sessizlik kalmaz
+        k++;
+    }
+    arcCache = out;
+    return out;
+}
+/** boss'u yenilen ada bir yayın içindeyse: yay ve kaçıncı adım (0 tabanlı) */
+export function arcAt(reg) {
+    const arcs = provokeArcs();
+    for (let i = 0; i < arcs.length; i++) {
+        const a = arcs[i];
+        if (reg >= a.start && reg < a.start + a.len)
+            return { arc: a, step: reg - a.start, index: i };
+    }
+    return null;
+}
+export const TONES = ['weak', 'strong', 'paid', 'back', 'final'];
+export const PROVOKE_TITLE = 'Yeşil gözlü cadı';
+/** ton başına 3 adım: aynı havada devam eder */
+export const PROVOKE = {
+    weak: [
+        'İyi gidiyorsun, bunu kabul ediyorum. Ama sen hâlâ bir öğrencisin: beni görecek kadar iyi değilsin.',
+        'Benim seviyemde bir cadı olmak için çok uğraşman lazım, çırak. Bu adımlarla yetmez.',
+        'Bir ada daha geçtin, güzel. Ama bana yetişmek ömür ister. Çalışmaya devam et.',
+    ],
+    strong: [
+        'Güçlendin, görüyorum. Ama güç tek başına yetmez, çırak: sen hâlâ bir öğrencisin.',
+        'Hızlısın. Fazla hızlı. Usta olmak için çok uğraşman lazım; ben seni izliyorum.',
+        'Beni hafife alma. Sen güçlendikçe ben de büyüyorum; bana yetişmek için daha çok terlemelisin.',
+    ],
+    paid: [
+        'Güç satın alınır, ustalık alınmaz. Bunu bana kanıtlayabilecek misin, öğrenci?',
+        'Cebindeki güç sana ait değil. Benim seviyemde bir cadı olmak için çok uğraşman lazım.',
+        'Satın aldığın her şey beni biraz daha güldürüyor. Sen hâlâ bir öğrencisin.',
+    ],
+    back: [
+        'Geri mi döndün? Kaçmak yok: aynı yoldan yine geçeceksin. Hâlâ bir öğrencisin.',
+        'Baştan başladın ama ben unutmadım. Bana yetişmek için çok uğraşman lazım.',
+        'Yeniden doğmak yetmez. Beni görecek kadar hazır mısın bu sefer, çırak?',
+    ],
+    final: [
+        'Kapıya çok yaklaştın. Seni neden zorladığımı yakında anlayacaksın; ama sen hâlâ bir öğrencisin.',
+        'Duyuyorum adımlarını. Bir tane kaldı, çırak. Benim seviyeme çıkmak kolay değil.',
+        'Hazır ol. Bu kez yan yana değil, karşı karşıyayız. Bütünlenmek için önce beni geçmen gerek.',
+    ],
+};
+/** usta cadı bazen güçlerini bir dakikalığına alır (büyü); mesajın altında gösterilir */
+export const CURSE_TEXT = 'Şimdi küçük bir ders, öğrenci: gücünü bir dakikalığına alıyorum. Hissediyor musun? Ustalık böyle sınanır.';
+export const CURSE_SEC = 60;
+export const CURSE_MUL = 0.4;
+/** eski oyunların kapandığı an gösterilen mesaj */
+export const OLD_GAMES_CLOSED_TEXT = 'Eski oyuncakların işi bitti: maden, usta cadıların eğitimi ve arena kapandı. Artık yalnızca iksir kazanı kaldı. Karışımını iyi seç: dev mi olacaksın, cüce mi?';
+/** yeni sistemlerin hikâye anlatımları: sırayla gösterilen sahneler (assets/story_<img>.jpg) */
+export const NARRATIVES = {
+    norespawn: [{ img: 'clean', title: 'Bir Daha Dönmeyecekler', text: 'Adaların büyüsü artık seni tanıyor. Bundan sonra yendiğin kamplar, yıktığın kuleler ve parçaladığın kayalar bir daha geri gelmeyecek: bir kez yenmen yeter. Yolun artık temiz kalıyor, ama her ada için bir tek şansın var.' }],
+    vq1: [{ img: 'vq1', title: 'Kayıp İnek', text: 'Yaşlı bir köylü yolunu kesti, gözleri yaşlı: "Kızım, ineğim kayboldu! Zili hâlâ kulağımda... Tek geçim kaynağım o. Sen adalar arasında geziyorsun, gözün kulağın olsun; beşinci adanın dolaylarında bir şey duyduğumu sanıyorum. Bulursan sana minnettar kalırım!"' }],
+    vq2: [{ img: 'vq2', title: 'Kavuşma', text: 'Köylü ineğine sarılıp ağladı: "Ineğimi bulmuşsun! Bunu hiç unutmam, kızım. Bundan sonra ben de sana yardım edeceğim; ineğimle birlikte arkandan geleceğiz." Artık yolda yalnız değilsin.' }],
+    vq3: [{ img: 'vq3', title: 'Elmas', text: 'Köylü yavaşça nefes aldı: "Ben çok yoruldum, kızım; bundan sonra sana eşlik edemeyeceğim. Ama sana bir armağanım var: bu elması al, asana tak. Sana güç verecek. Hoşça kal!"' }],
+    bonus: [{ img: 'bonus', title: 'Bonus Tur', text: 'Köprünün ucunda adaların bekçileri yenik düştü ve ortalık bir anda dolup taştı: yüzlerce küçük yaratık sana doğru akıyor! Bu bir bonus tur: 120 saniyen var. Ne kadar çok yenersen kalıcı canın ve kaplanın canı o kadar artar, üstüne ruh tozu kazanırsın. Hazırsan başla!' }],
+    wall40: [{ img: 'master40', title: 'Burada İstenmiyorsun', text: 'Usta Cadı sırtını dönmüş. "Çırak, buradan ötesi senin yolun değil. Seni burada istemiyorum." Kapının ardına geçmek tamamen sana kalmış: ya geri dönersin, ya da bedelini göze alıp devam edersin.' }],
+    fall40: [{ img: 'fall40', title: 'Adanın Sonu', text: 'Usta Cadı elini kaldırdı ve adayı parçaladı. Altındaki zemin yok oldu; gökyüzünde bir başına düşüyorsun. "Devam etmek istiyorsan bunun bir bedeli var, çırak." Düşüşü durdurmak için bir devam paketi al ya da yeniden doğ.' }],
+    brew: [
+        { img: 'brew1', title: 'Kazanın çağrısı', text: 'Kulenin tepesinde eski bir kazan kaynıyor. Ustan Elmira\'nın notu yanında: "Her karışım seni başka biri yapar. Malzemeni dikkatle seç, çırak."' },
+        { img: 'giant', title: 'Dev mi, cüce mi?', text: 'Dev Mantarı seni adaların üstüne çıkarır: ağır, güçlü, yer sarsılır. Cüce Çiçeği ise küçültür: hızlı, çevik, vurucu. Karar senin.' },
+    ],
+    giant: [{ img: 'giant', title: 'Dev', text: 'Kazanın dumanı yükseldi ve adalar küçüldü. Artık dev bir cadısın: her adımda yer sarsılıyor, vuruşların ağır. Ama dar yollarda yavaşsın.' }],
+    dwarf: [{ img: 'dwarf', title: 'Cüce', text: 'Mantarlar bir ormana dönüştü! Küçüldün: hızlı ve çevikçe, düşmanların darbelerini kolayca ıskalatıyorsun. Ama sana tek isabet daha çok yakar.' }],
+    rebirth: [{ img: 'rebirth', title: 'Aynadan geri dönüş', text: 'Aynaya adım attın. Adalar bir rüya gibi silindi ama gücün göğsünde parlamaya devam ediyor. Ustan fısıldadı: "Baştan başlamak, güçsüz kalmak demek değildir."' }],
+    closing: [
+        { img: 'closing', title: 'Kapanan kapılar', text: OLD_GAMES_CLOSED_TEXT },
+        { img: 'brew1', title: 'Tek oyun: kazan', text: 'Maden, usta cadıların eğitimi ve arena sessizliğe gömüldü. Yeşil gözlü cadı aynadan gülümsüyor: "Artık yalnızca kazan var, çırak. Karışımını iyi seç."' },
+    ],
+    g1: [{ img: 'giants1', title: 'Uzaktan bir gümbürtü', text: 'Ustan Elmira fısıldadı: "Duyuyor musun? Yer her akşam biraz daha titriyor. Bu bir fırtına değil, çırak. Bu ayak sesleri."' }],
+    g2: [{ img: 'giants2', title: 'Geliyorlar', text: 'Su birikintileri her adımda sarsılıyor, kuşlar adadan kaçıyor. Yeşil gözlü cadının ordusu yaklaşıyor: devler. "Seni sınamak için çağırdı onları," diyor Elmira. "Hazırlan, çırak: küçük düşmanlarla işimiz bitti."' }],
+    g3: [{ img: 'giants3', title: 'Çok yakındalar', text: 'Ufukta bir gölge yükseldi: bir diz, bir omuz, dağdan büyük bir siluet. Yeşil gözlü cadı aynadan gülümsüyor: "Sana söylemiştim. Ben seni beklerken onlar seni karşılayacak."' }],
+    g4: [{ img: 'giants4', title: 'Neredeyse vardılar', text: 'Toprak her saniye sarsılıyor, kulelerden toz yağıyor. Bir sonraki adada devlerin gölgesi seni bekliyor. Kazanını hazırla: dev ya da cüce, seçmek zorundasın.' }],
+    g5: [{ img: 'giants5', title: 'Devler geldi', text: 'Yeşil gözlü cadının devleri adaya bastı. Artık düşmanların boyu bir kule kadar: iri, ağır ve acımasız. Cadı aynadan fısıldıyor: "Seni korkutmak için değil, büyütmek için." Vuruşlarını bilerek yap, çırak; bu adalardan sonra küçük olan sensin.' }],
+    ending: [
+        { img: 'ending', title: 'Aynanın bütünlenmesi', text: 'Düello bitti ve yeşil gözlü cadı gülümsedi: "Seni zorladım, çünkü tam olman gerekiyordu." İkiniz elele tutuştunuz; kırık aynanın bütün parçaları yerine oturdu.' },
+        { img: 'ending', title: 'Tek cadı', text: 'Devler sisin içine çekildi, adalar yeniden tek bir toprak oldu. Sen artık çırak değilsin: ayna senin, güç senin. İstersen yeniden doğup yolculuğu baştan yürüyebilirsin.' },
+    ],
+    balance: [{ img: 'giant', title: 'Aynanın dengesi', text: 'Küçük kaldığın adadan sonra ayna dengesini kurdu: Cüce Çiçeğinin etkisi sönerken Dev Mantarı seni yukarı çekti. "Her küçülmenin ardından bir büyüme gelir, çırak," dedi Elmira. "Ayna böyle dengelenir."' }],
+    swarm: [{ img: 'swarm', title: 'Arı sürüsü', text: 'Vızıltı önce uzaktan geldi, sonra gökyüzü sarardı: yüzlerce arı! İşçiler önde, askerler arkada, tepelerde kraliçe parlıyor. Elmira bağırdı: "Dalgalar halinde gelecekler çırak, nefesini koru!"' }],
+    spell: [{ img: 'spell', title: 'Özel büyü', text: 'Elmira kazanın dibinden parlayan bir küre çıkardı: "Arılar yaklaşıyor çırak. Bu büyü adanın büyük bölümünü bir anda süpürür ve boss\'ların gücünü kırar. İki tane hazırladım; ötesini kazanda kendin hazırla."' }],
+    curse: [{ img: 'curse', title: 'Cadının büyüsü', text: 'Yeşil gözlü cadı elini kaldırdı. Altın bir ışık göğsünden süzülüp aynaya aktı. Gücün bir dakikalığına ondaydı.' }],
+};
+/** devlerin gelişi: 35. adadan itibaren yer sarsılır; ada dizini eşikleri ve anlatım anahtarları (49 = 50. ada: devler geldi) */
+export const GIANT_STAGES = [[34, 'g1'], [39, 'g2'], [44, 'g3'], [48, 'g4'], [49, 'g5']];
+/** sarsıntı anında gösterilen kısa ifadeler (aşama 0-3) */
+export const TREMOR_TEXT = [
+    ['Uzaktan bir gümbürtü… ayak sesi mi bu?', 'Yer hafifçe titredi. Biri yürüyor.'],
+    ['Geliyorlar. Yer her adımda sarsılıyor.', 'Kuşlar adadan kaçıyor: devler yaklaşıyor.'],
+    ['Çok yakındalar! Kulelerden toz yağıyor.', 'Her adım adayı sarsıyor. Çok yakındalar.'],
+    ['Neredeyse vardılar! Yer inliyor.', 'Bir sonraki adım adaya basacak: neredeyse vardılar.'],
+];
