@@ -5233,7 +5233,9 @@ export class Game {
             phase: Math.random() * 6, dashT: 3, dvx: 0, dvy: 0, flip: x < this.px ? 1 : -1, flash: 0, lunge: 0, moving: false };
         // güç = √(can × hasar/0,6) × 10: hedef kahramanın gücünün 0,95 katı; can ≈ kahramanın 40 sn'lik hasarı
         const P = Math.max(1, this.fullPower()) * 0.95;
-        const hp = Math.max(1, this.dps() + this.tigerDps()) * 40;
+        // NaN/sonsuz değerler (ör. kaplan verisi eksikse) yansımayı tek vuruşta öldürmesin: sonlu olmayan terim 0 sayılır, can en az kahraman canının 20 katıdır
+        const fin = (v) => (Number.isFinite(v) && v > 0 ? v : 0);
+        const hp = Math.max(1, (fin(this.dps()) + fin(this.tigerDps())) * 40, this.maxHp() * 20);
         const dmgWant = (0.6 * Math.pow(P / 10, 2)) / hp;
         e.gmul = dmgWant / Math.max(1e-9, this.enemyDmg(e));
         e.maxHp = hp;
@@ -5294,7 +5296,7 @@ export class Game {
         c.textAlign = 'center';
         c.lineWidth = 3;
         c.strokeStyle = 'rgba(0,0,0,0.7)';
-        const txt = '🪞 ' + T('YANSIMA') + ' ⚔ ' + this.fmt(this.enemyPower(e));
+        const txt = '🪞 ' + T('YANSIMA') + ' ⚔ ' + this.fmt(this.enemyPower(e)) + ' ❤ ' + this.fmt(Math.max(0, e.hp));
         c.strokeText(txt, e.x, by - 4);
         c.fillStyle = '#bff0ff';
         c.fillText(txt, e.x, by - 4);
