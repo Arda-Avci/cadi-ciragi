@@ -118,12 +118,12 @@
   #btn-house { position: fixed; left: 10px; top: 208px; width: 42px; height: 42px; padding: 4px; border-radius: 21px; background: rgba(90,40,110,.85); border: 1px solid rgba(255,170,240,.6); font-size: 22px; line-height: 1; }
   #btn-house[data-badge="1"]::after { content: ''; position: absolute; right: 2px; top: 2px; width: 11px; height: 11px; border-radius: 50%; background: #ff4d4d; border: 2px solid #fff; }
   /* açılış ekranı */
-  #landing { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: space-between; color: #fff; overflow: hidden; touch-action: manipulation; }
+  #landing { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: space-between; color: #fff; overflow-x: hidden; overflow-y: auto; touch-action: manipulation; }
   #landing.hidden { display: none; }
-  .l-bg { position: absolute; inset: 0; background: #1a1240 url(assets/title_bg.jpg) center/cover no-repeat; animation: lzoom 24s ease-in-out infinite alternate; }
+  .l-bg { position: fixed; inset: 0; background: #1a1240 url(assets/title_bg.jpg) center/cover no-repeat; animation: lzoom 24s ease-in-out infinite alternate; }
   .l-bg::after { content: ''; position: absolute; inset: 0; background: linear-gradient(rgba(10,6,30,.55) 0%, rgba(10,6,30,0) 26%, rgba(10,6,30,0) 52%, rgba(10,6,30,.88) 100%); }
   @keyframes lzoom { from { transform: scale(1); } to { transform: scale(1.08); } }
-  .l-bgblur { display: none; position: absolute; inset: -6%; background: #1a1240 url(assets/title_bg.jpg) center/cover no-repeat; filter: blur(26px) brightness(.5); }
+  .l-bgblur { display: none; position: fixed; inset: -6%; background: #1a1240 url(assets/title_bg.jpg) center/cover no-repeat; filter: blur(26px) brightness(.5); }
   /* yatay ekran (masaüstü/tablet): dikey kapak görseli kırpılıp yüzü logonun altında kalmasın; ortada tam gösterilir, yanlar bulanık dolgu */
   @media (min-aspect-ratio: 1/1) {
     .l-bgblur { display: block; }
@@ -143,6 +143,22 @@
   .l-btn.small { flex: 1; width: auto; padding: 9px 6px; font-size: 13px; }
   #l-help { font-size: 12px; color: #d6caf5; text-align: center; max-width: 320px; text-shadow: 0 1px 6px #000; }
   #l-ver { font-size: 11px; color: #b9aee0; text-shadow: 0 1px 4px #000; }
+  /* kısa pencere (masaüstü tarayıcı %100 yakınlaştırma): içerik sığsın, sürüm satırı kesilmesin; sığmazsa sayfa kayar */
+  @media (max-height: 780px) {
+    #l-logo { width: min(80vw, 400px, 36vh); }
+    .l-top { padding-top: max(14px, env(safe-area-inset-top)); }
+    .l-bottom { gap: 6px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+    .l-btn { padding: 10px 14px; }
+    .l-btn.primary { font-size: 18px; }
+    #l-name { padding: 8px 12px; }
+  }
+  @media (max-height: 580px) {
+    #l-logo { width: min(60vw, 300px, 28vh); }
+    .l-sub { font-size: 14px; }
+    .l-btn { padding: 7px 12px; font-size: 15px; }
+    .l-btn.primary { font-size: 16px; }
+    #l-help { display: none; }
+  }
   .hof-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.07); }
   .hof-rank { font-weight: 800; color: #ffe36b; text-align: center; }
   .hof-row small { color: #a9a3c2; }
