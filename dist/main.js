@@ -457,6 +457,7 @@ function renderPanel() {
     }
     game.paused = true;
     panel.style.display = 'block';
+    panel.style.zIndex = landingOpen ? '35' : ''; // açılış ekranından (z-index 30) açılan ayarlar ve şeref salonu önde görünsün
     panel.innerHTML = '';
     if (open === 'tree') {
         setPanelTitle('Yetenek Ağacı', 'ui_skill');
