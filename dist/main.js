@@ -1147,12 +1147,12 @@ game.onPaywall = () => { if (!fight.active && !landingOpen) {
  * Godot maden oyunu (godot_mine/ projesi, web'e tek iş parçacıklı aktarılmış mine/index.html) tam ekran iframe ile açılır.
  * Oyun hazır olunca 'mine-ready', bitince 'mine-result' mesajı gönderir; 45 sn içinde hazır olmazsa (çevrimdışı, WebGL yok) yedek çalışır.
  */
-function playMineGodot(reg, after, fallback) {
+function playMineGodot(reg, after, fallback, auto = false) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position:fixed;inset:0;z-index:260;background:#000;color:#fff;font:600 16px system-ui';
     const seed = (reg + 1) * 1000 + Math.floor(Math.random() * 900) + 1;
     const ifr = document.createElement('iframe');
-    ifr.src = `mine/index.html?seed=${seed}&lang=${settings.lang}${location.search.includes("mine_test") ? "&auto=1&quota=0" : ""}`; // mine_test: otomatik oynatma (yalnız test)
+    ifr.src = `mine/index.html?seed=${seed}&lang=${settings.lang}${location.search.includes("mine_test") ? "&auto=1&quota=0" : ""}${auto ? "&bot=1" : ""}`; // mine_test: otomatik oynatma (yalnız test)
     ifr.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;background:#000';
     ifr.allow = 'fullscreen';
     const loading = document.createElement('div');
@@ -1187,6 +1187,37 @@ function playMineGodot(reg, after, fallback) {
     window.addEventListener('message', onMsg);
     quit.addEventListener('click', () => { close(); after(0, false); });
 }
+/** madene girerken: elle oyna ya da (ödüllü reklam izleyerek) otomatik oyna */
+function askMineMode(go) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:265;background:rgba(5,10,25,.88);display:flex;align-items:center;justify-content:center;padding:16px';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#16233a;color:#fff;border:1px solid #8fdcff88;border-radius:14px;padding:18px;max-width:320px;width:100%;text-align:center;font:15px sans-serif';
+    box.innerHTML = `<b>${L('Maden')}</b><p style="margin:8px 0 4px">${L('Madene nasıl girmek istersin?')}</p>`;
+    const mk = (label, bg, fn) => {
+        const b = document.createElement('button');
+        b.textContent = label;
+        b.style.cssText = `display:block;width:100%;margin-top:10px;padding:12px;border-radius:9px;border:0;font:bold 15px sans-serif;color:#fff;background:${bg}`;
+        b.addEventListener('click', fn);
+        return b;
+    };
+    const auto = mk('📺 ' + L('Otomatik oyna (reklam izle)'), '#d9822b', async () => {
+        auto.disabled = true;
+        wrap.remove(); // modal hemen kapanır; reklam izlenmezse seçenek yeniden açılır
+        const ok = await (ads.kind === 'none' ? testRewarded() : ads.showRewarded());
+        if (ok)
+            go(true);
+        else
+            askMineMode(go);
+    });
+    box.append(mk(L('Kendim oynarım'), '#2f7fd1', () => { wrap.remove(); go(false); }), auto);
+    const small = document.createElement('small');
+    small.style.cssText = 'display:block;margin-top:8px;opacity:.75';
+    small.textContent = L('Otomatik oynamada bot elmasları toplar ve çıkışa gider; her seferinde bir reklam izlenir.');
+    box.append(small);
+    wrap.append(box);
+    document.body.append(wrap);
+}
 // elmas madeni: kaşif ilk madeni bulunca hikâye; madene girince ana oyun duraklar, maden oyunu oynanır, bitince ödül verilir
 game.onMineFound = () => setTimeout(() => { if (!landingOpen && !fight.active)
     showIntro(() => undefined, MINE_FOUND); }, 1500);
@@ -1214,7 +1245,8 @@ game.onMine = (reg) => {
         const viaThree = () => {
             import('./mine3d.js').then((m) => m.playMine3d(L, (r) => after(r.diamonds, r.potion))).catch((e) => { console.error('3B maden açılamadı, 2B oyun', e); playMine(L, after); });
         };
-        playMineGodot(reg, after, viaThree);
+        // oyuncu kendisi oynar ya da (reklam izleyerek) botun oynamasını seçer
+        askMineMode((auto) => playMineGodot(reg, after, viaThree, auto));
     };
     if (!game.save.first['mineIn']) {
         game.save.first['mineIn'] = 1;
