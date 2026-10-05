@@ -76,7 +76,7 @@ function setPanelTitle(t, iconName) {
     head.append(btn('✕', 'x', true, () => { open = null; renderPanel(); }));
     panel.append(head);
     // panel başlık görseli (varsa): yavaşça kayan/yakınlaşan animasyon
-    const art = open === 'house' ? { home: 'house', quests: 'quests', tiger: 'tiger', story: 'story', arena: 'arena', wardrobe: 'wardrobe', explorer: 'explorer', brew: 'brew' }[houseTab] : open;
+    const art = open === 'house' ? { home: 'house', quests: 'quests', tiger: 'tiger', story: 'story', arena: 'arena', wardrobe: 'wardrobe', explorer: 'explorer', brew: 'brew', mirror: 'story' }[houseTab] : open;
     if (art) {
         const ban = document.createElement('div');
         ban.className = 'banner';
@@ -136,11 +136,62 @@ function showResultCard(img, title, text) {
     wrap.addEventListener('click', () => wrap.remove());
     document.body.append(wrap);
 }
+/** ayna sekmesi: 10 parçalı kırık ayna (her boss bir parça), kalıcı güç bonusu ve yansıma çağırma */
+function mirrorSvg(k, tier) {
+    const cx = 100;
+    const cy = 118;
+    const rx = 66;
+    const ry = 92;
+    const pt = (a, m = 1) => `${(cx + Math.cos(a) * rx * m).toFixed(1)},${(cy + Math.sin(a) * ry * m).toFixed(1)}`;
+    let pieces = '';
+    for (let i = 0; i < 10; i++) {
+        const a0 = (i / 10) * Math.PI * 2 - Math.PI / 2;
+        const a1 = ((i + 1) / 10) * Math.PI * 2 - Math.PI / 2;
+        const am = (a0 + a1) / 2;
+        const ox = Math.cos(am) * 2.2;
+        const oy = Math.sin(am) * 2.2; // kırık görünümü: parçalar arasında ince boşluk
+        const lit = i < k;
+        pieces += `<polygon transform="translate(${ox.toFixed(1)} ${oy.toFixed(1)})" points="${cx},${cy} ${pt(a0)} ${pt(a0 + (a1 - a0) * 0.5, 1.01)} ${pt(a1)}" fill="${lit ? 'url(#mlit)' : 'rgba(18,16,40,.9)'}" stroke="${lit ? '#d9f6ff' : 'rgba(150,140,200,.35)'}" stroke-width="1.2"/>`;
+        if (lit)
+            pieces += `<polygon transform="translate(${ox.toFixed(1)} ${oy.toFixed(1)})" points="${cx},${cy} ${pt(a0, 0.5)} ${pt(a1, 0.5)}" fill="rgba(255,255,255,.16)"/>`;
+    }
+    const glow = tier > 0 ? `<ellipse cx="${cx}" cy="${cy}" rx="${rx + 6}" ry="${ry + 6}" fill="none" stroke="#ffd86b" stroke-width="${3 + Math.min(5, tier)}" opacity="${0.4 + Math.min(0.5, tier * 0.1)}" filter="url(#mglow)"/>` : '';
+    return `<svg viewBox="0 0 200 236" width="190" height="224" role="img" aria-label="Ayna" style="display:block;margin:4px auto">`
+        + `<defs><radialGradient id="mlit" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#eaffff"/><stop offset="1" stop-color="#5fb8e8"/></radialGradient><filter id="mglow"><feGaussianBlur stdDeviation="3"/></filter></defs>`
+        + glow + pieces
+        + `<ellipse cx="${cx}" cy="${cy}" rx="${rx + 4}" ry="${ry + 4}" fill="none" stroke="#c9953a" stroke-width="5"/>`
+        + `<ellipse cx="${cx}" cy="${cy}" rx="${rx + 9}" ry="${ry + 9}" fill="none" stroke="#7a5420" stroke-width="2"/>`
+        + `<rect x="88" y="${cy + ry + 8}" width="24" height="14" rx="3" fill="#7a5420"/></svg>`;
+}
+function renderMirror() {
+    const n = game.mirrorShards();
+    const tier = game.mirrorTier();
+    const k = n % 10;
+    const box = document.createElement('div');
+    box.className = 'row mirror-box';
+    box.style.cssText = 'display:block;text-align:center';
+    box.innerHTML = mirrorSvg(k, tier)
+        + `<div style="margin-top:6px"><b>${L('Ayna kırığı')}: ${n}</b> · ${L('Bütünlük')}: ${tier}</div>`
+        + `<small style="display:block;margin-top:4px;line-height:1.4">${L('Her boss bir kırık verir. Her 10 kırıkta kalıcı +%2 güç ve bir yansıma hakkı kazanırsın.')}</small>`
+        + `<small style="display:block;margin-top:4px">${L('Kalıcı güç')}: <b>+%${(tier * 2).toFixed(0)}</b> · ${L('Sonraki parça')}: <b>${k}/10</b></small>`;
+    panel.append(box);
+    const due = game.reflDue();
+    panel.append(row(emoji('🪞', 'ui_skill'), `${L('Yansıma')} (${due} ${L('hak')})`, `${L('Aynadan senin gücünde bir yansıman çıkar. Yenersen 3 jeod, toz ve ruh kazanırsın.')} ${L('Yenilen')}: ${game.reflDone()}`, btn(game.reflAlive() ? 'Sahada' : 'Çağır', '', due > 0 && !game.reflAlive(), () => {
+        const msg = game.summonRefl();
+        if (msg) {
+            game.say(msg);
+            renderPanel();
+            return;
+        }
+        open = null;
+        renderPanel();
+    })));
+}
 function renderHouse() {
     setPanelTitle('Cadı Evi', 'home');
-    const tabs = [['home', 'Ev'], ['quests', 'Görev'], ['tiger', 'Kaplan'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop'], ['explorer', 'Kaşif'], ['brew', 'İksir']];
+    const tabs = [['home', 'Ev'], ['quests', 'Görev'], ['tiger', 'Kaplan'], ['story', 'Günlük'], ['arena', 'Arena'], ['wardrobe', 'Gardırop'], ['explorer', 'Kaşif'], ['brew', 'İksir'], ['mirror', 'Ayna']];
     const tabRow = document.createElement('div');
-    tabRow.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0'; // 8 sekme iki satırda: telefonda yazılar kırpılmaz
+    tabRow.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:6px 0'; // 9 sekme üç satırda: telefonda yazılar kırpılmaz
     for (const [k, name] of tabs) {
         const b = btn(name, houseTab === k ? 'sel' : '', true, () => { houseTab = k; renderPanel(); });
         b.className = 'tabbtn' + (houseTab === k ? ' sel' : '');
@@ -166,6 +217,9 @@ function renderHouse() {
             const label = t.ready ? t.state : t.waitMs > 0 ? fmtWait(t.waitMs) : t.state;
             panel.append(row(emoji(icon[t.id], 'task_' + t.id), t.name, sub, btn(label, '', t.ready, () => { game.doHouse(t.id); renderPanel(); })));
         }
+    }
+    else if (houseTab === 'mirror') {
+        renderMirror();
     }
     else if (houseTab === 'quests') {
         const tu = game.tutorial();

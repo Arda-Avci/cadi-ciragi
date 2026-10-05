@@ -20,6 +20,7 @@ export const HOME = { x: 0, y: 40, r: 150 };
 const HOME_HEAL = 0.28; // saniyede azami canın oranı
 /** bonus tur düşmanlarının kamp kimliği (gerçek kamplarla çakışmaz) */
 const BONUS_SP = -777;
+const REFL_SP = -999; // ayna yansıması
 const RAID_SP = -666; // 50. adadaki devler saldırısı
 const BEE_SP = -888;
 /** arı türleri: işçi (güç %2-2,9), asker (%3-3,9), kraliçe (%4-5); her birinin kendi görseli var (assets/bee_*.png) */
@@ -258,6 +259,7 @@ export class Game {
         this.swarmIsleReg = -1;
         this.beeGapNow = 56;
         this.beeDefCache = [];
+        this.mirrorSynced = false;
         this.raidT = 0;
         this.raidIntroT = 0;
         this.raidSpawned = false;
@@ -350,6 +352,18 @@ export class Game {
         cx.drawImage(base, 0, 0);
         const img = cx.getImageData(0, 0, cv.width, cv.height);
         const d = img.data;
+        if (name.slice(at + 1) === 'mirror') {
+            // ayna yansıması: soğuk camsı mavi-beyaz ton
+            for (let i = 0; i < d.length; i += 4) {
+                const l = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2];
+                d[i] = Math.min(255, 0.55 * l + 30);
+                d[i + 1] = Math.min(255, 0.95 * l + 55);
+                d[i + 2] = Math.min(255, 1.05 * l + 90);
+            }
+            cx.putImageData(img, 0, 0);
+            this.tinted.set(name, cv);
+            return cv;
+        }
         if (name.slice(at + 1) === 'gray') {
             // solmuş görünüm (tükenmiş maden): renk büyük oranda gider, hafif kararır; ctx.filter gerekmez
             for (let i = 0; i < d.length; i += 4) {
@@ -3622,12 +3636,12 @@ export class Game {
         return LEVEL_PACKS.some((x) => x.id === id) ? this.grantLevelPack(id, receipt) : this.grantPack(id, receipt);
     }
     maxHp() {
-        return (TEST_LEVEL ? 0.5 : 1) * this.potionMul() * this.brewHpMul() * this.curseMul() * this.shopMul() * this.gemMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
+        return (TEST_LEVEL ? 0.5 : 1) * this.potionMul() * this.brewHpMul() * this.curseMul() * this.shopMul() * this.gemMul() * this.mirrorMul() * (100 + this.perm('normal.hp') + this.perm('elite.hp') + this.perm('tree.hp')) * (1 + 0.2 * this.lv('hp'))
             * (1 + (this.cb('hp') + this.helmetHp() + this.perm('elite.hpPct') + this.perm('train.hp') + this.save.house.hp + this.perm('col.hp')) / 100);
     }
     regen() { return 0.6 * this.lv('regen') + this.cb('regen') + this.helmetRegen() + this.perm('tree.regen') + this.perm('train.regen') + (this.isDwarf() ? 0.006 * this.maxHp() : 0); }
     armor() { return Math.max(0.2, 1 - 0.04 * this.lv('armor')); }
-    dmgMul() { return this.testDmgF * this.potionMul() * this.brewDmgMul() * this.curseMul() * this.shopMul() * this.gemMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
+    dmgMul() { return this.testDmgF * this.potionMul() * this.brewDmgMul() * this.curseMul() * this.shopMul() * this.gemMul() * this.mirrorMul() * (1 + 0.12 * this.lv('dmg')) * (1 + (this.cb('dmg') + this.perm('elite.dmgPct') + this.perm('train.dmg') + this.save.house.dmg) / 100); }
     castSpeed() { return 1 + 0.08 * this.lv('spin'); }
     reachMul() { return 1 + 0.06 * this.lv('reach') + this.outfitBonus('reach') / 100; }
     magnet() { return 70 + 25 * this.lv('magnet') + this.cb('magnet') + this.perm('train.magnet'); }
@@ -4432,6 +4446,7 @@ export class Game {
         this.checkPaywall(dt);
         this.tickBonus(dt);
         this.tickRaid(dt);
+        this.tickMirror();
         this.questTick(dt);
         this.updateTiger(dt);
         this.tickVillager(dt);
@@ -4701,7 +4716,7 @@ export class Game {
                 e.noHeal = false;
                 e.stuckT = 0;
             }
-            if (e.sp === BONUS_SP || e.sp === BEE_SP || e.sp === RAID_SP)
+            if (e.sp === BONUS_SP || e.sp === BEE_SP || e.sp === RAID_SP || e.sp === REFL_SP)
                 e.state = 'chase'; // bonus turunda, arı sürüsünde ve dev saldırısında düşmanlar sürekli saldırır
             let sp = e.def.speed;
             if (e.def.id === 'bat')
@@ -5096,6 +5111,136 @@ export class Game {
                 return;
             }
         }
+    }
+    mirrorShards() { return this.save.mirror?.n ?? 0; }
+    mirrorTier() { return Math.floor(this.mirrorShards() / Game.MIRROR_STEP); }
+    mirrorMul() { return 1 + Game.MIRROR_BONUS * this.mirrorTier(); }
+    reflDone() { return this.save.mirror?.refl ?? 0; }
+    reflDue() { return Math.max(0, this.mirrorTier() - this.reflDone()); }
+    reflAlive() { return this.enemies.some((e) => e.sp === REFL_SP && e.hp > 0); }
+    /** eski kayıtlar: yenilmiş her boss bir kırık sayılır */
+    mirrorSync() {
+        const m = this.save.mirror ?? (this.save.mirror = { n: 0, refl: 0 });
+        for (let r = 0; r < this.save.bossDown.length; r++) {
+            if (this.save.bossDown[r] && !this.save.first['ms' + r]) {
+                this.save.first['ms' + r] = 1;
+                m.n++;
+            }
+        }
+    }
+    addMirrorShard(reg) {
+        const m = this.save.mirror ?? (this.save.mirror = { n: 0, refl: 0 });
+        if (this.save.first['ms' + reg])
+            return;
+        this.save.first['ms' + reg] = 1;
+        m.n++;
+        this.gain('🪞 Ayna kırığı +1 (' + m.n + ')', '#9fe8ff', 'ui_skill');
+        if (m.n % Game.MIRROR_STEP === 0) {
+            this.gain('Ayna güçleniyor: kalıcı güç +%' + Math.round(Game.MIRROR_BONUS * 100), '#9fe8ff', 'ui_power');
+            this.say('Ayna parladı! Kalıcı güç arttı; Ev → Ayna sekmesinden yansımanı çağırabilirsin');
+            audio.play('gate');
+            vibrate([60, 40, 120]);
+        }
+    }
+    tickMirror() {
+        if (!this.mirrorSynced) {
+            this.mirrorSynced = true;
+            this.mirrorSync();
+        }
+        // yansıma yalnızca çağrıldığı adada kalır
+        if (this.enemies.some((e) => e.sp === REFL_SP && e.reg !== this.region))
+            this.enemies = this.enemies.filter((e) => e.sp !== REFL_SP || e.reg === this.region);
+    }
+    /** aynadan yansımayı çağırır; boş dönerse başarılı, doluysa gösterilecek ileti */
+    summonRefl() {
+        if (this.reflDue() <= 0)
+            return 'Yansıma hakkın yok: her 10 ayna kırığında bir hak kazanılır';
+        if (this.reflAlive())
+            return 'Yansıman zaten sahada';
+        if (this.dead > 0 || this.inHome() || this.bonus || this.snakeFight || this.doom)
+            return 'Yansımayı evden, savaş ve bonus tur dışında bir yerde çağır';
+        let x = this.px;
+        let y = this.py;
+        for (let k = 0; k < 40; k++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = 340 + Math.random() * 100;
+            const tx = this.px + Math.cos(a) * r;
+            const ty = this.py + Math.sin(a) * r;
+            if (this.walkable(tx, ty, true, false)) {
+                x = tx;
+                y = ty;
+                break;
+            }
+        }
+        const e = { refl: true, def: ENEMIES.ghost, tier: 'elite', lv: 6, reg: this.region, sp: REFL_SP, gmul: 1, x, y, hx: x, hy: y, hp: 1, maxHp: 1, state: 'chase', hitCd: 0,
+            phase: Math.random() * 6, dashT: 3, dvx: 0, dvy: 0, flip: x < this.px ? 1 : -1, flash: 0, lunge: 0, moving: false };
+        // güç = √(can × hasar/0,6) × 10: hedef kahramanın gücünün 0,95 katı; can ≈ kahramanın 40 sn'lik hasarı
+        const P = Math.max(1, this.fullPower()) * 0.95;
+        const hp = Math.max(1, this.dps()) * 40;
+        const dmgWant = (0.6 * Math.pow(P / 10, 2)) / hp;
+        e.gmul = dmgWant / Math.max(1e-9, this.enemyDmg(e));
+        e.maxHp = hp;
+        e.hp = hp;
+        this.enemies.push(e);
+        this.shake = Math.max(this.shake, 6);
+        audio.play('roar');
+        vibrate([60, 40, 100]);
+        this.say('Aynadan yansıman çıktı: senin kadar güçlü');
+        return '';
+    }
+    reflDefeated(e) {
+        const m = this.save.mirror ?? (this.save.mirror = { n: 0, refl: 0 });
+        m.refl++;
+        const t = Math.max(1, this.mirrorTier());
+        const ess = this.soupYield(2 * 3.6e6);
+        this.save.geodes += 3;
+        this.save.dust += 40 * t;
+        this.save.essence += ess;
+        this.deathFx.push({ x: e.x, y: e.y, t: 0.45, name: 'witch@mirror', size: 86, flip: e.flip });
+        this.shake = Math.max(this.shake, 8);
+        audio.play('boss');
+        vibrate([80, 60, 200]);
+        this.gain('Yansıma yenildi: +3 jeod, +' + 40 * t + ' toz, +' + this.fmt(ess) + ' ruh', '#9fe8ff', 'icon_geode');
+        this.say('Yansıma dağıldı');
+        this.persist();
+        this.onChange();
+    }
+    drawReflection(e) {
+        const c = this.ctx;
+        const t = this.time + e.phase;
+        const bob = e.moving ? -Math.abs(Math.sin(t * 11)) * 5 : Math.sin(t * 2) * 1.6;
+        const gl = c.createRadialGradient(e.x, e.y - 20, 6, e.x, e.y - 20, 74);
+        gl.addColorStop(0, 'rgba(150,230,255,0.38)');
+        gl.addColorStop(1, 'rgba(150,230,255,0)');
+        c.fillStyle = gl;
+        c.fillRect(e.x - 80, e.y - 100, 160, 160);
+        c.fillStyle = 'rgba(0,0,0,0.25)';
+        c.beginPath();
+        c.ellipse(e.x, e.y + 18, 21, 7.4, 0, 0, Math.PI * 2);
+        c.fill();
+        c.globalAlpha = 0.92;
+        if (!this.drawSprX('witch@mirror', e.x, e.y - 8, 85.7, { flip: e.flip, bob, flash: e.flash > 0 })) {
+            c.fillStyle = 'rgba(150,230,255,0.85)';
+            c.beginPath();
+            c.arc(e.x, e.y - 10, 16, 0, Math.PI * 2);
+            c.fill();
+        }
+        c.globalAlpha = 1;
+        const bw = 62;
+        const by = e.y - 73;
+        c.fillStyle = 'rgba(0,0,0,0.55)';
+        c.fillRect(e.x - bw / 2 - 1, by - 1, bw + 2, 8);
+        const f = Math.max(0, Math.min(1, e.hp / e.maxHp));
+        c.fillStyle = '#7fe0ff';
+        c.fillRect(e.x - bw / 2, by, bw * f, 6);
+        c.font = `bold ${Math.round(12 * this.lk())}px sans-serif`;
+        c.textAlign = 'center';
+        c.lineWidth = 3;
+        c.strokeStyle = 'rgba(0,0,0,0.7)';
+        const txt = '🪞 ' + T('YANSIMA') + ' ⚔ ' + this.fmt(this.enemyPower(e));
+        c.strokeText(txt, e.x, by - 4);
+        c.fillStyle = '#bff0ff';
+        c.fillText(txt, e.x, by - 4);
     }
     tickRaid(dt) {
         if (this.region !== Game.RAID_REG || this.save.first['raid49'] || this.save.first['ended']) {
@@ -6059,6 +6204,10 @@ export class Game {
         this.onChange();
     }
     killEnemy(e) {
+        if (e.sp === REFL_SP) {
+            this.reflDefeated(e);
+            return;
+        }
         if (e.sp === BEE_SP) {
             audio.play('kill');
             this.deathFx.push({ x: e.x, y: e.y, t: 0.3, name: BEE_KINDS[e.bee ?? 0].spr, size: this.erad(e) * 3.3, flip: e.flip });
@@ -6198,6 +6347,7 @@ export class Game {
             this.gainItem('shield', 2);
             if (!this.save.bossDown[sp.reg]) {
                 this.save.bossDown[sp.reg] = true;
+                this.addMirrorShard(sp.reg);
                 this.gain('Günlüğe yeni sayfa eklendi', '#ffe9a0', 'ui_skill');
                 this.onStory(sp.reg);
                 this.provoke(sp.reg);
@@ -7309,6 +7459,10 @@ export class Game {
     drawEnemy(e) {
         if (e.seg) {
             this.drawSegment(e);
+            return;
+        }
+        if (e.refl) {
+            this.drawReflection(e);
             return;
         }
         const c = this.ctx;
@@ -9095,6 +9249,9 @@ Game.HOLE_R = 56;
 /** ilk 10 adada kaplan ücretsizdir (erken oyunda ruh tozu azdır: kaplan kapanıp kalıyordu) */
 Game.TIGER_FREE_ISLANDS = 10;
 Game.NOVA_SEC = 2.6;
+// ---- ayna: her boss bir kırık verir; 10 kırıkta kalıcı +%2 güç ve bir yansıma hakkı; yansıma kahramanın gücünde bir düşmandır ----
+Game.MIRROR_STEP = 10;
+Game.MIRROR_BONUS = 0.02;
 // ---- 50. adada devler saldırısı: ada başlayınca değil bir süre sonra, 3 dev, her biri kahramanın gücünün 1,5-2 katı ----
 Game.RAID_REG = 49;
 Game.RAID_AFTER = 75;
