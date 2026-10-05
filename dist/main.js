@@ -163,6 +163,7 @@ function mirrorSvg(k, tier) {
         + `<ellipse cx="${cx}" cy="${cy}" rx="${rx + 9}" ry="${ry + 9}" fill="none" stroke="#7a5420" stroke-width="2"/>`
         + `<rect x="88" y="${cy + ry + 8}" width="24" height="14" rx="3" fill="#7a5420"/></svg>`;
 }
+let mirrorNote = '';
 function renderMirror() {
     const n = game.mirrorShards();
     const tier = game.mirrorTier();
@@ -175,15 +176,20 @@ function renderMirror() {
         + `<small style="display:block;margin-top:4px;line-height:1.4">${L('Her boss bir kırık verir. Her 10 kırıkta kalıcı +%2 güç ve bir yansıma hakkı kazanırsın.')}</small>`
         + `<small style="display:block;margin-top:4px">${L('Kalıcı güç')}: <b>+%${(tier * 2).toFixed(0)}</b> · ${L('Sonraki parça')}: <b>${k}/10</b></small>`;
     panel.append(box);
+    if (mirrorNote) {
+        const nt = document.createElement('div');
+        nt.className = 'row';
+        nt.style.cssText = 'border-color:#ffb04a;background:rgba(255,176,74,.12)';
+        nt.innerHTML = `<b style="color:#ffd88a">${mirrorNote}</b>`;
+        panel.append(nt);
+    }
     const due = game.reflDue();
-    panel.append(row(emoji('🪞', 'ui_skill'), `${L('Yansıma')} (${due} ${L('hak')})`, `${L('Aynadan senin gücünde bir yansıman çıkar. Yenersen 3 jeod, toz ve ruh kazanırsın.')} ${L('Yenilen')}: ${game.reflDone()}`, btn(game.reflAlive() ? 'Sahada' : 'Çağır', '', due > 0 && !game.reflAlive(), () => {
+    panel.append(row(emoji('🪞', 'ui_skill'), `${L('Yansıma')} (${due} ${L('hak')})`, `${L('Aynadan senin gücünde bir yansıman çıkar. Yenersen 3 jeod, toz ve ruh kazanırsın.')} ${L('Yenilen')}: ${game.reflDone()}`, btn(game.reflAlive() ? 'Sahada' : game.reflQueued ? 'Bekliyor' : 'Çağır', '', due > 0 && !game.reflAlive() && !game.reflQueued, () => {
         const msg = game.summonRefl();
-        if (msg) {
-            game.say(msg);
-            renderPanel();
-            return;
-        }
-        open = null;
+        game.say(msg);
+        mirrorNote = msg ? L(msg) : '';
+        if (!msg || game.reflQueued)
+            open = null; // çağrıldı ya da evden çıkınca belirecek: panel kapanır, oyuna dönülür
         renderPanel();
     })));
 }

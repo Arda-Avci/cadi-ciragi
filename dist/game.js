@@ -260,6 +260,8 @@ export class Game {
         this.beeGapNow = 56;
         this.beeDefCache = [];
         this.mirrorSynced = false;
+        /** evdeyken çağrılan yansıma, oyuncu evden çıkınca belirir */
+        this.reflQueued = false;
         this.raidT = 0;
         this.raidIntroT = 0;
         this.raidSpawned = false;
@@ -5147,6 +5149,14 @@ export class Game {
             this.mirrorSynced = true;
             this.mirrorSync();
         }
+        if (this.reflQueued) {
+            if (this.reflDue() <= 0 || this.reflAlive())
+                this.reflQueued = false;
+            else if (!this.inHome() && this.dead <= 0 && !this.bonus && !this.snakeFight && !this.doom) {
+                this.reflQueued = false;
+                this.spawnRefl();
+            }
+        }
         // yansıma yalnızca çağrıldığı adada kalır
         if (this.enemies.some((e) => e.sp === REFL_SP && e.reg !== this.region))
             this.enemies = this.enemies.filter((e) => e.sp !== REFL_SP || e.reg === this.region);
@@ -5157,8 +5167,16 @@ export class Game {
             return 'Yansıma hakkın yok: her 10 ayna kırığında bir hak kazanılır';
         if (this.reflAlive())
             return 'Yansıman zaten sahada';
-        if (this.dead > 0 || this.inHome() || this.bonus || this.snakeFight || this.doom)
-            return 'Yansımayı evden, savaş ve bonus tur dışında bir yerde çağır';
+        if (this.dead > 0 || this.bonus || this.snakeFight || this.doom)
+            return 'Yansıma şimdi çağrılamaz: bonus tur, yılan savaşı ve kıyamet sırasında olmaz';
+        if (this.inHome()) {
+            this.reflQueued = true;
+            return 'Yansıman evin dışında belirecek: evden çık';
+        } // evin içine düşman girmez: çıkınca belirir
+        this.spawnRefl();
+        return '';
+    }
+    spawnRefl() {
         let x = this.px;
         let y = this.py;
         for (let k = 0; k < 40; k++) {
@@ -5186,7 +5204,6 @@ export class Game {
         audio.play('roar');
         vibrate([60, 40, 100]);
         this.say('Aynadan yansıman çıktı: senin kadar güçlü');
-        return '';
     }
     reflDefeated(e) {
         const m = this.save.mirror ?? (this.save.mirror = { n: 0, refl: 0 });
