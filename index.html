@@ -81,6 +81,13 @@
   .on { color: #7bff9a; font-weight: 700; }
   .row button { min-width: 64px; }
   .btns { display: flex; flex-direction: column; gap: 4px; }
+  #panel .row.cry-top { display: block; }
+  .cry-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+  .cry-stat { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .cry-stat img.ico { width: 24px; height: 24px; flex: 0 0 auto; }
+  .cry-note { display: block; margin-top: 6px; line-height: 1.35; overflow-wrap: anywhere; }
+  .cry-btns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+  .cry-btns button { min-width: 0; padding: 9px 4px; font-size: 13px; line-height: 1.2; }
   .btns button { font-size: 12px; padding: 6px 10px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; padding-top: 6px; }
   .card { background: #241a45; border: 1px solid rgba(190,160,255,.35); border-radius: 12px; overflow: hidden; text-align: center; }

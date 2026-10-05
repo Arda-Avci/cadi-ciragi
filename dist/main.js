@@ -453,22 +453,25 @@ function renderPanel() {
     else if (open === 'crystals') {
         setPanelTitle('Kristaller', 'ui_crystal');
         const info = document.createElement('div');
-        info.className = 'row';
-        info.innerHTML = `<div class="rtxt">${ico('icon_geode', 26)} <b>${game.save.geodes}</b> &nbsp; ${ico('ui_dust', 26)} <b>${Math.floor(game.save.dust)}</b>`
-            + ` &nbsp; <small>${L('yuva')} ${game.save.equipped.length}/${game.slots()} · ${game.autoCrystal() && game.autoCrystalNote ? L("Oto") + ": " + game.autoCrystalNote : note}</small></div>`;
-        info.append(btn('Jeod aç', '', game.save.geodes >= 1 && !game.autoCrystal(), () => {
+        info.className = 'row cry-top';
+        const noteTxt = game.autoCrystal() && game.autoCrystalNote ? L('Oto') + ': ' + game.autoCrystalNote : note;
+        info.innerHTML = `<div class="cry-stats"><span class="cry-stat">${ico('icon_geode', 24)} <b>${game.save.geodes}</b></span><span class="cry-stat">${ico('ui_dust', 24)} <b>${Math.floor(game.save.dust)}</b></span><span class="cry-stat"><small>${L('yuva')}</small> <b>${game.save.equipped.length}/${game.slots()}</b></span></div>${noteTxt ? `<small class="cry-note">${noteTxt}</small>` : ''}`;
+        const cb = document.createElement('div');
+        cb.className = 'cry-btns';
+        cb.append(btn('Jeod aç', '', game.save.geodes >= 1 && !game.autoCrystal(), () => {
             const c = game.openGeode();
             if (c)
                 note = L(RARITIES[c.rarity].name) + ' ' + L(CRYSTAL_STATS[c.stat].name) + '!';
             renderPanel();
         }));
-        info.append(btn(game.autoCrystal() ? 'Oto: Açık' : 'Oto: Kapalı', game.autoCrystal() ? '' : 'danger', true, () => { game.setAutoCrystal(!game.autoCrystal()); note = game.autoCrystal() ? L('Oto kristal açık: jeodlar açılır, kristaller gelişir, en güçlüler kuşanılır.') : ''; renderPanel(); }));
-        info.append(btn('Tümünü aç', '', game.save.geodes >= 2 && !game.autoCrystal(), () => {
+        cb.append(btn(game.autoCrystal() ? 'Oto: Açık' : 'Oto: Kapalı', game.autoCrystal() ? '' : 'danger', true, () => { game.setAutoCrystal(!game.autoCrystal()); note = game.autoCrystal() ? L('Oto kristal açık: jeodlar açılır, kristaller gelişir, en güçlüler kuşanılır.') : ''; renderPanel(); }));
+        cb.append(btn('Tümünü aç', '', game.save.geodes >= 2 && !game.autoCrystal(), () => {
             const r = game.openAllGeodes();
             if (r.n)
                 note = `${r.n} ${L('jeod açıldı')} · ${L('en iyi')}: ${L(RARITIES[r.best].name)}`;
             renderPanel();
         }));
+        info.append(cb);
         panel.append(info);
         const list = [...game.save.crystals].sort((a, b) => Number(game.save.equipped.includes(b.id)) - Number(game.save.equipped.includes(a.id)) || b.rarity - a.rarity || b.enchant - a.enchant);
         for (const c of list.slice(0, 40)) {
