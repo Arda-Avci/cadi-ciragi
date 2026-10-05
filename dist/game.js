@@ -5181,7 +5181,7 @@ export class Game {
         let y = this.py;
         for (let k = 0; k < 40; k++) {
             const a = Math.random() * Math.PI * 2;
-            const r = 340 + Math.random() * 100;
+            const r = 230 + Math.random() * 80; // ekranın içinde belirir
             const tx = this.px + Math.cos(a) * r;
             const ty = this.py + Math.sin(a) * r;
             if (this.walkable(tx, ty, true, false)) {
@@ -5190,11 +5190,12 @@ export class Game {
                 break;
             }
         }
-        const e = { refl: true, def: ENEMIES.ghost, tier: 'elite', lv: 6, reg: this.region, sp: REFL_SP, gmul: 1, x, y, hx: x, hy: y, hp: 1, maxHp: 1, state: 'chase', hitCd: 0,
+        // yansıma kahramanın hızına yakın koşar (hayalet tabanı çok yavaştı)
+        const e = { refl: true, def: { ...ENEMIES.ghost, speed: Math.max(ENEMIES.ghost.speed, this.speed() * 0.85) }, tier: 'elite', lv: 6, reg: this.region, sp: REFL_SP, gmul: 1, x, y, hx: x, hy: y, hp: 1, maxHp: 1, state: 'chase', hitCd: 0,
             phase: Math.random() * 6, dashT: 3, dvx: 0, dvy: 0, flip: x < this.px ? 1 : -1, flash: 0, lunge: 0, moving: false };
         // güç = √(can × hasar/0,6) × 10: hedef kahramanın gücünün 0,95 katı; can ≈ kahramanın 40 sn'lik hasarı
         const P = Math.max(1, this.fullPower()) * 0.95;
-        const hp = Math.max(1, this.dps()) * 40;
+        const hp = Math.max(1, this.dps() + this.tigerDps()) * 40;
         const dmgWant = (0.6 * Math.pow(P / 10, 2)) / hp;
         e.gmul = dmgWant / Math.max(1e-9, this.enemyDmg(e));
         e.maxHp = hp;
@@ -5204,6 +5205,7 @@ export class Game {
         audio.play('roar');
         vibrate([60, 40, 100]);
         this.say('Aynadan yansıman çıktı: senin kadar güçlü');
+        this.float(this.px, this.py - 70, '🪞 ' + T('YANSIMA') + '!', '#9fe8ff');
     }
     reflDefeated(e) {
         const m = this.save.mirror ?? (this.save.mirror = { n: 0, refl: 0 });
@@ -5218,7 +5220,7 @@ export class Game {
         audio.play('boss');
         vibrate([80, 60, 200]);
         this.gain('Yansıma yenildi: +3 jeod, +' + 40 * t + ' toz, +' + this.fmt(ess) + ' ruh', '#9fe8ff', 'icon_geode');
-        this.say('Yansıma dağıldı');
+        this.say('Yansıma yenildi! +3 jeod, +' + 40 * t + ' toz');
         this.persist();
         this.onChange();
     }
@@ -7043,6 +7045,9 @@ export class Game {
     }
     /** oyuncuya sıradaki hedefi gösterir: boss açıldıysa boss evi, boss yenildiyse kapı, değilse en yakın temizlenmemiş kamp */
     guideTarget() {
+        const rf = this.enemies.find((e) => e.sp === REFL_SP && e.hp > 0);
+        if (rf)
+            return { x: rf.x, y: rf.y, label: 'Yansıma', color: '#9fe8ff' };
         const vt = this.vqTarget() ?? this.ckTarget();
         if (vt)
             return { x: vt.x, y: vt.y, label: vt.label, color: '#ffd1f0' };
