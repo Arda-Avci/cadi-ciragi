@@ -5118,7 +5118,39 @@ export class Game {
     mirrorTier() { return Math.floor(this.mirrorShards() / Game.MIRROR_STEP); }
     mirrorMul() { return 1 + Game.MIRROR_BONUS * this.mirrorTier(); }
     reflDone() { return this.save.mirror?.refl ?? 0; }
-    reflDue() { return Math.max(0, this.mirrorTier() - this.reflDone()); }
+    reflDue() { return Math.max(0, this.mirrorTier() + (this.save.mirror?.bonus ?? 0) - this.reflDone()); }
+    reflDay() { return Math.floor(this.now() / 864e5); }
+    reflAdLeft() {
+        const m = this.save.mirror;
+        return Game.REFL_AD_DAILY - (m && m.adDay === this.reflDay() ? (m.adN ?? 0) : 0);
+    }
+    /** reklam izlendi: +1 hak */
+    reflAdGrant() {
+        const m = this.save.mirror ?? (this.save.mirror = { n: 0, refl: 0 });
+        if (this.reflAdLeft() <= 0)
+            return;
+        if (m.adDay !== this.reflDay()) {
+            m.adDay = this.reflDay();
+            m.adN = 0;
+        }
+        m.adN = (m.adN ?? 0) + 1;
+        m.bonus = (m.bonus ?? 0) + 1;
+        this.gain('+1 yansıma hakkı', '#9fe8ff', 'ui_skill');
+        this.persist();
+        this.onChange();
+    }
+    /** 5 jeod ile +1 hak */
+    reflGeodeBuy() {
+        if (this.save.geodes < Game.REFL_GEODES)
+            return false;
+        const m = this.save.mirror ?? (this.save.mirror = { n: 0, refl: 0 });
+        this.save.geodes -= Game.REFL_GEODES;
+        m.bonus = (m.bonus ?? 0) + 1;
+        this.gain('+1 yansıma hakkı (−' + Game.REFL_GEODES + ' jeod)', '#9fe8ff', 'icon_geode');
+        this.persist();
+        this.onChange();
+        return true;
+    }
     reflAlive() { return this.enemies.some((e) => e.sp === REFL_SP && e.hp > 0); }
     /** eski kayıtlar: yenilmiş her boss bir kırık sayılır */
     mirrorSync() {
@@ -5128,6 +5160,12 @@ export class Game {
                 this.save.first['ms' + r] = 1;
                 m.n++;
             }
+        }
+        // ilk sürümde yansıma görünmeden eriyordu: yenilen yansıma hakkı bir kez iade edilir
+        if (m.refl >= 1 && !this.save.first['reflGift']) {
+            this.save.first['reflGift'] = 1;
+            m.bonus = (m.bonus ?? 0) + 1;
+            this.say('Yansıma hatası için 1 hak iade edildi');
         }
     }
     addMirrorShard(reg) {
@@ -8508,7 +8546,8 @@ export class Game {
     villagerPower() { return Math.floor((this.fullPower() + this.tigerPower()) / 2); }
     villagerK() { return this.villagerPower() / Math.max(1, this.fullPower()); }
     villagerHp() { return this.maxHp() * this.villagerK(); }
-    villagerDps() { return this.dps() * this.villagerK(); }
+    /** köylünün vuruş gücü kahraman hasarının ×2 katı (güç oranı ×2) */
+    villagerDps() { return this.dps() * this.villagerK() * 2; }
     /** köylü kaplan gibi davranır: yakındaki düşmana, boss evine, kuleye/binaya ve kırılabilir kayaya yürüyüp sopayla vurur.
      * Yürüyüşü kaplandan yavaştır (140 / 250) ama vuruşu kaplandan hızlıdır (aralık kaplanınkinin %55'i); yaralanmaz. */
     villagerInterval() { return Math.max(0.25, this.tigerInterval() * 0.55); }
@@ -9274,6 +9313,9 @@ Game.NOVA_SEC = 2.6;
 // ---- ayna: her boss bir kırık verir; 10 kırıkta kalıcı +%2 güç ve bir yansıma hakkı; yansıma kahramanın gücünde bir düşmandır ----
 Game.MIRROR_STEP = 10;
 Game.MIRROR_BONUS = 0.02;
+/** ekstra yansıma hakkı: günde 3 ödüllü reklam ya da 5 jeod */
+Game.REFL_AD_DAILY = 3;
+Game.REFL_GEODES = 5;
 // ---- 50. adada devler saldırısı: ada başlayınca değil bir süre sonra, 3 dev, her biri kahramanın gücünün 1,5-2 katı ----
 Game.RAID_REG = 49;
 Game.RAID_AFTER = 75;

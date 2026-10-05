@@ -192,6 +192,15 @@ function renderMirror() {
             open = null; // çağrıldı ya da evden çıkınca belirecek: panel kapanır, oyuna dönülür
         renderPanel();
     })));
+    // hak bitince: günde 3 reklam ya da 5 jeod ile ekstra hak
+    const adLeft = game.reflAdLeft();
+    panel.append(row(emoji('📺', 'ui_skill'), L('Ekstra hak: reklam'), `${L('Bir reklam izle, +1 yansıma hakkı kazan')} · ${L('bugün kalan')}: ${adLeft}/3`, btn(adLeft > 0 ? 'İzle' : 'Yarın', '', adLeft > 0, async () => {
+        const ok = await (ads.kind === 'none' ? testRewarded() : ads.showRewarded());
+        if (ok)
+            game.reflAdGrant();
+        renderPanel();
+    })));
+    panel.append(row(ico('icon_geode', 36), L('Ekstra hak: jeod'), `5 ${L('jeod')} → +1 ${L('yansıma hakkı')} · ${L('Jeodun')}: ${game.save.geodes}`, btn('5 jeod', '', game.save.geodes >= 5, () => { game.reflGeodeBuy(); renderPanel(); })));
 }
 function renderHouse() {
     setPanelTitle('Cadı Evi', 'home');
