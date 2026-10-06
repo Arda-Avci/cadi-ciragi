@@ -682,7 +682,7 @@ function orb() {
         }
     };
     return {
-        title: 'Büyü Topu', rules: 'Topu geriye çek ve bırak: duvarlardan seke seke kazana sok.\nKırmızı dikenli duvar topu bozar, yeşil yastık hızlandırır.\nHer bölümde 3 hakkın var, ilk atışta girersen 3 puan!', secs: 90,
+        title: 'Kazan Atışı', rules: 'Topu geriye çek ve bırak: duvarlardan seke seke kazana sok.\nKırmızı dikenli duvar topu bozar, yeşil yastık hızlandırır.\nHer bölümde 3 hakkın var, ilk atışta girersen 3 puan!', secs: 90,
         update(dt) {
             flash = Math.max(0, flash - dt);
             if (state === 'wait' || state === 'sink') {

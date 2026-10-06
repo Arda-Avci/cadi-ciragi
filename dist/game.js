@@ -9346,7 +9346,7 @@ Game.MINIS = [
     { k: 'honey', at: 4, name: 'Bal Avı', desc: 'Altın arılara dokun, yabanarılarından kaç' },
     { k: 'cards', at: 9, name: 'Büyü Kartları', desc: 'Aynı simgeli kart çiftlerini bul' },
     { k: 'broom', at: 14, name: 'Süpürge Yarışı', desc: 'Süpürgeyle şeritler arasında geç, yıldız topla' },
-    { k: 'orb', at: 19, name: 'Büyü Topu', desc: 'Topu geriye çek ve bırak, duvarlardan seke seke kazana sok' },
+    { k: 'orb', at: 19, name: 'Kazan Atışı', desc: 'Topu geriye çek ve bırak, duvarlardan seke seke kazana sok' },
 ];
 // ---- tavuk: 2. adada bulunur, sonra her 3 adada bir yeni tavuk bulunur; sayı artmaz, seviye 2/4/8/16 bulguda atlar; yumurta atar ----
 Game.CK_FIRST = 1;
