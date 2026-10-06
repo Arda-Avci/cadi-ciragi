@@ -553,8 +553,389 @@ function broom() {
         hud: () => String(score),
     };
 }
+const AW = 360;
+const AH = 560;
+const BR = 11;
+const HR = 28;
+const VMAX = 720;
+const ORB_LEVELS = [
+    { s: [180, 490], h: [180, 110], w: [] },
+    { s: [180, 490], h: [90, 120], w: [{ x: 120, y: 270, w: 120, h: 24, k: 0 }] },
+    { s: [180, 490], h: [180, 100], w: [{ x: 100, y: 300, w: 160, h: 22, k: 1 }] },
+    { s: [60, 490], h: [300, 110], w: [{ x: 0, y: 300, w: 170, h: 22, k: 0 }] },
+    { s: [180, 490], h: [300, 100], w: [{ x: 60, y: 250, w: 140, h: 22, k: 1 }, { x: 330, y: 200, w: 20, h: 200, k: 2 }] },
+    { s: [180, 490], h: [180, 90], w: [{ x: 90, y: 200, w: 22, h: 230, k: 1 }, { x: 248, y: 200, w: 22, h: 230, k: 1 }] },
+    { s: [300, 490], h: [60, 100], w: [{ x: 0, y: 330, w: 200, h: 22, k: 1 }] },
+    { s: [60, 490], h: [300, 80], w: [{ x: 190, y: 260, w: 150, h: 22, k: 1 }, { x: 170, y: 380, w: 22, h: 120, k: 0 }] },
+];
+/** tek adım: 'run' sürer, 'in' kazana girdi, 'dead' lanetli duvara değdi, 'stop' durdu */
+function orbStep(b, dt, lv, flip) {
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    const d = Math.exp(-1.15 * dt);
+    b.vx *= d;
+    b.vy *= d;
+    if (b.x < BR) {
+        b.x = BR;
+        b.vx = Math.abs(b.vx) * 0.92;
+    }
+    if (b.x > AW - BR) {
+        b.x = AW - BR;
+        b.vx = -Math.abs(b.vx) * 0.92;
+    }
+    if (b.y < BR) {
+        b.y = BR;
+        b.vy = Math.abs(b.vy) * 0.92;
+    }
+    if (b.y > AH - BR) {
+        b.y = AH - BR;
+        b.vy = -Math.abs(b.vy) * 0.92;
+    }
+    for (const o of lv.w) {
+        const ox = flip ? AW - o.x - o.w : o.x;
+        const cx = Math.max(ox, Math.min(ox + o.w, b.x));
+        const cy = Math.max(o.y, Math.min(o.y + o.h, b.y));
+        let dx = b.x - cx;
+        let dy = b.y - cy;
+        const dd = Math.hypot(dx, dy);
+        if (dd >= BR)
+            continue;
+        if (o.k === 1)
+            return 'dead';
+        if (dd < 0.001) {
+            dx = 0;
+            dy = -1;
+        }
+        else {
+            dx /= dd;
+            dy /= dd;
+        }
+        b.x = cx + dx * BR;
+        b.y = cy + dy * BR;
+        const dot = b.vx * dx + b.vy * dy;
+        if (dot < 0) {
+            b.vx -= 1.92 * dot * dx;
+            b.vy -= 1.92 * dot * dy;
+        }
+        if (o.k === 2) {
+            const sp = Math.hypot(b.vx, b.vy);
+            const k = Math.min(1.3, 900 / Math.max(1, sp));
+            b.vx *= k;
+            b.vy *= k;
+        }
+    }
+    const hx = flip ? AW - lv.h[0] : lv.h[0];
+    const sp = Math.hypot(b.vx, b.vy);
+    if (Math.hypot(b.x - hx, b.y - lv.h[1]) < HR * 1.3 && sp < 760)
+        return 'in';
+    if (sp < 14)
+        return 'stop';
+    return 'run';
+}
+/** deneme için: bir atışı baştan sona oynatır */
+function orbShoot(lv, flip, ang, pw) {
+    const sx = flip ? AW - lv.s[0] : lv.s[0];
+    const b = { x: sx, y: lv.s[1], vx: Math.cos(ang) * pw * VMAX, vy: Math.sin(ang) * pw * VMAX };
+    for (let i = 0; i < 1500; i++) {
+        const r = orbStep(b, 1 / 120, lv, flip);
+        if (r !== 'run')
+            return r;
+    }
+    return 'stop';
+}
+export const orbLab = { levels: ORB_LEVELS, shoot: orbShoot };
+function orb() {
+    let li = 0;
+    let flip = false;
+    let tries = 3;
+    let score = 0;
+    let flash = 0;
+    let pause = 0;
+    let state = 'aim';
+    let msg = '';
+    let sink = 0;
+    const b = { x: 0, y: 0, vx: 0, vy: 0 };
+    let aim = null;
+    const fx = [];
+    const lv = () => ORB_LEVELS[li % ORB_LEVELS.length];
+    const reset = () => { b.x = flip ? AW - lv().s[0] : lv().s[0]; b.y = lv().s[1]; b.vx = 0; b.vy = 0; state = 'aim'; aim = null; };
+    const nextLevel = () => { li++; flip = li >= ORB_LEVELS.length && Math.random() < 0.5; tries = 3; reset(); };
+    reset();
+    // ekran <-> mantıksal alan
+    const view = (env) => {
+        const s = Math.min(env.w / AW, (env.h - 120) / AH);
+        return { s, ox: (env.w - AW * s) / 2, oy: 100 + (env.h - 100 - AH * s) / 2 };
+    };
+    const toL = (x, y, env) => { const v = view(env); return { x: (x - v.ox) / v.s, y: (y - v.oy) / v.s }; };
+    const holeX = () => (flip ? AW - lv().h[0] : lv().h[0]);
+    const fail = (dead) => {
+        tries--;
+        flash = dead ? 0.35 : 0;
+        state = 'wait';
+        if (tries <= 0) {
+            msg = 'Olmadı';
+            pause = 0.9;
+        }
+        else {
+            msg = dead ? 'Lanetli duvar!' : 'Kaçırdın';
+            pause = 0.5;
+        }
+    };
+    return {
+        title: 'Büyü Topu', rules: 'Topu geriye çek ve bırak: duvarlardan seke seke kazana sok.\nKırmızı dikenli duvar topu bozar, yeşil yastık hızlandırır.\nHer bölümde 3 hakkın var, ilk atışta girersen 3 puan!', secs: 90,
+        update(dt) {
+            flash = Math.max(0, flash - dt);
+            if (state === 'wait' || state === 'sink') {
+                if (state === 'sink')
+                    sink += dt;
+                pause -= dt;
+                if (pause <= 0) {
+                    if (state === 'sink' || tries <= 0)
+                        nextLevel();
+                    else
+                        reset();
+                    msg = '';
+                    sink = 0;
+                }
+                return;
+            }
+            if (state !== 'fly')
+                return;
+            for (let i = 0; i < 2; i++) {
+                const r = orbStep(b, dt / 2, lv(), flip);
+                if (r === 'in') {
+                    score += tries;
+                    fx.push({ x: b.x, y: b.y, t: 1, s: '+' + tries, col: '#ffe36b' });
+                    msg = tries === 3 ? 'Mükemmel!' : 'Girdi!';
+                    state = 'sink';
+                    pause = 0.7;
+                    sink = 0;
+                    b.x = holeX();
+                    b.y = lv().h[1];
+                    b.vx = b.vy = 0;
+                    return;
+                }
+                if (r === 'dead') {
+                    fail(true);
+                    return;
+                }
+                if (r === 'stop') {
+                    fail(false);
+                    return;
+                }
+            }
+        },
+        draw(env) {
+            const c = env.c;
+            const v = view(env);
+            cover(env, 'mg_memory_bg');
+            c.save();
+            c.translate(v.ox, v.oy);
+            c.scale(v.s, v.s);
+            // zemin
+            const fg = c.createLinearGradient(0, 0, 0, AH);
+            fg.addColorStop(0, '#2d1a5e');
+            fg.addColorStop(1, '#4a2a86');
+            c.fillStyle = fg;
+            c.beginPath();
+            c.roundRect(0, 0, AW, AH, 16);
+            c.fill();
+            c.strokeStyle = '#ffd86b';
+            c.lineWidth = 4;
+            c.stroke();
+            c.strokeStyle = 'rgba(255,255,255,.05)';
+            c.lineWidth = 1;
+            for (let x = 30; x < AW; x += 30) {
+                c.beginPath();
+                c.moveTo(x, 4);
+                c.lineTo(x, AH - 4);
+                c.stroke();
+            }
+            for (let y = 30; y < AH; y += 30) {
+                c.beginPath();
+                c.moveTo(4, y);
+                c.lineTo(AW - 4, y);
+                c.stroke();
+            }
+            // duvarlar
+            for (const o of lv().w) {
+                const ox = flip ? AW - o.x - o.w : o.x;
+                if (o.k === 0) {
+                    const g = c.createLinearGradient(0, o.y, 0, o.y + o.h);
+                    g.addColorStop(0, '#8a7a96');
+                    g.addColorStop(1, '#4a3f5a');
+                    c.fillStyle = g;
+                    c.beginPath();
+                    c.roundRect(ox, o.y, o.w, o.h, 6);
+                    c.fill();
+                    c.strokeStyle = '#cbb8e0';
+                    c.lineWidth = 2;
+                    c.stroke();
+                }
+                else if (o.k === 1) {
+                    const pulse = 0.6 + 0.4 * Math.sin(env.t * 5);
+                    c.shadowColor = '#ff2a7a';
+                    c.shadowBlur = 14 * pulse;
+                    c.fillStyle = '#ff3a86';
+                    c.beginPath();
+                    c.roundRect(ox, o.y, o.w, o.h, 5);
+                    c.fill();
+                    c.shadowBlur = 0;
+                    c.fillStyle = '#7a0a3a';
+                    const horiz = o.w >= o.h;
+                    const n = Math.max(2, Math.floor((horiz ? o.w : o.h) / 18));
+                    for (let i = 0; i < n; i++) {
+                        const t = (i + 0.5) / n;
+                        c.beginPath();
+                        if (horiz) {
+                            c.moveTo(ox + t * o.w - 6, o.y);
+                            c.lineTo(ox + t * o.w, o.y - 8);
+                            c.lineTo(ox + t * o.w + 6, o.y);
+                        }
+                        else {
+                            c.moveTo(ox, o.y + t * o.h - 6);
+                            c.lineTo(ox - 8, o.y + t * o.h);
+                            c.lineTo(ox, o.y + t * o.h + 6);
+                        }
+                        c.fill();
+                    }
+                }
+                else {
+                    c.fillStyle = '#39d46a';
+                    c.beginPath();
+                    c.roundRect(ox, o.y, o.w, o.h, 10);
+                    c.fill();
+                    c.strokeStyle = '#c8ffd8';
+                    c.lineWidth = 2;
+                    c.stroke();
+                    c.fillStyle = 'rgba(255,255,255,.7)';
+                    for (let i = 0; i < 3; i++) {
+                        const q = (env.t * 1.5 + i / 3) % 1;
+                        c.beginPath();
+                        c.arc(ox + o.w / 2, o.y + o.h / 2 - q * 18, 3, 0, Math.PI * 2);
+                        c.fill();
+                    }
+                }
+            }
+            // kazan
+            const hx = holeX();
+            const hy = lv().h[1];
+            const hg = c.createRadialGradient(hx, hy, 2, hx, hy, HR + 10);
+            hg.addColorStop(0, 'rgba(120,255,160,.55)');
+            hg.addColorStop(1, 'rgba(120,255,160,0)');
+            c.fillStyle = hg;
+            c.fillRect(hx - 40, hy - 40, 80, 80);
+            c.fillStyle = '#10061f';
+            c.beginPath();
+            c.ellipse(hx, hy, HR, HR * 0.8, 0, 0, Math.PI * 2);
+            c.fill();
+            c.strokeStyle = '#7bff9a';
+            c.lineWidth = 3;
+            c.stroke();
+            c.fillStyle = 'rgba(123,255,154,.5)';
+            c.beginPath();
+            c.arc(hx + Math.sin(env.t * 3) * 5, hy + Math.cos(env.t * 4) * 3, 4, 0, Math.PI * 2);
+            c.fill();
+            // nişan: geriye çekme oku ve tahmini yol
+            if (aim && state === 'aim') {
+                const dx = aim.ax - aim.cx;
+                const dy = aim.ay - aim.cy;
+                const len = Math.min(190, Math.hypot(dx, dy));
+                if (len > 6) {
+                    const ang = Math.atan2(dy, dx);
+                    const pw = len / 190;
+                    c.strokeStyle = `rgba(255,${Math.round(255 - 140 * pw)},${Math.round(160 - 100 * pw)},.95)`;
+                    c.lineWidth = 4;
+                    c.setLineDash([2, 9]);
+                    c.lineCap = 'round';
+                    const sim = { x: b.x, y: b.y, vx: Math.cos(ang) * pw * VMAX, vy: Math.sin(ang) * pw * VMAX };
+                    c.beginPath();
+                    c.moveTo(b.x, b.y);
+                    for (let i = 0; i < 36; i++) {
+                        const r = orbStep(sim, 1 / 60, lv(), flip);
+                        c.lineTo(sim.x, sim.y);
+                        if (r !== 'run')
+                            break;
+                    }
+                    c.stroke();
+                    c.setLineDash([]);
+                    c.strokeStyle = 'rgba(255,255,255,.45)';
+                    c.lineWidth = 3;
+                    c.beginPath();
+                    c.moveTo(b.x, b.y);
+                    c.lineTo(b.x - Math.cos(ang) * len * 0.5, b.y - Math.sin(ang) * len * 0.5);
+                    c.stroke();
+                }
+            }
+            // top
+            const sc = state === 'sink' ? Math.max(0.05, 1 - sink / 0.5) : 1;
+            {
+                const bg = c.createRadialGradient(b.x - 3, b.y - 3, 1, b.x, b.y, BR + 8);
+                bg.addColorStop(0, '#ffffff');
+                bg.addColorStop(0.45, '#a8e8ff');
+                bg.addColorStop(1, 'rgba(120,80,255,0)');
+                c.fillStyle = bg;
+                c.beginPath();
+                c.arc(b.x, b.y, (BR + 8) * sc, 0, Math.PI * 2);
+                c.fill();
+                c.fillStyle = '#fff';
+                c.beginPath();
+                c.arc(b.x, b.y, BR * 0.6 * sc, 0, Math.PI * 2);
+                c.fill();
+            }
+            floaters(env, fx, 1 / 60);
+            c.restore();
+            // HUD: kalan haklar ve bölüm
+            for (let i = 0; i < 3; i++) {
+                env.c.globalAlpha = i < tries ? 1 : 0.25;
+                text(env, '●', env.w / 2 + (i - 1) * 26, 96, 26, '#bfeaff');
+            }
+            env.c.globalAlpha = 1;
+            text(env, `${env.L('Bölüm')} ${li + 1}`, env.w / 2, 80, 16, '#e9dcff');
+            if (msg)
+                text(env, env.L(msg), env.w / 2, env.h - 40, 28, msg === 'Mükemmel!' || msg === 'Girdi!' ? '#9fffb0' : '#ff9ab0');
+            if (flash > 0) {
+                env.c.fillStyle = `rgba(255,40,100,${flash * 0.9})`;
+                env.c.fillRect(0, 0, env.w, env.h);
+            }
+        },
+        down(x, y, env) {
+            if (state !== 'aim')
+                return;
+            const p = toL(x, y, env);
+            aim = { ax: p.x, ay: p.y, cx: p.x, cy: p.y };
+        },
+        move(x, y, env) {
+            if (!aim || state !== 'aim')
+                return;
+            const p = toL(x, y, env);
+            aim.cx = p.x;
+            aim.cy = p.y;
+        },
+        up() {
+            if (!aim || state !== 'aim') {
+                aim = null;
+                return;
+            }
+            const dx = aim.ax - aim.cx;
+            const dy = aim.ay - aim.cy;
+            const len = Math.min(190, Math.hypot(dx, dy));
+            aim = null;
+            if (len < 14)
+                return; // çok kısa çekiş: atış sayılmaz
+            const ang = Math.atan2(dy, dx);
+            const pw = len / 190;
+            b.vx = Math.cos(ang) * pw * VMAX;
+            b.vy = Math.sin(ang) * pw * VMAX;
+            state = 'fly';
+        },
+        over: () => false,
+        result: () => ({ score, stars: score >= 19 ? 3 : score >= 14 ? 2 : score >= 8 ? 1 : 0 }),
+        hud: () => String(score),
+    };
+}
 export function playMini(kind, L, done) {
-    const g = kind === 'honey' ? honey() : kind === 'cards' ? cards() : broom();
+    const g = kind === 'honey' ? honey() : kind === 'cards' ? cards() : kind === 'orb' ? orb() : broom();
     const wrap = document.createElement('div');
     wrap.style.cssText = 'position:fixed;inset:0;z-index:270;background:#000;touch-action:none;user-select:none';
     const cv = document.createElement('canvas');
@@ -599,6 +980,12 @@ export function playMini(kind, L, done) {
         const p = pt(e);
         g.move(p.x, p.y, env);
     } });
+    const release = (e) => { if (phase === 'play' && g.up) {
+        const p = pt(e);
+        g.up(p.x, p.y, env);
+    } };
+    cv.addEventListener('pointerup', release);
+    cv.addEventListener('pointercancel', release);
     const frame = (now) => {
         const dt = Math.min(0.05, (now - last) / 1000);
         last = now;

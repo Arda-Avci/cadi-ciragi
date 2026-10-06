@@ -809,12 +809,12 @@ function renderPanel() {
         }
         // ada geçtikçe açılan yeni oyunlar: tuvalli tam ekran; ödül kalıcı güç (aynı günlük eğitim hakkından)
         const extra = [
-            { k: 'honey', reward: 'kalıcı MIKNATIS' }, { k: 'cards', reward: 'kalıcı KRİTİK' }, { k: 'broom', reward: 'kalıcı HIZ' },
+            { k: 'honey', reward: 'kalıcı MIKNATIS' }, { k: 'cards', reward: 'kalıcı KRİTİK' }, { k: 'broom', reward: 'kalıcı HIZ' }, { k: 'orb', reward: 'kalıcı KAÇINMA' },
         ];
         for (const x of extra) {
             const m = Game.MINIS.find((q) => q.k === x.k);
             const open2 = game.miniOpenFor(trainMaster, x.k);
-            const thumb = `<img src="assets/mg_${x.k === 'honey' ? 'bee_friend' : x.k === 'cards' ? 'cardback' : 'star'}.png" width="36" height="36" alt="" style="border-radius:8px" onerror="this.outerHTML='<span style=&quot;font-size:28px&quot;>${x.k === 'honey' ? '🐝' : x.k === 'cards' ? '🃏' : '🧹'}</span>'">`;
+            const thumb = `<img src="assets/mg_${x.k === 'honey' ? 'bee_friend' : x.k === 'cards' ? 'cardback' : x.k === 'orb' ? 'orb' : 'star'}.png" width="36" height="36" alt="" style="border-radius:8px" onerror="this.outerHTML='<span style=&quot;font-size:28px&quot;>${x.k === 'honey' ? '🐝' : x.k === 'cards' ? '🃏' : '🧹'}</span>'">`;
             const sub = !open2 ? `${L('Kilitli')}: ${m.at}. ${L('adadan sonraki ustalarda açılır')}` : plays > 0 ? `${L(m.desc)} → ${L(x.reward)}` : 'Bugünlük hakkın bitti, yarın gel';
             panel.append(row(thumb, m.name, sub, btn(!open2 ? '🔒' : plays > 0 ? 'Oyna' : 'Yarın', '', open2 && plays > 0, () => {
                 if (!game.startTraining(trainMaster)) {

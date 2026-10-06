@@ -3651,7 +3651,7 @@ export class Game {
     speed() { return 150 * (1 + 0.04 * this.lv('speed')) * (1 + (this.cb('speed') + this.perm('train.speed')) / 100) * (1 + this.outfitBonus('speed') / 100) * (this.flyT > 0 ? 1.35 : 1) * (this.wrapT > 0 ? 0.55 : 1) * this.brewSpeedMul(); }
     critChance() { return Math.min(0.75, (this.cb('crit') + this.perm('train.crit') + this.outfitBonus('crit')) / 100 + (this.isDwarf() ? 0.15 : 0)); }
     lifesteal() { return Math.min(0.5, (this.cb('lifesteal') + this.outfitBonus('lifesteal')) / 100); }
-    evasion() { return Math.min(0.6, (this.cb('evasion') + this.outfitBonus('evasion')) / 100 + this.brewEva()); }
+    evasion() { return Math.min(0.6, (this.cb('evasion') + this.outfitBonus('evasion') + this.perm('train.eva')) / 100 + this.brewEva()); }
     weaponDmg(i) {
         return (WEAPONS[i].baseDmg * (1 + 0.15 * (this.save.weapons[i] - 1)) + this.perm('normal.dmg') + this.perm('elite.dmg')) * this.dmgMul();
     }
@@ -6600,6 +6600,10 @@ export class Game {
             this.addPerm('train.crit', 0.5 * k);
             this.gain('+%' + (0.5 * k).toFixed(2) + ' Kritik şansı kazanıldı (eğitim)', '#ffb36b', 'ui_power');
         }
+        else if (kind === 'orb') {
+            this.addPerm('train.eva', 0.3 * k);
+            this.gain('+%' + (0.3 * k).toFixed(2) + ' Kaçınma şansı kazanıldı (eğitim)', '#c8b6ff', 'ui_speed');
+        }
         else if (kind === 'broom') {
             this.addPerm('train.speed', 1.2 * k);
             this.gain('+%' + (1.2 * k).toFixed(2) + ' Hız kazanıldı (eğitim)', '#9be7ff', 'ui_speed');
@@ -9342,6 +9346,7 @@ Game.MINIS = [
     { k: 'honey', at: 4, name: 'Bal Avı', desc: 'Altın arılara dokun, yabanarılarından kaç' },
     { k: 'cards', at: 9, name: 'Büyü Kartları', desc: 'Aynı simgeli kart çiftlerini bul' },
     { k: 'broom', at: 14, name: 'Süpürge Yarışı', desc: 'Süpürgeyle şeritler arasında geç, yıldız topla' },
+    { k: 'orb', at: 19, name: 'Büyü Topu', desc: 'Topu geriye çek ve bırak, duvarlardan seke seke kazana sok' },
 ];
 // ---- tavuk: 2. adada bulunur, sonra her 3 adada bir yeni tavuk bulunur; sayı artmaz, seviye 2/4/8/16 bulguda atlar; yumurta atar ----
 Game.CK_FIRST = 1;
